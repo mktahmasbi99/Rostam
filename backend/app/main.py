@@ -2,17 +2,24 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import tempfile
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import load_settings
 from .database import DomainError, MonsterSetsDatabase
-from .schemas import DeleteConfirmation, ExerciseCreate, ExerciseUpdate, SetWrite
+from .schemas import (
+    DeleteConfirmation,
+    ExerciseCreate,
+    ExerciseUpdate,
+    RestoreConfirmation,
+    SetWrite,
+)
 
 settings = load_settings()
 database = MonsterSetsDatabase(settings)
@@ -148,6 +155,35 @@ def list_backups() -> list[dict]:
 @app.post("/api/backups/on-demand", status_code=201)
 def create_on_demand_backup() -> dict:
     return database.create_backup("on-demand")
+
+
+@app.post("/api/backups/{backup_id}/restore")
+def restore_backup(backup_id: str, payload: RestoreConfirmation) -> dict:
+    return database.restore_backup(backup_id, payload.confirmation)
+
+
+@app.post("/api/backups/restore-upload")
+async def restore_uploaded_backup(
+    confirmation: str = Form(),
+    file: UploadFile = File(),  # noqa: B008
+) -> dict:
+    database.settings.database_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        prefix="restore-upload-",
+        suffix=".sqlite3",
+        dir=database.settings.database_path.parent,
+        delete=False,
+    ) as temporary:
+        path = Path(temporary.name)
+        while chunk := await file.read(1024 * 1024):
+            temporary.write(chunk)
+    try:
+        if path.stat().st_size == 0:
+            raise DomainError("Choose a SQLite backup file to restore.")
+        return database.restore_path(path, confirmation, source=file.filename or "uploaded backup")
+    finally:
+        await file.close()
+        path.unlink(missing_ok=True)
 
 
 @app.get("/api/backups/{backup_id}/download")

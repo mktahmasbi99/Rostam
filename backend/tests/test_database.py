@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from types import SimpleNamespace
 
 import pytest
@@ -174,3 +175,89 @@ def test_backup_retention_is_per_category_and_on_demand_is_unlimited(database):
     assert sum(item["category"] == "daily" for item in backups) == 5
     assert sum(item["category"] == "weekly" for item in backups) == 5
     assert sum(item["category"] == "on-demand" for item in backups) == 7
+
+
+def test_restore_replaces_live_data_and_keeps_a_safety_backup(database):
+    today = database.today().isoformat()
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+    database.add_set(pushups["id"], today, set_payload(repetitions=10))
+    source = database.create_backup("on-demand")
+    database.add_set(pushups["id"], today, set_payload(time="09:12", repetitions=20))
+
+    result = database.restore_backup(source["id"], "RESTORE")
+
+    assert database.day(today)["sections"][0]["total"] == 10
+    safety_path = database.backup_path(result["safetyBackup"]["id"])
+    with sqlite3.connect(safety_path) as connection:
+        assert connection.execute("SELECT SUM(repetitions) FROM exercise_sets").fetchone()[0] == 30
+
+
+def test_restore_rejects_bad_confirmation_without_creating_a_safety_backup(database):
+    source = database.create_backup("on-demand")
+    before = database.list_backups()
+
+    with pytest.raises(DomainError, match="Type RESTORE"):
+        database.restore_backup(source["id"], "restore")
+
+    assert database.list_backups() == before
+
+
+def test_restore_rejects_invalid_source_without_creating_a_safety_backup(database, tmp_path):
+    source = tmp_path / "not-a-database.sqlite3"
+    source.write_text("not sqlite")
+    before = database.list_backups()
+
+    with pytest.raises(DomainError, match="valid SQLite"):
+        database.restore_path(source, "RESTORE", source="uploaded backup")
+
+    assert database.list_backups() == before
+
+
+def test_restore_rolls_back_when_post_restore_validation_fails(database, monkeypatch):
+    today = database.today().isoformat()
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+    database.add_set(pushups["id"], today, set_payload(repetitions=10))
+    source = database.create_backup("on-demand")
+    database.add_set(pushups["id"], today, set_payload(time="09:12", repetitions=20))
+    verify = database._verify_live_database
+    calls = 0
+
+    def fail_once():
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise DomainError("simulated verification failure")
+        verify()
+
+    monkeypatch.setattr(database, "_verify_live_database", fail_once)
+    with pytest.raises(DomainError, match="rolled back"):
+        database.restore_backup(source["id"], "RESTORE")
+
+    assert database.day(today)["sections"][0]["total"] == 30
+
+
+@pytest.mark.parametrize(
+    ("statement", "message"),
+    [
+        ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
+        ("INSERT INTO schema_migrations(version) VALUES (2)", "schema is newer"),
+    ],
+)
+def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(
+    database, statement, message
+):
+    source = database.create_backup("on-demand")
+    with sqlite3.connect(database.backup_path(source["id"])) as connection:
+        connection.execute(statement)
+        connection.commit()
+    before = database.list_backups()
+
+    with pytest.raises(DomainError, match=message):
+        database.restore_backup(source["id"], "RESTORE")
+
+    assert database.list_backups() == before
+
+
+def test_restore_rejects_path_traversal(database):
+    with pytest.raises(DomainError, match="Invalid backup identifier"):
+        database.restore_backup("../outside.sqlite3", "RESTORE")

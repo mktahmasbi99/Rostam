@@ -1,9 +1,11 @@
-import type { Backup, Config, DayData, Exercise, ExercisePayload, MeasurementType, SetPayload } from "./types";
+import type { Backup, Config, DayData, Exercise, ExercisePayload, MeasurementType, RestoreResult, SetPayload } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
-    headers: init?.body ? { "Content-Type": "application/json", ...init.headers } : init?.headers,
+    headers: init?.body && !(init.body instanceof FormData)
+      ? { "Content-Type": "application/json", ...init.headers }
+      : init?.headers,
     cache: "no-store",
   });
   if (!response.ok) {
@@ -53,4 +55,12 @@ export const api = {
   createBackup: () => request<Backup>("/api/backups/on-demand", json("POST")),
   deleteBackup: (id: string) =>
     request<void>(`/api/backups/${encodeURIComponent(id)}`, json("DELETE")),
+  restoreBackup: (id: string, confirmation: string) =>
+    request<RestoreResult>(`/api/backups/${encodeURIComponent(id)}/restore`, json("POST", { confirmation })),
+  restoreUploadedBackup: (file: File, confirmation: string) => {
+    const form = new FormData();
+    form.append("confirmation", confirmation);
+    form.append("file", file);
+    return request<RestoreResult>("/api/backups/restore-upload", { method: "POST", body: form });
+  },
 };

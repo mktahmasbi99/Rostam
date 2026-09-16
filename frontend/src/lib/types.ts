@@ -87,3 +87,8 @@ export interface Backup {
   createdAt: string;
   sizeBytes: number;
 }
+
+export interface RestoreResult {
+  source: string;
+  safetyBackup: Backup;
+}

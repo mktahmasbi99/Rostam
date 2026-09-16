@@ -44,6 +44,10 @@ class DeleteConfirmation(BaseModel):
     confirmation: str
 
 
+class RestoreConfirmation(BaseModel):
+    confirmation: str
+
+
 class SetWrite(BaseModel):
     time: str | None = None
     repetitions: int | None = None

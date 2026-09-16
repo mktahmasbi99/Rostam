@@ -53,6 +53,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "monster-sets"
 BACKUP_FORMAT_VERSION = 1
+SCHEMA_VERSION = 1
 
 
 class DomainError(ValueError):
@@ -99,22 +100,24 @@ class MonsterSetsDatabase:
         self.settings = settings
         self.path = settings.database_path
         self._backup_lock = threading.RLock()
+        self._database_lock = threading.RLock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.migrate()
 
     @contextmanager
     def connect(self, path: Path | None = None) -> Iterator[sqlite3.Connection]:
-        connection = sqlite3.connect(path or self.path, timeout=5)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys = ON")
-        connection.execute("PRAGMA busy_timeout = 5000")
-        connection.execute(
-            "PRAGMA journal_mode = WAL" if path is None else "PRAGMA journal_mode = DELETE"
-        )
-        try:
-            yield connection
-        finally:
-            connection.close()
+        with self._database_lock:
+            connection = sqlite3.connect(path or self.path, timeout=5)
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("PRAGMA busy_timeout = 5000")
+            connection.execute(
+                "PRAGMA journal_mode = WAL" if path is None else "PRAGMA journal_mode = DELETE"
+            )
+            try:
+                yield connection
+            finally:
+                connection.close()
 
     def migrate(self) -> None:
         with self.connect() as connection:
@@ -186,7 +189,9 @@ class MonsterSetsDatabase:
                 """
             )
             if (
-                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 1").fetchone()
+                connection.execute(
+                    "SELECT 1 FROM schema_migrations WHERE version = ?", (SCHEMA_VERSION,)
+                ).fetchone()
                 is None
             ):
                 now = self._utc_now()
@@ -212,7 +217,9 @@ class MonsterSetsDatabase:
                             now,
                         ),
                     )
-                connection.execute("INSERT INTO schema_migrations(version) VALUES (1)")
+                connection.execute(
+                    "INSERT INTO schema_migrations(version) VALUES (?)", (SCHEMA_VERSION,)
+                )
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -810,7 +817,85 @@ class MonsterSetsDatabase:
         return path
 
     def delete_backup(self, backup_id: str) -> None:
-        self.backup_path(backup_id).unlink()
+        with self._backup_lock:
+            self.backup_path(backup_id).unlink()
+
+    def _validate_restore_source(self, path: Path) -> None:
+        try:
+            source = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+            source.row_factory = sqlite3.Row
+            try:
+                if source.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                    raise DomainError("Backup integrity check failed.")
+                if source.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                    raise DomainError("Backup foreign key check failed.")
+                metadata = source.execute(
+                    "SELECT app_id, format_version FROM backup_metadata WHERE id = 1"
+                ).fetchone()
+                if metadata is None or metadata["app_id"] != BACKUP_APP_ID:
+                    raise DomainError("Backup is not a Rostam database.")
+                if not 1 <= metadata["format_version"] <= BACKUP_FORMAT_VERSION:
+                    raise DomainError("Backup format is not supported.")
+                newest = source.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
+                if newest is not None and newest > SCHEMA_VERSION:
+                    raise DomainError("Backup schema is newer than this Rostam version.")
+            finally:
+                source.close()
+        except (sqlite3.Error, OSError) as exc:
+            raise DomainError("Backup is not a valid SQLite database.") from exc
+
+    def _copy_database(self, source_path: Path) -> None:
+        source = sqlite3.connect(f"{source_path.resolve().as_uri()}?mode=ro", uri=True)
+        target = sqlite3.connect(self.path, timeout=5)
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+            source.close()
+
+    def _verify_live_database(self) -> None:
+        with self.connect() as connection:
+            if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise DomainError("Restored database integrity check failed.")
+            if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                raise DomainError("Restored database foreign key check failed.")
+            connection.execute(
+                """
+                UPDATE backup_metadata
+                SET app_id = ?, format_version = ?, created_at = ?, category = 'live'
+                WHERE id = 1
+                """,
+                (BACKUP_APP_ID, BACKUP_FORMAT_VERSION, self._utc_now()),
+            )
+            connection.commit()
+
+    def restore_backup(self, backup_id: str, confirmation: str) -> dict:
+        with self._backup_lock:
+            source_path = self.backup_path(backup_id)
+            return self.restore_path(source_path, confirmation, source=backup_id)
+
+    def restore_path(self, source_path: Path, confirmation: str, *, source: str) -> dict:
+        if confirmation != "RESTORE":
+            raise DomainError("Type RESTORE to replace the live database.")
+        with self._backup_lock, self._database_lock:
+            self._validate_restore_source(source_path)
+            safety_backup = self.create_backup("on-demand")
+            safety_path = self.backup_path(safety_backup["id"])
+            try:
+                self._copy_database(source_path)
+                self.migrate()
+                self._verify_live_database()
+            except (DomainError, OSError, sqlite3.Error) as exc:
+                try:
+                    self._copy_database(safety_path)
+                    self.migrate()
+                    self._verify_live_database()
+                except (DomainError, OSError, sqlite3.Error) as rollback_error:
+                    raise DomainError(
+                        "Restore failed and the automatic rollback also failed. Stop the server immediately."
+                    ) from rollback_error
+                raise DomainError("Restore failed; the live database was rolled back.") from exc
+            return {"source": source, "safetyBackup": safety_backup}
 
     def run_scheduled_backups(self) -> None:
         today = self.today()

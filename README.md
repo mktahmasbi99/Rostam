@@ -82,9 +82,11 @@ docker compose up -d
 
 Keep the service private behind Tailscale or another trusted network boundary; Rostam intentionally has no authentication in V1.
 
-### Manual restore
+### Restore
 
-Stop the container, make a safety copy of `deploy/data`, replace `rostam.sqlite3` with the chosen downloaded backup, then start the container again. Do not replace a live SQLite database.
+Settings can restore a server-held backup or an uploaded `.sqlite3` backup. Rostam validates the SQLite integrity, foreign keys, backup identifier, format, and schema before changing live data. Every restore requires typing `RESTORE` and first creates an on-demand safety backup of the current ledger. Uploaded files are temporary and are deleted after the operation.
+
+If the app cannot start or an in-app restore is unavailable, stop the container, make a safety copy of `deploy/data`, replace `rostam.sqlite3` with the chosen downloaded backup, then start the container again. Do not replace a live SQLite database while the service is running.
 
 ## Data conventions
 
