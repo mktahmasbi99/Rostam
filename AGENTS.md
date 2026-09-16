@@ -34,4 +34,4 @@ Add backend tests as `test_*.py` and frontend tests as `*.test.ts` or `*.test.ts
 
 ## Commit & Pull Request Guidelines
 
-The existing history uses short, imperative summaries (for example, `Initial MonsterSets implementation`). Follow that style, keeping each commit focused. PRs should explain the user-visible change and implementation rationale, link relevant issues, list validation commands, and include screenshots for UI changes. Do not commit SQLite databases, backups, or local secrets; configure `TZ` and `MONSTER_SETS_DB` through the environment.
+The existing history uses short, imperative summaries (for example, `Initial MonsterSets implementation`). Follow that style, keeping each commit focused. PRs should explain the user-visible change and implementation rationale, link relevant issues, list validation commands, and include screenshots for UI changes. Do not commit SQLite databases, backups, or local secrets; configure `TZ` and `ROSTAM_DB` through the environment.

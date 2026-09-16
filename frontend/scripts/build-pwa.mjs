@@ -6,9 +6,9 @@ await generateSW({
   globIgnores: ["sw.js"],
   swDest: "dist/sw.js",
   navigateFallback: "/index.html",
+  navigateFallbackDenylist: [/^\/api(?:\/|$)/],
   runtimeCaching: [],
   cleanupOutdatedCaches: true,
   clientsClaim: true,
   skipWaiting: true,
 });
-
