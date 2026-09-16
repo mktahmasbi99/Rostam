@@ -156,6 +156,11 @@ input, select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px soli
 .settings-card dl div { display: flex; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
 .settings-card dt { color: var(--muted); }
 .settings-card dd { margin: 0; font-weight: 750; }
+.install-card { padding: 0; overflow: hidden; }
+.install-card h2 { margin: 0; padding: 14px 16px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; }
+.install-button { width: calc(100% - 32px); min-height: 48px; margin: 16px; }
+.install-note { margin: 0; padding: 14px 16px 16px; color: var(--muted); font-size: .84rem; line-height: 1.45; }
+.install-button + .install-note { padding-top: 0; }
 .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .backup-group { margin-top: 20px; }
 .backup-group h3 { margin-bottom: 5px; font-size: .82rem; text-transform: uppercase; color: var(--muted); letter-spacing: .07em; }

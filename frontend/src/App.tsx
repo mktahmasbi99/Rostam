@@ -4,6 +4,7 @@ import { CalendarPage } from "./components/CalendarPage";
 import { DayPage } from "./components/DayPage";
 import { ExercisesPage } from "./components/ExercisesPage";
 import { SettingsPage } from "./components/SettingsPage";
+import { usePwaInstall } from "./hooks/usePwaInstall";
 import { api } from "./lib/api";
 import type { Config } from "./lib/types";
 
@@ -14,6 +15,7 @@ export default function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [selectedDay, setSelectedDay] = useState("");
   const [error, setError] = useState("");
+  const pwaInstall = usePwaInstall();
 
   const loadConfig = useCallback(async () => {
     try {
@@ -46,7 +48,7 @@ export default function App() {
       {tab === "today" && <DayPage day={selectedDay} today={config.today} onDayChange={setSelectedDay} />}
       {tab === "calendar" && <CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "exercises" && <ExercisesPage />}
-      {tab === "settings" && <SettingsPage config={config} />}
+      {tab === "settings" && <SettingsPage config={config} pwaInstall={pwaInstall} />}
     </div>
     <nav className="bottom-nav" aria-label="Primary navigation">
       <button className={tab === "today" ? "active" : ""} onClick={() => { setSelectedDay(config.today); setTab("today"); }}><ListChecks /><span>Today</span></button>

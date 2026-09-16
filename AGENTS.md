@@ -11,7 +11,7 @@ The frontend is in `frontend/src/`. Put page-level UI in `components/`, API call
 Use Python 3.12+ and Node 24+.
 
 - `python3 -m venv .venv && .venv/bin/pip install -e './backend[dev]'` creates the backend development environment.
-- `TZ=Europe/Warsaw MONSTER_SETS_DB=./data/monster_sets.sqlite3 .venv/bin/uvicorn app.main:app --app-dir backend --reload` runs the API locally.
+- `TZ=Europe/Warsaw ROSTAM_DB=./data/rostam.sqlite3 .venv/bin/python -m uvicorn app.main:app --app-dir backend --reload` runs the API locally.
 - `cd frontend && npm ci && npm run dev` starts Vite; `/api` is proxied to port 8000.
 - `cd frontend && npm run build` type-checks, syncs exercise assets, and creates the production/PWA bundle.
 - `cd deploy && docker compose up -d` runs the published container using `deploy/data` for persistent SQLite data.

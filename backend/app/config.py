@@ -23,5 +23,5 @@ def load_settings() -> Settings:
         timezone = ZoneInfo(timezone_name)
     except ZoneInfoNotFoundError as exc:
         raise RuntimeError(f"TZ must be a valid IANA timezone; got {timezone_name!r}") from exc
-    database_path = Path(os.environ.get("ROSTAM_DB", "/data/rostam.sqlite3"))
+    database_path = Path(os.environ.get("ROSTAM_DB", "./data/rostam.sqlite3"))
     return Settings(database_path=database_path, timezone_name=timezone_name, timezone=timezone)

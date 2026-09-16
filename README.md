@@ -15,6 +15,7 @@ Rostam is named after the legendary hero of Ferdowsi’s *Shahnameh* (*Book of K
 - Keeps exercise type immutable, supports archive/restore for used exercises, and requires typing `DELETE` before permanently removing an unused exercise.
 - Shows a neutral calendar dot for any day containing at least one set.
 - Creates daily and weekly rotating backups (five of each), plus on-demand backups that persist until manually deleted.
+- Installs as a connected-only PWA from the Settings page, with browser-specific guidance when a native install prompt is unavailable.
 
 There are deliberately no goals, reminders, streaks, notes, perceived-effort fields, workout timers, or offline write queue in V1.
 
