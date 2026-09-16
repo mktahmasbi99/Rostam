@@ -26,6 +26,19 @@ EQUIPMENT = {
     "other",
 }
 
+EQUIPMENT_TITLES = {
+    "resistance_band": "Resistance Bands",
+    "dumbbell": "Dumbbells",
+    "barbell": "Barbell",
+    "kettlebell": "Kettlebell",
+    "cable": "Cable",
+    "weight_machine": "Weight Machine",
+    "weighted_vest": "Weighted Vest",
+    "weight_plate": "Weight Plate",
+    "ankle_weights": "Ankle Weights",
+    "sandbag": "Sandbag",
+}
+
 SEED_EXERCISES = (
     ("squats", "Squats", "repetitions", "bodyweight", None, "bodyweight-squat"),
     ("push-ups", "Push-ups", "repetitions", "bodyweight", None, "push-up"),
@@ -53,7 +66,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "monster-sets"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class DomainError(ValueError):
@@ -67,6 +80,14 @@ def normalize_name(value: str) -> tuple[str, str]:
     if len(display) > 100:
         raise DomainError("Exercise name must be at most 100 characters.")
     return display, display.casefold()
+
+
+def exercise_title(base_name: str, equipment: str | None, custom_equipment: str | None) -> str:
+    base, _ = normalize_name(base_name)
+    if equipment is None:
+        return base
+    suffix = custom_equipment if equipment == "other" else EQUIPMENT_TITLES[equipment]
+    return normalize_name(f"{base} ({suffix})")[0]
 
 
 def parse_weight_grams(value: str | None, *, allow_blank: bool) -> int | None:
@@ -189,9 +210,7 @@ class MonsterSetsDatabase:
                 """
             )
             if (
-                connection.execute(
-                    "SELECT 1 FROM schema_migrations WHERE version = ?", (SCHEMA_VERSION,)
-                ).fetchone()
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 1").fetchone()
                 is None
             ):
                 now = self._utc_now()
@@ -217,9 +236,84 @@ class MonsterSetsDatabase:
                             now,
                         ),
                     )
-                connection.execute(
-                    "INSERT INTO schema_migrations(version) VALUES (?)", (SCHEMA_VERSION,)
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (1)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 2").fetchone()
+                is None
+            ):
+                connection.executescript(
+                    """
+                    ALTER TABLE exercises ADD COLUMN base_name TEXT;
+                    ALTER TABLE exercises ADD COLUMN equipment TEXT;
+                    ALTER TABLE exercises ADD COLUMN custom_equipment TEXT;
+                    ALTER TABLE exercises ADD COLUMN allow_bodyweight INTEGER
+                        NOT NULL DEFAULT 0 CHECK (allow_bodyweight IN (0, 1));
+
+                    UPDATE exercises SET
+                        base_name = name,
+                        equipment = CASE
+                            WHEN default_resistance_kind = 'external' THEN default_equipment
+                            ELSE NULL
+                        END,
+                        custom_equipment = CASE
+                            WHEN default_resistance_kind = 'external'
+                                THEN default_custom_equipment
+                            ELSE NULL
+                        END,
+                        allow_bodyweight = CASE
+                            WHEN default_resistance_kind = 'bodyweight' THEN 1
+                            ELSE 0
+                        END;
+                    """
                 )
+                special_exercises = (
+                    ("overhead press rb", "Overhead Press", "Overhead Press (Resistance Bands)"),
+                    ("squats", "Squats", "Squats (Resistance Bands)"),
+                    (
+                        "band pull-aparts",
+                        "Band pull-aparts",
+                        "Band pull-aparts (Resistance Bands)",
+                    ),
+                    ("bicep curls", "Bicep curls", "Bicep curls (Resistance Bands)"),
+                )
+                now = self._utc_now()
+                for old_normalized, base_name, name in special_exercises:
+                    row = connection.execute(
+                        """
+                        SELECT id FROM exercises
+                        WHERE normalized_name = ? AND EXISTS(
+                            SELECT 1 FROM exercise_sets WHERE exercise_id = exercises.id
+                        )
+                        """,
+                        (old_normalized,),
+                    ).fetchone()
+                    if row is None:
+                        continue
+                    connection.execute(
+                        """
+                        UPDATE exercises SET base_name = ?, name = ?, normalized_name = ?,
+                            equipment = 'resistance_band', custom_equipment = NULL,
+                            allow_bodyweight = 1, updated_at = ? WHERE id = ?
+                        """,
+                        (base_name, name, name.casefold(), now, row["id"]),
+                    )
+                    connection.execute(
+                        """
+                        UPDATE exercise_sets SET equipment = 'resistance_band',
+                            custom_equipment = NULL
+                        WHERE exercise_id = ? AND resistance_kind = 'external'
+                        """,
+                        (row["id"],),
+                    )
+                connection.execute(
+                    """
+                    UPDATE exercises SET base_name = 'Ab Rollouts', equipment = NULL,
+                        custom_equipment = NULL, allow_bodyweight = 1, updated_at = ?
+                    WHERE normalized_name = 'ab rollouts'
+                    """,
+                    (now,),
+                )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (2)")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -279,17 +373,21 @@ class MonsterSetsDatabase:
             raise DomainError("Exercise not found.")
         return row
 
-    def _validate_defaults(
+    def _validate_exercise_features(
         self,
-        resistance_kind: str,
         equipment: str | None,
         custom_equipment: str | None,
+        allow_bodyweight: bool,
         weight_kg: str | None,
     ) -> tuple[str | None, str | None, int | None]:
-        if resistance_kind == "bodyweight":
+        if equipment is None:
+            if not allow_bodyweight:
+                raise DomainError("An exercise must allow bodyweight or use equipment.")
+            if weight_kg is not None and weight_kg.strip():
+                raise DomainError("Bodyweight-only exercises cannot have a default weight.")
             return None, None, None
         if equipment not in EQUIPMENT:
-            raise DomainError("Choose equipment for external resistance.")
+            raise DomainError("Choose equipment.")
         custom = " ".join((custom_equipment or "").split()) or None
         if equipment == "other" and custom is None:
             raise DomainError("Name the custom equipment.")
@@ -297,7 +395,7 @@ class MonsterSetsDatabase:
             custom = None
         weight = parse_weight_grams(weight_kg, allow_blank=True)
         if weight == 0:
-            return None, None, None
+            weight = None
         return equipment, custom, weight
 
     def _validate_set(
@@ -307,8 +405,6 @@ class MonsterSetsDatabase:
         duration_minutes: int | None,
         duration_seconds: int | None,
         resistance_kind: str,
-        equipment: str | None,
-        custom_equipment: str | None,
         weight_kg: str | None,
     ) -> tuple[int | None, int | None, str, int | None, str | None, str | None]:
         if exercise["measurement_type"] == "repetitions":
@@ -330,31 +426,37 @@ class MonsterSetsDatabase:
             measured_reps, measured_duration = None, total
 
         if resistance_kind == "bodyweight":
+            if not exercise["allow_bodyweight"]:
+                raise DomainError("Bodyweight is not allowed for this exercise.")
             return measured_reps, measured_duration, "bodyweight", None, None, None
-        if equipment not in EQUIPMENT:
-            raise DomainError("Choose equipment for external resistance.")
-        custom = " ".join((custom_equipment or "").split()) or None
-        if equipment == "other" and custom is None:
-            raise DomainError("Name the custom equipment.")
-        if equipment != "other":
-            custom = None
+        equipment = exercise["equipment"]
+        custom = exercise["custom_equipment"]
+        if equipment is None:
+            raise DomainError("This exercise does not use equipment.")
         weight = parse_weight_grams(weight_kg, allow_blank=False)
         if weight == 0:
+            if not exercise["allow_bodyweight"]:
+                raise DomainError("Weight must be greater than zero for this exercise.")
             return measured_reps, measured_duration, "bodyweight", None, None, None
         return measured_reps, measured_duration, "external", weight, equipment, custom
 
     def _serialize_exercise(self, row: sqlite3.Row) -> dict:
+        try:
+            has_history = bool(row["has_history"])
+        except IndexError:
+            has_history = False
         return {
             "id": row["id"],
             "name": row["name"],
+            "baseName": row["base_name"],
             "measurementType": row["measurement_type"],
-            "defaultResistanceKind": row["default_resistance_kind"],
-            "defaultEquipment": row["default_equipment"],
-            "defaultCustomEquipment": row["default_custom_equipment"],
+            "equipment": row["equipment"],
+            "customEquipment": row["custom_equipment"],
+            "allowBodyweight": bool(row["allow_bodyweight"]),
             "defaultWeightKg": format_weight(row["default_weight_grams"]),
             "imageKey": row["image_key"],
             "archivedAt": row["archived_at"],
-            "hasHistory": bool(row["has_history"]) if "has_history" in row else False,
+            "hasHistory": has_history,
         }
 
     def _serialize_set(self, row: sqlite3.Row) -> dict:
@@ -419,35 +521,41 @@ class MonsterSetsDatabase:
             return self._serialize_exercise(row)
 
     def create_exercise(self, payload) -> dict:
-        name, normalized = normalize_name(payload.name)
-        equipment, custom, weight = self._validate_defaults(
-            payload.defaultResistanceKind,
-            payload.defaultEquipment,
-            payload.defaultCustomEquipment,
+        base_name, _ = normalize_name(payload.baseName)
+        equipment, custom, weight = self._validate_exercise_features(
+            payload.equipment,
+            payload.customEquipment,
+            payload.allowBodyweight,
             payload.defaultWeightKg,
         )
-        resistance = "bodyweight" if equipment is None else "external"
+        name, normalized = normalize_name(exercise_title(base_name, equipment, custom))
+        resistance = "external" if equipment is not None else "bodyweight"
         now = self._utc_now()
         try:
             with self.connect() as connection:
                 cursor = connection.execute(
                     """
                     INSERT INTO exercises(
-                        name, normalized_name, measurement_type,
+                        name, normalized_name, base_name, measurement_type,
                         default_resistance_kind, default_equipment,
                         default_custom_equipment, default_weight_grams, image_key,
+                        equipment, custom_equipment, allow_bodyweight,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         name,
                         normalized,
+                        base_name,
                         payload.measurementType,
                         resistance,
                         equipment,
                         custom,
                         weight,
                         payload.imageKey,
+                        equipment,
+                        custom,
+                        int(payload.allowBodyweight),
                         now,
                         now,
                     ),
@@ -459,30 +567,35 @@ class MonsterSetsDatabase:
             raise DomainError("An exercise with this name already exists.") from exc
 
     def update_exercise(self, exercise_id: int, payload) -> dict:
-        name, normalized = normalize_name(payload.name)
-        equipment, custom, weight = self._validate_defaults(
-            payload.defaultResistanceKind,
-            payload.defaultEquipment,
-            payload.defaultCustomEquipment,
-            payload.defaultWeightKg,
-        )
-        resistance = "bodyweight" if equipment is None else "external"
         try:
             with self.connect() as connection:
-                self._exercise_row(connection, exercise_id)
+                current = self._exercise_row(connection, exercise_id)
+                base_name, _ = normalize_name(payload.baseName)
+                current_generated_title = exercise_title(
+                    current["base_name"], current["equipment"], current["custom_equipment"]
+                )
+                updated_title = (
+                    exercise_title(base_name, current["equipment"], current["custom_equipment"])
+                    if current["name"] == current_generated_title
+                    else base_name
+                )
+                name, normalized = normalize_name(updated_title)
+                _, _, weight = self._validate_exercise_features(
+                    current["equipment"],
+                    current["custom_equipment"],
+                    bool(current["allow_bodyweight"]),
+                    payload.defaultWeightKg,
+                )
                 connection.execute(
                     """
-                    UPDATE exercises SET name = ?, normalized_name = ?,
-                        default_resistance_kind = ?, default_equipment = ?,
-                        default_custom_equipment = ?, default_weight_grams = ?,
+                    UPDATE exercises SET name = ?, normalized_name = ?, base_name = ?,
+                        default_weight_grams = ?,
                         image_key = ?, updated_at = ? WHERE id = ?
                     """,
                     (
                         name,
                         normalized,
-                        resistance,
-                        equipment,
-                        custom,
+                        base_name,
                         weight,
                         payload.imageKey,
                         self._utc_now(),
@@ -604,6 +717,12 @@ class MonsterSetsDatabase:
             ).fetchone()
             if row:
                 result = self._serialize_set(row)
+                if result["resistanceKind"] == "bodyweight" and not exercise["allow_bodyweight"]:
+                    result["resistanceKind"] = "external"
+                    result["weightKg"] = format_weight(exercise["default_weight_grams"])
+                elif result["resistanceKind"] == "external" and exercise["equipment"] is None:
+                    result["resistanceKind"] = "bodyweight"
+                    result["weightKg"] = None
                 result["source"] = "previous"
                 return result
             return {
@@ -611,10 +730,10 @@ class MonsterSetsDatabase:
                 "repetitions": None,
                 "durationMinutes": None,
                 "durationSeconds": None,
-                "resistanceKind": exercise["default_resistance_kind"],
+                "resistanceKind": (
+                    "external" if exercise["equipment"] is not None else "bodyweight"
+                ),
                 "weightKg": format_weight(exercise["default_weight_grams"]),
-                "equipment": exercise["default_equipment"],
-                "customEquipment": exercise["default_custom_equipment"],
             }
 
     def add_set(self, exercise_id: int, day_value: str, payload) -> dict:
@@ -631,8 +750,6 @@ class MonsterSetsDatabase:
                 payload.durationMinutes,
                 payload.durationSeconds,
                 payload.resistanceKind,
-                payload.equipment,
-                payload.customEquipment,
                 payload.weightKg,
             )
             if (
@@ -698,8 +815,6 @@ class MonsterSetsDatabase:
                 payload.durationMinutes,
                 payload.durationSeconds,
                 payload.resistanceKind,
-                payload.equipment,
-                payload.customEquipment,
                 payload.weightKg,
             )
             connection.execute(

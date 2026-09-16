@@ -9,10 +9,11 @@ Rostam is named after the legendary hero of Ferdowsi’s *Shahnameh* (*Book of K
 ## What V1 does
 
 - Logs repetition- and duration-based sets against a server-authoritative day and time.
-- Treats bodyweight as an explicit resistance state. Entering `0` in the kg field is a shortcut that saves as Bodyweight, never as `0 kg`.
+- Treats bodyweight as an explicit resistance state when the exercise permits it. Entering `0` in the kg field is a shortcut that saves as Bodyweight, never as `0 kg`.
+- Locks equipment and bodyweight eligibility when an exercise is created, then derives titles such as `Squats (Resistance Bands)` and uses that equipment automatically while logging.
 - Supports resistance bands, dumbbells, barbells, kettlebells, cables, weight machines, weighted vests, plates, ankle weights, sandbags, and custom equipment.
 - Remembers the latest chronologically preceding set for each exercise and prefills its measurement and resistance.
-- Keeps exercise type immutable, supports archive/restore for used exercises, and requires typing `DELETE` before permanently removing an unused exercise.
+- Keeps measurement type, equipment, and bodyweight eligibility immutable; supports archive/restore for used exercises; and requires typing `DELETE` before permanently removing an unused exercise.
 - Shows a neutral calendar dot for any day containing at least one set.
 - Creates daily and weekly rotating backups (five of each), plus on-demand backups that persist until manually deleted.
 - Installs as a connected-only PWA from the Settings page, with browser-specific guidance when a native install prompt is unavailable.

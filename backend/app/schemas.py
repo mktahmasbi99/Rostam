@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 MeasurementType = Literal["repetitions", "duration"]
 ResistanceKind = Literal["bodyweight", "external"]
@@ -22,20 +22,21 @@ Equipment = Literal[
 
 
 class ExerciseCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+    model_config = ConfigDict(extra="forbid")
+
+    baseName: str = Field(min_length=1, max_length=100)
     measurementType: MeasurementType
-    defaultResistanceKind: ResistanceKind
-    defaultEquipment: Equipment | None = None
-    defaultCustomEquipment: str | None = Field(default=None, max_length=80)
+    equipment: Equipment | None = None
+    customEquipment: str | None = Field(default=None, max_length=80)
+    allowBodyweight: bool = True
     defaultWeightKg: str | None = None
     imageKey: str | None = Field(default=None, max_length=100)
 
 
 class ExerciseUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    defaultResistanceKind: ResistanceKind
-    defaultEquipment: Equipment | None = None
-    defaultCustomEquipment: str | None = Field(default=None, max_length=80)
+    model_config = ConfigDict(extra="forbid")
+
+    baseName: str = Field(min_length=1, max_length=100)
     defaultWeightKg: str | None = None
     imageKey: str | None = Field(default=None, max_length=100)
 
@@ -49,11 +50,11 @@ class RestoreConfirmation(BaseModel):
 
 
 class SetWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     time: str | None = None
     repetitions: int | None = None
     durationMinutes: int | None = None
     durationSeconds: int | None = None
     resistanceKind: ResistanceKind
-    equipment: Equipment | None = None
-    customEquipment: str | None = Field(default=None, max_length=80)
     weightKg: str | None = None

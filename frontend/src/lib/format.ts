@@ -14,6 +14,26 @@ export const equipmentLabels: Record<Equipment, string> = {
   other: "Other",
 };
 
+export const equipmentTitleLabels: Record<Exclude<Equipment, "other">, string> = {
+  resistance_band: "Resistance Bands",
+  dumbbell: "Dumbbells",
+  barbell: "Barbell",
+  kettlebell: "Kettlebell",
+  cable: "Cable",
+  weight_machine: "Weight Machine",
+  weighted_vest: "Weighted Vest",
+  weight_plate: "Weight Plate",
+  ankle_weights: "Ankle Weights",
+  sandbag: "Sandbag",
+};
+
+export function exerciseTitle(baseName: string, equipment: Equipment | null, customEquipment: string): string {
+  const base = baseName.trim().replace(/\s+/g, " ");
+  if (!equipment) return base;
+  const suffix = equipment === "other" ? customEquipment.trim().replace(/\s+/g, " ") : equipmentTitleLabels[equipment];
+  return suffix ? `${base} (${suffix})` : base;
+}
+
 export function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
@@ -37,4 +57,3 @@ export function formatDay(day: string, today: string): string {
     new Date(`${day}T12:00:00`),
   );
 }
-

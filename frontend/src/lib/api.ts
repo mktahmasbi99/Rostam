@@ -1,4 +1,4 @@
-import type { Backup, Config, DayData, Exercise, ExercisePayload, MeasurementType, RestoreResult, SetPayload } from "./types";
+import type { Backup, Config, DayData, Exercise, ExerciseCreatePayload, ExerciseUpdatePayload, RestoreResult, SetPayload } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -31,9 +31,9 @@ export const api = {
     if (measurementType) params.set("measurementType", measurementType);
     return request<Exercise[]>(`/api/exercises?${params}`);
   },
-  createExercise: (payload: ExercisePayload & { measurementType: MeasurementType }) =>
+  createExercise: (payload: ExerciseCreatePayload) =>
     request<Exercise>("/api/exercises", json("POST", payload)),
-  updateExercise: (id: number, payload: ExercisePayload) =>
+  updateExercise: (id: number, payload: ExerciseUpdatePayload) =>
     request<Exercise>(`/api/exercises/${id}`, json("PATCH", payload)),
   archiveExercise: (id: number) =>
     request<Exercise>(`/api/exercises/${id}/archive`, json("POST")),

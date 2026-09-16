@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, formatResistance } from "./format";
+import { exerciseTitle, formatDuration, formatResistance } from "./format";
 import type { ExerciseSet } from "./types";
 
 const base: ExerciseSet = {
@@ -19,6 +19,11 @@ const base: ExerciseSet = {
 };
 
 describe("formatting", () => {
+  it("generates canonical equipment titles", () => {
+    expect(exerciseTitle("  Squats  ", "resistance_band", "")).toBe("Squats (Resistance Bands)");
+    expect(exerciseTitle("Ab Rollouts", null, "")).toBe("Ab Rollouts");
+  });
+
   it("adds durations using clock notation", () => {
     expect(formatDuration(135)).toBe("2:15");
   });
@@ -31,4 +36,3 @@ describe("formatting", () => {
     expect(formatResistance(base)).toBe("Bodyweight");
   });
 });
-

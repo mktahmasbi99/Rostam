@@ -1,10 +1,7 @@
 import { Check, RotateCcw, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
-import { equipmentLabels } from "../lib/format";
-import type { Equipment, Exercise, ExerciseSet, ResistanceKind, SetPayload } from "../lib/types";
-
-const equipment = Object.entries(equipmentLabels) as [Equipment, string][];
+import type { Exercise, ExerciseSet, ResistanceKind, SetPayload } from "../lib/types";
 
 interface Props {
   exercise: Exercise;
@@ -20,10 +17,8 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
   const [repetitions, setRepetitions] = useState(existing?.repetitions?.toString() ?? "");
   const [minutes, setMinutes] = useState(existing?.durationMinutes?.toString() ?? "");
   const [seconds, setSeconds] = useState(existing?.durationSeconds?.toString() ?? "");
-  const [resistance, setResistance] = useState<ResistanceKind>(existing?.resistanceKind ?? exercise.defaultResistanceKind);
+  const [resistance, setResistance] = useState<ResistanceKind>(existing?.resistanceKind ?? (exercise.equipment ? "external" : "bodyweight"));
   const [weight, setWeight] = useState(existing?.weightKg ?? exercise.defaultWeightKg ?? "");
-  const [selectedEquipment, setSelectedEquipment] = useState<Equipment>(existing?.equipment ?? exercise.defaultEquipment ?? "dumbbell");
-  const [customEquipment, setCustomEquipment] = useState(existing?.customEquipment ?? exercise.defaultCustomEquipment ?? "");
   const [loading, setLoading] = useState(!existing);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -39,8 +34,6 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
     if (!resistanceEdited.current) {
       setResistance(prefill.resistanceKind);
       setWeight(prefill.weightKg ?? "");
-      setSelectedEquipment(prefill.equipment ?? "dumbbell");
-      setCustomEquipment(prefill.customEquipment ?? "");
     }
   }
 
@@ -82,8 +75,6 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
       durationMinutes: exercise.measurementType === "duration" ? Number(minutes || 0) : null,
       durationSeconds: exercise.measurementType === "duration" ? Number(seconds || 0) : null,
       resistanceKind: resistance,
-      equipment: resistance === "external" ? selectedEquipment : null,
-      customEquipment: resistance === "external" && selectedEquipment === "other" ? customEquipment : null,
       weightKg: resistance === "external" ? weight : null,
     };
     try {
@@ -103,14 +94,12 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
     <form className="set-draft" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <div className="set-form-grid">
         <label>Time<input type="time" value={time} onChange={(event) => { setTime(event.target.value); setTimeEdited(true); }} onBlur={() => void refreshPrefill(time)} required /></label>
-        <fieldset>
+        {exercise.equipment && exercise.allowBodyweight && <fieldset>
           <legend>Resistance</legend>
           <div className="segmented compact"><button type="button" className={resistance === "bodyweight" ? "selected" : ""} onClick={() => { resistanceEdited.current = true; setResistance("bodyweight"); }}>BW</button><button type="button" className={resistance === "external" ? "selected" : ""} onClick={() => { resistanceEdited.current = true; setResistance("external"); }}>kg</button></div>
-        </fieldset>
+        </fieldset>}
         {resistance === "external" && <>
           <label>kg<input inputMode="decimal" value={weight} onChange={(event) => { resistanceEdited.current = true; setWeight(event.target.value); }} placeholder="0 = BW" required /></label>
-          <label>Equipment<select value={selectedEquipment} onChange={(event) => { resistanceEdited.current = true; setSelectedEquipment(event.target.value as Equipment); }}>{equipment.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-          {selectedEquipment === "other" && <label>Equipment name<input value={customEquipment} onChange={(event) => { resistanceEdited.current = true; setCustomEquipment(event.target.value); }} required /></label>}
         </>}
         {exercise.measurementType === "repetitions" ? <label>Reps<input type="number" min="1" step="1" inputMode="numeric" value={repetitions} onChange={(event) => { measurementEdited.current = true; setRepetitions(event.target.value); }} required autoFocus /></label> : <div className="duration-fields"><label>Minutes<input type="number" min="0" step="1" inputMode="numeric" value={minutes} onChange={(event) => { measurementEdited.current = true; setMinutes(event.target.value); }} autoFocus /></label><label>Seconds<input type="number" min="0" max="59" step="1" inputMode="numeric" value={seconds} onChange={(event) => { measurementEdited.current = true; setSeconds(event.target.value); }} /></label></div>}
       </div>

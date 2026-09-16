@@ -2,8 +2,8 @@ import { exercises as artworkCatalog } from "@bryllim/workout-guide";
 import { Check, ImageOff } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "../lib/api";
-import { equipmentLabels } from "../lib/format";
-import type { Equipment, Exercise, ExercisePayload, MeasurementType } from "../lib/types";
+import { equipmentLabels, exerciseTitle } from "../lib/format";
+import type { Equipment, Exercise, MeasurementType } from "../lib/types";
 import { ExerciseImage } from "./ExerciseImage";
 
 const equipment = Object.entries(equipmentLabels) as [Equipment, string][];
@@ -15,11 +15,12 @@ interface Props {
 }
 
 export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
-  const [name, setName] = useState(exercise?.name ?? "");
+  const [baseName, setBaseName] = useState(exercise?.baseName ?? "");
   const [measurement, setMeasurement] = useState<MeasurementType>(exercise?.measurementType ?? "repetitions");
-  const [resistance, setResistance] = useState(exercise?.defaultResistanceKind ?? "bodyweight");
-  const [selectedEquipment, setSelectedEquipment] = useState<Equipment>(exercise?.defaultEquipment ?? "dumbbell");
-  const [customEquipment, setCustomEquipment] = useState(exercise?.defaultCustomEquipment ?? "");
+  const [usesEquipment, setUsesEquipment] = useState(Boolean(exercise?.equipment));
+  const [selectedEquipment, setSelectedEquipment] = useState<Equipment>(exercise?.equipment ?? "dumbbell");
+  const [customEquipment, setCustomEquipment] = useState(exercise?.customEquipment ?? "");
+  const [allowBodyweight, setAllowBodyweight] = useState(exercise?.allowBodyweight ?? true);
   const [weight, setWeight] = useState(exercise?.defaultWeightKg ?? "");
   const [imageKey, setImageKey] = useState<string | null>(exercise?.imageKey ?? null);
   const [imageSearch, setImageSearch] = useState("");
@@ -31,22 +32,35 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
     const query = imageSearch.trim().toLocaleLowerCase();
     return artworkCatalog.filter((item) => !query || item.name.toLocaleLowerCase().includes(query));
   }, [imageSearch]);
+  const fixedEquipment = usesEquipment ? selectedEquipment : null;
+  const usesGeneratedTitle = !exercise || exercise.name === exerciseTitle(
+    exercise.baseName,
+    exercise.equipment,
+    exercise.customEquipment ?? "",
+  );
+  const title = usesGeneratedTitle
+    ? exerciseTitle(baseName, fixedEquipment, customEquipment)
+    : baseName.trim().replace(/\s+/g, " ");
 
   async function save() {
     setSaving(true);
     setError("");
-    const payload: ExercisePayload = {
-      name,
-      defaultResistanceKind: resistance,
-      defaultEquipment: resistance === "external" ? selectedEquipment : null,
-      defaultCustomEquipment: resistance === "external" && selectedEquipment === "other" ? customEquipment : null,
-      defaultWeightKg: resistance === "external" ? weight || null : null,
-      imageKey,
-    };
     try {
       const saved = exercise
-        ? await api.updateExercise(exercise.id, payload)
-        : await api.createExercise({ ...payload, measurementType: measurement });
+        ? await api.updateExercise(exercise.id, {
+            baseName,
+            defaultWeightKg: exercise.equipment ? weight || null : null,
+            imageKey,
+          })
+        : await api.createExercise({
+            baseName,
+            measurementType: measurement,
+            equipment: fixedEquipment,
+            customEquipment: fixedEquipment === "other" ? customEquipment : null,
+            allowBodyweight,
+            defaultWeightKg: fixedEquipment ? weight || null : null,
+            imageKey,
+          });
       onSaved(saved);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save exercise.");
@@ -57,31 +71,34 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
 
   return (
     <form className="stack editor" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-      <label>Exercise name<input value={name} onChange={(event) => setName(event.target.value)} autoFocus required maxLength={100} /></label>
+      <label>Exercise name<input value={baseName} onChange={(event) => setBaseName(event.target.value)} autoFocus required maxLength={100} /></label>
+      {title && <p className="name-preview"><span>Displayed as</span><strong>{title}</strong></p>}
       <fieldset>
         <legend>Measurement</legend>
         <div className="segmented">
           <button type="button" className={measurement === "repetitions" ? "selected" : ""} onClick={() => setMeasurement("repetitions")} disabled={Boolean(exercise)}>Repetitions</button>
           <button type="button" className={measurement === "duration" ? "selected" : ""} onClick={() => setMeasurement("duration")} disabled={Boolean(exercise)}>Duration</button>
         </div>
-        {exercise && <small>Measurement type is permanent after creation.</small>}
       </fieldset>
       <fieldset>
-        <legend>Default resistance</legend>
+        <legend>Fixed equipment</legend>
         <div className="segmented">
-          <button type="button" className={resistance === "bodyweight" ? "selected" : ""} onClick={() => setResistance("bodyweight")}>Bodyweight</button>
-          <button type="button" className={resistance === "external" ? "selected" : ""} onClick={() => setResistance("external")}>External</button>
+          <button type="button" className={!usesEquipment ? "selected" : ""} onClick={() => { setUsesEquipment(false); setAllowBodyweight(true); }} disabled={Boolean(exercise)}>None</button>
+          <button type="button" className={usesEquipment ? "selected" : ""} onClick={() => setUsesEquipment(true)} disabled={Boolean(exercise)}>Equipment</button>
         </div>
+        {exercise && <small>Measurement, equipment, and bodyweight eligibility are permanent after creation.</small>}
       </fieldset>
-      {resistance === "external" && <div className="form-grid">
-        <label>Equipment<select value={selectedEquipment} onChange={(event) => setSelectedEquipment(event.target.value as Equipment)}>{equipment.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+      {usesEquipment && <div className="form-grid">
+        <label>Equipment<select value={selectedEquipment} onChange={(event) => setSelectedEquipment(event.target.value as Equipment)} disabled={Boolean(exercise)}>{equipment.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
         <label>Default kg <span className="optional">optional</span><input inputMode="decimal" value={weight} onChange={(event) => setWeight(event.target.value)} placeholder="e.g. 12.5" /></label>
-        {selectedEquipment === "other" && <label className="full">Equipment name<input value={customEquipment} onChange={(event) => setCustomEquipment(event.target.value)} required /></label>}
+        {selectedEquipment === "other" && <label className="full">Equipment name<input value={customEquipment} onChange={(event) => setCustomEquipment(event.target.value)} required disabled={Boolean(exercise)} /></label>}
       </div>}
+      <label className="checkbox-row"><input type="checkbox" checked={allowBodyweight} onChange={(event) => setAllowBodyweight(event.target.checked)} disabled={Boolean(exercise) || !usesEquipment} />Allow bodyweight sets</label>
+      {!usesEquipment && <small>Bodyweight is required when an exercise has no equipment.</small>}
       <div>
         <span className="field-label">Picture</span>
         <button type="button" className="picture-choice" onClick={() => setShowPictures(!showPictures)}>
-          <ExerciseImage imageKey={imageKey} name={name || "Exercise"} />
+          <ExerciseImage imageKey={imageKey} name={title || "Exercise"} />
           <span>{imageKey ? artworkCatalog.find((item) => item.slug === imageKey)?.name ?? imageKey : "No picture"}</span>
         </button>
       </div>
@@ -93,8 +110,7 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
         </div>
       </div>}
       {error && <p className="error" role="alert">{error}</p>}
-      <div className="form-actions"><button type="button" className="secondary" onClick={onCancel}>Cancel</button><button type="submit" className="primary" disabled={saving || !name.trim()}><Check />{saving ? "Saving…" : "Save exercise"}</button></div>
+      <div className="form-actions"><button type="button" className="secondary" onClick={onCancel}>Cancel</button><button type="submit" className="primary" disabled={saving || !baseName.trim() || (!usesEquipment && !allowBodyweight)}><Check />{saving ? "Saving…" : "Save exercise"}</button></div>
     </form>
   );
 }
-

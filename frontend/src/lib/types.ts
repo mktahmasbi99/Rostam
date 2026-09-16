@@ -22,10 +22,11 @@ export interface Config {
 export interface Exercise {
   id: number;
   name: string;
+  baseName: string;
   measurementType: MeasurementType;
-  defaultResistanceKind: ResistanceKind;
-  defaultEquipment: Equipment | null;
-  defaultCustomEquipment: string | null;
+  equipment: Equipment | null;
+  customEquipment: string | null;
+  allowBodyweight: boolean;
   defaultWeightKg: string | null;
   imageKey: string | null;
   archivedAt: string | null;
@@ -66,17 +67,21 @@ export interface SetPayload {
   durationMinutes: number | null;
   durationSeconds: number | null;
   resistanceKind: ResistanceKind;
-  equipment: Equipment | null;
-  customEquipment: string | null;
   weightKg: string | null;
 }
 
-export interface ExercisePayload {
-  name: string;
-  measurementType?: MeasurementType;
-  defaultResistanceKind: ResistanceKind;
-  defaultEquipment: Equipment | null;
-  defaultCustomEquipment: string | null;
+export interface ExerciseCreatePayload {
+  baseName: string;
+  measurementType: MeasurementType;
+  equipment: Equipment | null;
+  customEquipment: string | null;
+  allowBodyweight: boolean;
+  defaultWeightKg: string | null;
+  imageKey: string | null;
+}
+
+export interface ExerciseUpdatePayload {
+  baseName: string;
   defaultWeightKg: string | null;
   imageKey: string | null;
 }
