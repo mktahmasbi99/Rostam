@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "sync-assets": "node scripts/sync-exercise-assets.mjs",
-    "predev": "npm run sync-assets",
-    "prebuild": "npm run sync-assets",
+    "predev": "npm run sync-assets && node scripts/build-icons.mjs",
+    "prebuild": "npm run sync-assets && node scripts/build-icons.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/build-pwa.mjs",
     "typecheck": "tsc -b --pretty false",
@@ -34,6 +34,7 @@
     "eslint-plugin-react-refresh": "0.5.5",
     "globals": "17.11.0",
     "jsdom": "30.0.1",
+    "sharp": "^0.35.4",
     "typescript": "6.0.3",
     "typescript-eslint": "8.68.0",
     "vite": "8.2.2",

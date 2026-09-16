@@ -35,6 +35,27 @@ TZ=Europe/Warsaw ROSTAM_DB=./data/rostam.sqlite3 \
 
 Open `http://127.0.0.1:8000`.
 
+## Install on Android and iOS
+
+Build the frontend with `npm run build` and serve it through the backend at a
+trusted HTTPS address reachable from your phone. A plain HTTP LAN IP address
+does not support service workers; localhost is only a development exception.
+Keep the existing private network boundary when configuring HTTPS.
+
+- **Android:** Open the HTTPS address in Chrome, open the browser menu, and choose
+  **Install app** or **Add to Home screen**.
+- **iPhone / iPad:** Open the address in Safari, choose **Share → Add to Home
+  Screen**, keep **Open as Web App** enabled if shown, and tap **Add**.
+
+The home-screen icon launches Rostam in a standalone window. The production
+service worker caches the app shell, but ledger data and writes require a live
+connection to the server. Installation does not copy the database to the phone.
+Vite development mode does not register the service worker.
+
+To verify a deployment, check that `/manifest.webmanifest`, its icons, and
+`/sw.js` return successfully over HTTPS. Install and launch from the home screen
+on each target device, then log a set and reopen the app to confirm it persists.
+
 ## Verify
 
 ```sh
