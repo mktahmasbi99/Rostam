@@ -61,8 +61,10 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .day-header { display: grid; grid-template-columns: 52px 1fr 52px; align-items: center; text-align: center; margin-bottom: 16px; }
 .day-header h1 { margin: 0; }
 .date-arrow { border-radius: 50%; background: transparent; }
-.page-action { display: flex; justify-content: flex-end; margin-bottom: 20px; }
-.add-exercise { min-height: 50px; }
+.day-actions { display: flex; align-items: center; justify-content: space-between; min-height: 58px; margin: 0 2px 20px; }
+.add-exercise, .journal-actions button { width: 52px; min-width: 52px; height: 52px; min-height: 52px; padding: 0; border-radius: 50%; }
+.add-exercise { border: 0; background: linear-gradient(135deg, #ffd35d, #e7a421); color: #382504; box-shadow: 0 7px 16px rgba(117, 76, 8, .32); }
+.add-exercise svg { width: 27px; height: 27px; stroke-width: 3; }
 
 .exercise-sections { display: grid; gap: 18px; }
 .exercise-card { background: var(--surface); border: 1px solid var(--line); border-radius: 25px; overflow: hidden; box-shadow: var(--shadow); }
@@ -85,11 +87,9 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .exercise-note-editor { display: grid; gap: 10px; }
 .exercise-note-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .exercise-note-actions button { min-height: 42px; }
-.daily-journal { margin-top: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 16px; box-shadow: var(--shadow); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.daily-journal p { margin: 3px 0 0; color: var(--muted); font-size: .86rem; }
-.journal-actions { display: flex; gap: 7px; }
-.journal-actions button { flex-direction: column; min-width: 62px; min-height: 58px; padding: 5px 8px; color: var(--muted); font-size: .72rem; box-shadow: none; }
-.journal-actions .journal-active { color: var(--accent-dark); background: var(--accent-soft); }
+.journal-actions { display: flex; gap: 8px; }
+.journal-actions button { color: color-mix(in srgb, var(--muted) 70%, transparent); background: color-mix(in srgb, var(--surface-2) 72%, transparent); border-color: color-mix(in srgb, var(--line) 70%, transparent); box-shadow: none; }
+.journal-actions .journal-active { color: var(--accent-dark); background: linear-gradient(135deg, #fff7d8, var(--accent-soft)); border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); box-shadow: 0 4px 11px rgba(117, 76, 8, .18), inset 0 1px rgba(255, 255, 255, .55); }
 .journal-editor { display: grid; gap: 10px; }
 .journal-editor small { color: var(--muted); text-align: right; }
 .photo-dialog > p { color: var(--muted); }

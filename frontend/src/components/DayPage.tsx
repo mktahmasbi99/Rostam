@@ -80,11 +80,14 @@ export function DayPage({ day, today, onDayChange }: Props) {
         <button className="date-arrow" aria-label="Next day" disabled={day >= today} onClick={() => onDayChange(shiftDay(day, 1))}><ChevronRight /></button>
       </header>
 
-      <div className="page-action"><button className="primary add-exercise" onClick={() => setPickerOpen(true)}><Plus />Add exercise</button></div>
+      <div className="day-actions">
+        {!loading && !error && <DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} />}
+        <button className="add-exercise" aria-label="Add exercise" title="Add exercise" onClick={() => setPickerOpen(true)}><Plus /></button>
+      </div>
 
       {error && <div className="error-panel" role="alert"><p>{error}</p><button onClick={() => void load()}>Retry</button></div>}
       {loading && <p className="loading">Loading sets…</p>}
-      {!loading && !error && data.sections.length === 0 && !pendingExercise && <div className="empty-state"><img className="app-logo empty-logo" src="/rostam-logo.png" alt="" /><h2>No sets recorded</h2><p>Add the first exercise when movement finds you today.</p><button className="primary" onClick={() => setPickerOpen(true)}><Plus />Add exercise</button></div>}
+      {!loading && !error && data.sections.length === 0 && !pendingExercise && <div className="empty-state"><img className="app-logo empty-logo" src="/rostam-logo.png" alt="" /><h2>No sets recorded</h2><p>Use the plus button above when movement finds you today.</p></div>}
 
       <div className="exercise-sections">
         {data.sections.map((section) => <section className="exercise-card" key={`${day}-${section.exercise.id}`}>
@@ -104,8 +107,6 @@ export function DayPage({ day, today, onDayChange }: Props) {
 
         {pendingExercise && <section className="exercise-card pending-card"><header className="exercise-card-header"><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div><h2>{pendingExercise.name}</h2><span className="daily-total">New today</span></div></header><ExerciseNote exercise={pendingExercise} /><SetForm exercise={pendingExercise} day={day} onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></section>}
       </div>
-      {!loading && !error && <DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} />}
-
       {pickerOpen && <ExercisePicker presentIds={[...presentIds, ...(pendingExercise ? [pendingExercise.id] : [])]} onClose={() => setPickerOpen(false)} onChoose={(exercise) => { setPickerOpen(false); setPendingExercise(exercise); setAddingTo(null); setEditingSet(null); }} />}
     </main>
   );
