@@ -1,4 +1,4 @@
-import type { Backup, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseUpdatePayload, PhotoGroup, RestoreResult, SetPayload } from "./types";
+import type { Backup, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, SetPayload } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -23,6 +23,12 @@ const json = (method: string, body?: unknown): RequestInit => ({
 
 export const api = {
   config: () => request<Config>("/api/config"),
+  profile: () => request<Profile>("/api/profile"),
+  updateProfile: (payload: ProfilePayload) => request<Profile>("/api/profile", json("PUT", payload)),
+  bodyMeasurements: () => request<BodyMeasurement[]>("/api/body-measurements"),
+  createBodyMeasurement: (payload: BodyMeasurementPayload) => request<BodyMeasurement>("/api/body-measurements", json("POST", payload)),
+  updateBodyMeasurement: (id: number, payload: BodyMeasurementPayload) => request<BodyMeasurement>(`/api/body-measurements/${id}`, json("PATCH", payload)),
+  deleteBodyMeasurement: (id: number) => request<void>(`/api/body-measurements/${id}`, { method: "DELETE" }),
   day: (day: string) => request<DayData>(`/api/days/${day}`),
   calendar: (month: string) =>
     request<{ month: string; activeDates: string[] }>(`/api/calendar/${month}`),

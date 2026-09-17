@@ -1,4 +1,4 @@
-import { CalendarDays, Dumbbell, Images, ListChecks, NotebookPen, Settings } from "lucide-react";
+import { CalendarDays, Dumbbell, Images, ListChecks, NotebookPen, Ruler, Settings } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { CalendarPage } from "./components/CalendarPage";
 import { DayPage } from "./components/DayPage";
@@ -6,11 +6,12 @@ import { ExercisesPage } from "./components/ExercisesPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { NotesPage } from "./components/NotesPage";
 import { PhotosPage } from "./components/PhotosPage";
+import { MeasurementsPage } from "./components/MeasurementsPage";
 import { usePwaInstall } from "./hooks/usePwaInstall";
 import { api } from "./lib/api";
 import type { Config } from "./lib/types";
 
-type Tab = "today" | "calendar" | "notes" | "photos" | "exercises" | "settings";
+type Tab = "today" | "calendar" | "notes" | "photos" | "measurements" | "exercises" | "settings";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("today");
@@ -51,16 +52,18 @@ export default function App() {
       {tab === "calendar" && <CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "notes" && <NotesPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "photos" && <PhotosPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
+      {tab === "measurements" && <MeasurementsPage today={config.today} />}
       {tab === "exercises" && <ExercisesPage />}
       {tab === "settings" && <SettingsPage config={config} pwaInstall={pwaInstall} />}
     </div>
     <nav className="bottom-nav" aria-label="Primary navigation">
-      <button className={tab === "today" ? "active" : ""} onClick={() => { setSelectedDay(config.today); setTab("today"); }}><ListChecks /><span>Today</span></button>
-      <button className={tab === "calendar" ? "active" : ""} onClick={() => setTab("calendar")}><CalendarDays /><span>Calendar</span></button>
-      <button className={tab === "notes" ? "active" : ""} onClick={() => setTab("notes")}><NotebookPen /><span>Notes</span></button>
-      <button className={tab === "photos" ? "active" : ""} onClick={() => setTab("photos")}><Images /><span>Photos</span></button>
-      <button className={tab === "exercises" ? "active" : ""} onClick={() => setTab("exercises")}><Dumbbell /><span>Exercises</span></button>
-      <button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Settings /><span>Settings</span></button>
+      <button aria-label="Today" title="Today" className={tab === "today" ? "active" : ""} onClick={() => { setSelectedDay(config.today); setTab("today"); }}><ListChecks /></button>
+      <button aria-label="Calendar" title="Calendar" className={tab === "calendar" ? "active" : ""} onClick={() => setTab("calendar")}><CalendarDays /></button>
+      <button aria-label="Notes" title="Notes" className={tab === "notes" ? "active" : ""} onClick={() => setTab("notes")}><NotebookPen /></button>
+      <button aria-label="Photos" title="Photos" className={tab === "photos" ? "active" : ""} onClick={() => setTab("photos")}><Images /></button>
+      <button aria-label="Measurements" title="Measurements" className={tab === "measurements" ? "active" : ""} onClick={() => setTab("measurements")}><Ruler /></button>
+      <button aria-label="Exercises" title="Exercises" className={tab === "exercises" ? "active" : ""} onClick={() => setTab("exercises")}><Dumbbell /></button>
+      <button aria-label="Settings" title="Settings" className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Settings /></button>
     </nav>
   </div>;
 }

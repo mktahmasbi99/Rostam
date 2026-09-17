@@ -70,7 +70,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "monster-sets"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 6
 MAX_DAILY_NOTE_LENGTH = 20_000
 MAX_PHOTOS_PER_DAY = 10
 # Source files may be large camera originals. The stored JPEG is capped separately.
@@ -362,6 +362,66 @@ class MonsterSetsDatabase:
                     """
                 )
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (4)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 5").fetchone()
+                is None
+            ):
+                connection.executescript(
+                    """
+                    CREATE TABLE profile_settings (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        height_mm INTEGER CHECK (height_mm > 0),
+                        date_of_birth TEXT
+                    );
+                    CREATE TABLE body_measurements (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        entry_date TEXT NOT NULL UNIQUE,
+                        weight_grams INTEGER CHECK (weight_grams > 0),
+                        waist_mm INTEGER CHECK (waist_mm > 0),
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        CHECK (weight_grams IS NOT NULL OR waist_mm IS NOT NULL)
+                    );
+                    CREATE INDEX idx_body_measurements_date
+                        ON body_measurements(entry_date DESC);
+                    """
+                )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (5)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 6").fetchone()
+                is None
+            ):
+                connection.executescript(
+                    """
+                    CREATE TABLE body_measurements_v6 (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        entry_date TEXT NOT NULL,
+                        measurement_type TEXT NOT NULL CHECK (measurement_type IN ('weight', 'waist')),
+                        weight_grams INTEGER CHECK (weight_grams > 0),
+                        waist_mm INTEGER CHECK (waist_mm > 0),
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        UNIQUE(entry_date, measurement_type),
+                        CHECK (
+                            (measurement_type = 'weight' AND weight_grams IS NOT NULL AND waist_mm IS NULL)
+                            OR (measurement_type = 'waist' AND waist_mm IS NOT NULL AND weight_grams IS NULL)
+                        )
+                    );
+                    INSERT INTO body_measurements_v6(
+                        id, entry_date, measurement_type, weight_grams, created_at, updated_at
+                    ) SELECT id, entry_date, 'weight', weight_grams, created_at, updated_at
+                    FROM body_measurements WHERE weight_grams IS NOT NULL;
+                    INSERT INTO body_measurements_v6(
+                        entry_date, measurement_type, waist_mm, created_at, updated_at
+                    ) SELECT entry_date, 'waist', waist_mm, created_at, updated_at
+                    FROM body_measurements WHERE waist_mm IS NOT NULL;
+                    DROP TABLE body_measurements;
+                    ALTER TABLE body_measurements_v6 RENAME TO body_measurements;
+                    CREATE INDEX idx_body_measurements_date
+                        ON body_measurements(entry_date DESC);
+                    """
+                )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (6)")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -389,6 +449,160 @@ class MonsterSetsDatabase:
         if parsed > self.today():
             raise DomainError("Future dates cannot contain journal entries or exercise sets.")
         return parsed
+
+    @staticmethod
+    def _parse_positive_millimetres(value: str | None, label: str) -> int | None:
+        if value is None or not value.strip():
+            return None
+        try:
+            centimetres = Decimal(value.strip().replace(",", "."))
+        except InvalidOperation as exc:
+            raise DomainError(f"{label} must be a valid number.") from exc
+        if centimetres <= 0:
+            raise DomainError(f"{label} must be positive.")
+        millimetres = int((centimetres * 10).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+        if millimetres <= 0:
+            raise DomainError(f"{label} is too small.")
+        return millimetres
+
+    @staticmethod
+    def _format_millimetres(value: int | None) -> str | None:
+        if value is None:
+            return None
+        return format((Decimal(value) / Decimal(10)).normalize(), "f")
+
+    def profile(self) -> dict:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT height_mm, date_of_birth FROM profile_settings WHERE id = 1"
+            ).fetchone()
+        birth_date = (
+            date.fromisoformat(row["date_of_birth"]) if row and row["date_of_birth"] else None
+        )
+        age = None
+        if birth_date:
+            today = self.today()
+            age = (
+                today.year
+                - birth_date.year
+                - ((today.month, today.day) < (birth_date.month, birth_date.day))
+            )
+        return {
+            "heightCm": self._format_millimetres(row["height_mm"]) if row else None,
+            "dateOfBirth": birth_date.isoformat() if birth_date else None,
+            "age": age,
+        }
+
+    def update_profile(self, payload) -> dict:
+        height_mm = self._parse_positive_millimetres(payload.heightCm, "Height")
+        birth_date = None
+        if payload.dateOfBirth:
+            try:
+                birth_date = date.fromisoformat(payload.dateOfBirth)
+            except ValueError as exc:
+                raise DomainError("Date of birth must use YYYY-MM-DD.") from exc
+            if birth_date > self.today():
+                raise DomainError("Date of birth cannot be in the future.")
+        with self.connect() as connection:
+            connection.execute(
+                """INSERT INTO profile_settings(id, height_mm, date_of_birth) VALUES (1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET height_mm=excluded.height_mm,
+                    date_of_birth=excluded.date_of_birth""",
+                (height_mm, birth_date.isoformat() if birth_date else None),
+            )
+            connection.commit()
+        return self.profile()
+
+    @staticmethod
+    def _measurement_summary(row: sqlite3.Row) -> dict:
+        return {
+            "id": row["id"],
+            "date": row["entry_date"],
+            "measurementType": row["measurement_type"],
+            "weightKg": format_weight(row["weight_grams"]),
+            "waistCm": MonsterSetsDatabase._format_millimetres(row["waist_mm"]),
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+
+    def list_body_measurements(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM body_measurements ORDER BY entry_date DESC"
+            ).fetchall()
+        return [self._measurement_summary(row) for row in rows]
+
+    def create_body_measurement(self, payload) -> dict:
+        self._parse_day(payload.date)
+        weight_grams = parse_weight_grams(payload.weightKg, allow_blank=True)
+        if weight_grams == 0:
+            raise DomainError("Weight must be positive.")
+        waist_mm = self._parse_positive_millimetres(payload.waistCm, "Waist circumference")
+        if (weight_grams is None) == (waist_mm is None):
+            raise DomainError("Record exactly one measurement.")
+        measurement_type = "weight" if weight_grams is not None else "waist"
+        now = self._utc_now()
+        try:
+            with self.connect() as connection:
+                cursor = connection.execute(
+                    """INSERT INTO body_measurements(
+                        entry_date, measurement_type, weight_grams, waist_mm, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)""",
+                    (payload.date, measurement_type, weight_grams, waist_mm, now, now),
+                )
+                connection.commit()
+                row = connection.execute(
+                    "SELECT * FROM body_measurements WHERE id = ?", (cursor.lastrowid,)
+                ).fetchone()
+        except sqlite3.IntegrityError as exc:
+            raise DomainError(
+                f"A {measurement_type} measurement already exists for this date."
+            ) from exc
+        return self._measurement_summary(row)
+
+    def update_body_measurement(self, measurement_id: int, payload) -> dict:
+        self._parse_day(payload.date)
+        weight_grams = parse_weight_grams(payload.weightKg, allow_blank=True)
+        if weight_grams == 0:
+            raise DomainError("Weight must be positive.")
+        waist_mm = self._parse_positive_millimetres(payload.waistCm, "Waist circumference")
+        if (weight_grams is None) == (waist_mm is None):
+            raise DomainError("Record exactly one measurement.")
+        measurement_type = "weight" if weight_grams is not None else "waist"
+        try:
+            with self.connect() as connection:
+                cursor = connection.execute(
+                    """UPDATE body_measurements SET entry_date = ?, measurement_type = ?, weight_grams = ?,
+                    waist_mm = ?, updated_at = ? WHERE id = ?""",
+                    (
+                        payload.date,
+                        measurement_type,
+                        weight_grams,
+                        waist_mm,
+                        self._utc_now(),
+                        measurement_id,
+                    ),
+                )
+                if cursor.rowcount == 0:
+                    raise DomainError("Measurement not found.")
+                connection.commit()
+                row = connection.execute(
+                    "SELECT * FROM body_measurements WHERE id = ?", (measurement_id,)
+                ).fetchone()
+        except sqlite3.IntegrityError as exc:
+            raise DomainError(
+                f"A {measurement_type} measurement already exists for this date."
+            ) from exc
+        return self._measurement_summary(row)
+
+    def delete_body_measurement(self, measurement_id: int) -> None:
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM body_measurements WHERE id = ?", (measurement_id,)
+            )
+            if cursor.rowcount == 0:
+                raise DomainError("Measurement not found.")
+            connection.commit()
 
     @staticmethod
     def _photo_summary(row: sqlite3.Row) -> dict:

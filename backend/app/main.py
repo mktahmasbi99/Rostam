@@ -14,11 +14,13 @@ from fastapi.staticfiles import StaticFiles
 from .config import load_settings
 from .database import DomainError, MonsterSetsDatabase
 from .schemas import (
+    BodyMeasurementWrite,
     DailyNoteUpdate,
     DeleteConfirmation,
     ExerciseCreate,
     ExerciseNoteUpdate,
     ExerciseUpdate,
+    ProfileUpdate,
     RestoreConfirmation,
     SetWrite,
 )
@@ -78,6 +80,36 @@ def config() -> dict[str, str]:
         "timezone": settings.timezone_name,
         "version": "1.0.0",
     }
+
+
+@app.get("/api/profile")
+def get_profile() -> dict:
+    return database.profile()
+
+
+@app.put("/api/profile")
+def update_profile(payload: ProfileUpdate) -> dict:
+    return database.update_profile(payload)
+
+
+@app.get("/api/body-measurements")
+def list_body_measurements() -> list[dict]:
+    return database.list_body_measurements()
+
+
+@app.post("/api/body-measurements", status_code=201)
+def create_body_measurement(payload: BodyMeasurementWrite) -> dict:
+    return database.create_body_measurement(payload)
+
+
+@app.patch("/api/body-measurements/{measurement_id}")
+def update_body_measurement(measurement_id: int, payload: BodyMeasurementWrite) -> dict:
+    return database.update_body_measurement(measurement_id, payload)
+
+
+@app.delete("/api/body-measurements/{measurement_id}", status_code=204)
+def delete_body_measurement(measurement_id: int) -> None:
+    database.delete_body_measurement(measurement_id)
 
 
 @app.get("/api/days/{day}")

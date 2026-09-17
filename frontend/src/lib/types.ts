@@ -19,6 +19,11 @@ export interface Config {
   version: string;
 }
 
+export interface Profile { heightCm: string | null; dateOfBirth: string | null; age: number | null; }
+export interface ProfilePayload { heightCm: string | null; dateOfBirth: string | null; }
+export interface BodyMeasurement { id: number; date: string; measurementType: "weight" | "waist"; weightKg: string | null; waistCm: string | null; createdAt: string; updatedAt: string; }
+export interface BodyMeasurementPayload { date: string; weightKg: string | null; waistCm: string | null; }
+
 export interface Exercise {
   id: number;
   name: string;

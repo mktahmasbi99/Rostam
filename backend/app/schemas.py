@@ -53,6 +53,21 @@ class DailyNoteUpdate(BaseModel):
     body: str
 
 
+class ProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    heightCm: str | None = None
+    dateOfBirth: str | None = None
+
+
+class BodyMeasurementWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    date: str
+    weightKg: str | None = None
+    waistCm: str | None = None
+
+
 class DeleteConfirmation(BaseModel):
     confirmation: str
 

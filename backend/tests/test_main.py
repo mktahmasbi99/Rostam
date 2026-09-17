@@ -5,6 +5,23 @@ from fastapi.testclient import TestClient
 from app import main
 
 
+def test_body_measurement_and_profile_endpoints(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    client = TestClient(main.app)
+
+    profile = client.put("/api/profile", json={"heightCm": "180", "dateOfBirth": "1990-01-01"})
+    created = client.post(
+        "/api/body-measurements",
+        json={"date": database.today().isoformat(), "weightKg": "80.2", "waistCm": None},
+    )
+
+    assert profile.status_code == 200
+    assert profile.json()["heightCm"] == "180"
+    assert created.status_code == 201
+    assert client.get("/api/body-measurements").json()[0]["weightKg"] == "80.2"
+    assert client.delete(f"/api/body-measurements/{created.json()['id']}").status_code == 204
+
+
 def test_exercise_api_generates_title_and_rejects_immutable_updates(database, monkeypatch):
     monkeypatch.setattr(main, "database", database)
     client = TestClient(main.app)

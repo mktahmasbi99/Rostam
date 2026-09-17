@@ -37,6 +37,18 @@ def set_payload(**overrides):
     return SimpleNamespace(**values)
 
 
+def measurement_payload(**overrides):
+    values = {"date": "2026-09-16", "weightKg": "82.4", "waistCm": "91.5"}
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def profile_payload(**overrides):
+    values = {"heightCm": "181.5", "dateOfBirth": "1990-09-17"}
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
 def test_initial_library_is_seeded_once(database):
     assert [item["name"] for item in database.list_exercises("active", "", None)] == [
         "Band pull-aparts",
@@ -50,6 +62,35 @@ def test_initial_library_is_seeded_once(database):
     ]
     database.migrate()
     assert len(database.list_exercises("all", "", None)) == 8
+
+
+def test_body_measurements_and_profile_validate_and_keep_optional_values(database, monkeypatch):
+    monkeypatch.setattr(database, "today", lambda: __import__("datetime").date(2026, 9, 17))
+    assert database.profile() == {"heightCm": None, "dateOfBirth": None, "age": None}
+    profile = database.update_profile(profile_payload())
+    assert profile == {"heightCm": "181.5", "dateOfBirth": "1990-09-17", "age": 36}
+    created = database.create_body_measurement(measurement_payload(waistCm=None))
+    assert created["weightKg"] == "82.4"
+    assert created["waistCm"] is None
+    waist = database.create_body_measurement(measurement_payload(weightKg=None))
+    assert waist["waistCm"] == "91.5"
+    updated = database.update_body_measurement(
+        created["id"], measurement_payload(date="2026-09-15", waistCm=None)
+    )
+    assert updated["weightKg"] == "82.4"
+    assert updated["waistCm"] is None
+    with pytest.raises(DomainError, match="exactly one"):
+        database.create_body_measurement(measurement_payload(weightKg=None, waistCm=None))
+    with pytest.raises(DomainError, match="exactly one"):
+        database.create_body_measurement(measurement_payload())
+    with pytest.raises(DomainError, match="positive"):
+        database.create_body_measurement(measurement_payload(date="2026-09-14", weightKg="0"))
+    with pytest.raises(DomainError, match="Future dates"):
+        database.create_body_measurement(measurement_payload(date="2026-09-18"))
+    with pytest.raises(DomainError, match="future"):
+        database.update_profile(profile_payload(dateOfBirth="2026-09-18"))
+    database.delete_body_measurement(created["id"])
+    assert database.list_body_measurements() == [waist]
 
 
 def test_names_are_case_and_whitespace_insensitive(database):
@@ -379,6 +420,8 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
             2,
             3,
             4,
+            5,
+            6,
         ]
         assert (
             connection.execute(
@@ -407,6 +450,8 @@ def test_schema_v2_migration_adds_notes_without_changing_history(database):
             2,
             3,
             4,
+            5,
+            6,
         ]
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
@@ -489,7 +534,7 @@ def test_restore_rolls_back_when_post_restore_validation_fails(database, monkeyp
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (5)", "schema is newer"),
+        ("INSERT INTO schema_migrations(version) VALUES (7)", "schema is newer"),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(
