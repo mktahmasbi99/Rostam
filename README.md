@@ -14,6 +14,7 @@ Rostam is named after the legendary hero of Ferdowsi’s *Shahnameh* (*Book of K
 - Supports resistance bands, dumbbells, barbells, kettlebells, cables, weight machines, weighted vests, plates, ankle weights, sandbags, and custom equipment.
 - Remembers the latest chronologically preceding set for each exercise and prefills its measurement and resistance.
 - Keeps one current plaintext reference note per exercise for technique cues, video links, and progression reminders, shown directly on daily exercise cards.
+- Keeps private day-level notes and compressed JPEG photos (up to 10 per date) inside SQLite, so downloads and restores include them without affecting exercise calculations. Camera originals may be up to 50 MiB; processed stored photos are capped at 5 MiB each.
 - Keeps measurement type, equipment, and bodyweight eligibility immutable; supports archive/restore for used exercises; and requires typing `DELETE` before permanently removing an unused exercise.
 - Shows a neutral calendar dot for any day containing at least one set.
 - Creates daily and weekly rotating backups (five of each), plus on-demand backups that persist until manually deleted.
@@ -74,7 +75,7 @@ npm run build
 
 ## Docker and NAS
 
-The container stores the SQLite database and all backups under `/data`. The sample Compose file mounts that directory from `deploy/data` and expects the private GHCR image.
+The container stores the SQLite database and all backups under `/data`. Photos are compressed JPEG BLOBs in that database, so photo-containing backups are larger but remain self-contained. The sample Compose file mounts that directory from `deploy/data` and expects the private GHCR image.
 
 ```sh
 cd deploy

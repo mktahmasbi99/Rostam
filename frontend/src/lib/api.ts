@@ -1,4 +1,4 @@
-import type { Backup, Config, DayData, Exercise, ExerciseCreatePayload, ExerciseUpdatePayload, RestoreResult, SetPayload } from "./types";
+import type { Backup, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseUpdatePayload, PhotoGroup, RestoreResult, SetPayload } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -37,6 +37,13 @@ export const api = {
     request<Exercise>(`/api/exercises/${id}`, json("PATCH", payload)),
   updateExerciseNote: (id: number, body: string) =>
     request<Exercise>(`/api/exercises/${id}/note`, json("PUT", { body })),
+  updateDailyNote: (day: string, body: string) => request<{ date: string; dailyNote: string | null }>(`/api/days/${day}/note`, json("PUT", { body })),
+  deleteDailyNote: (day: string) => request<void>(`/api/days/${day}/note`, { method: "DELETE" }),
+  dailyNotes: () => request<DailyNote[]>("/api/notes"),
+  dayPhotos: (day: string) => request<DailyPhoto[]>(`/api/days/${day}/photos`),
+  photos: () => request<PhotoGroup[]>("/api/photos"),
+  uploadPhotos: (day: string, files: File[]) => { const form = new FormData(); files.forEach((file) => form.append("files", file)); return request<DailyPhoto[]>(`/api/days/${day}/photos`, { method: "POST", body: form }); },
+  deletePhoto: (id: number) => request<void>(`/api/photos/${id}`, { method: "DELETE" }),
   archiveExercise: (id: number) =>
     request<Exercise>(`/api/exercises/${id}/archive`, json("POST")),
   restoreExercise: (id: number) =>

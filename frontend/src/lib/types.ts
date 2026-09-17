@@ -60,7 +60,13 @@ export interface DaySection {
 export interface DayData {
   date: string;
   sections: DaySection[];
+  dailyNote?: string | null;
+  photoCount?: number;
 }
+
+export interface DailyNote { date: string; body: string; createdAt: string; updatedAt: string; }
+export interface DailyPhoto { id: number; date: string; displayOrder: number; width: number; height: number; createdAt: string; thumbnailUrl: string; url: string; }
+export interface PhotoGroup { date: string; photos: DailyPhoto[]; }
 
 export interface SetPayload {
   time: string | null;

@@ -47,6 +47,12 @@ class ExerciseNoteUpdate(BaseModel):
     body: str
 
 
+class DailyNoteUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    body: str
+
+
 class DeleteConfirmation(BaseModel):
     confirmation: str
 

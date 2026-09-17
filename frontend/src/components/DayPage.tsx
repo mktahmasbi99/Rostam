@@ -5,6 +5,7 @@ import { formatDay, formatDuration, formatMeasurement, formatResistance } from "
 import type { DayData, Exercise, ExerciseSet } from "../lib/types";
 import { ExerciseImage } from "./ExerciseImage";
 import { ExerciseNote } from "./ExerciseNote";
+import { DailyJournal } from "./DailyJournal";
 import { ExercisePicker } from "./ExercisePicker";
 import { SetForm } from "./SetForm";
 
@@ -103,6 +104,7 @@ export function DayPage({ day, today, onDayChange }: Props) {
 
         {pendingExercise && <section className="exercise-card pending-card"><header className="exercise-card-header"><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div><h2>{pendingExercise.name}</h2><span className="daily-total">New today</span></div></header><ExerciseNote exercise={pendingExercise} /><SetForm exercise={pendingExercise} day={day} onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></section>}
       </div>
+      {!loading && !error && <DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} />}
 
       {pickerOpen && <ExercisePicker presentIds={[...presentIds, ...(pendingExercise ? [pendingExercise.id] : [])]} onClose={() => setPickerOpen(false)} onChoose={(exercise) => { setPickerOpen(false); setPendingExercise(exercise); setAddingTo(null); setEditingSet(null); }} />}
     </main>

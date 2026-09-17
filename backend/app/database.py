@@ -8,7 +8,11 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from io import BytesIO
 from pathlib import Path
+
+from PIL import Image, ImageOps, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 
 from .config import Settings
 
@@ -66,7 +70,16 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "monster-sets"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
+MAX_DAILY_NOTE_LENGTH = 20_000
+MAX_PHOTOS_PER_DAY = 10
+# Source files may be large camera originals. The stored JPEG is capped separately.
+MAX_PHOTO_BYTES = 50 * 1024 * 1024
+MAX_STORED_PHOTO_BYTES = 5 * 1024 * 1024
+MAX_PHOTO_EDGE = 2560
+THUMBNAIL_EDGE = 480
+
+register_heif_opener()
 
 
 class DomainError(ValueError):
@@ -320,6 +333,35 @@ class MonsterSetsDatabase:
             ):
                 connection.execute("ALTER TABLE exercises ADD COLUMN exercise_note TEXT")
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (3)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 4").fetchone()
+                is None
+            ):
+                connection.executescript(
+                    """
+                    CREATE TABLE daily_notes (
+                        entry_date TEXT PRIMARY KEY,
+                        body TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    CREATE TABLE daily_photos (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        entry_date TEXT NOT NULL,
+                        display_order INTEGER NOT NULL,
+                        jpeg BLOB NOT NULL,
+                        thumbnail_jpeg BLOB NOT NULL,
+                        width INTEGER NOT NULL,
+                        height INTEGER NOT NULL,
+                        created_at TEXT NOT NULL,
+                        UNIQUE(entry_date, display_order)
+                    );
+                    CREATE INDEX idx_daily_notes_date ON daily_notes(entry_date DESC);
+                    CREATE INDEX idx_daily_photos_date_order
+                        ON daily_photos(entry_date DESC, display_order ASC);
+                    """
+                )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (4)")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -345,8 +387,161 @@ class MonsterSetsDatabase:
         except ValueError as exc:
             raise DomainError("Date must use YYYY-MM-DD.") from exc
         if parsed > self.today():
-            raise DomainError("Future dates cannot contain exercise sets.")
+            raise DomainError("Future dates cannot contain journal entries or exercise sets.")
         return parsed
+
+    @staticmethod
+    def _photo_summary(row: sqlite3.Row) -> dict:
+        return {
+            "id": row["id"],
+            "date": row["entry_date"],
+            "displayOrder": row["display_order"],
+            "width": row["width"],
+            "height": row["height"],
+            "createdAt": row["created_at"],
+            "thumbnailUrl": f"/api/photos/{row['id']}/thumbnail",
+            "url": f"/api/photos/{row['id']}",
+        }
+
+    def update_daily_note(self, day_value: str, body: str) -> dict:
+        self._parse_day(day_value)
+        if len(body) > MAX_DAILY_NOTE_LENGTH:
+            raise DomainError(f"Daily notes must be at most {MAX_DAILY_NOTE_LENGTH:,} characters.")
+        with self.connect() as connection:
+            if not body.strip():
+                connection.execute("DELETE FROM daily_notes WHERE entry_date = ?", (day_value,))
+                connection.commit()
+                return {"date": day_value, "dailyNote": None}
+            now = self._utc_now()
+            connection.execute(
+                """INSERT INTO daily_notes(entry_date, body, created_at, updated_at) VALUES (?, ?, ?, ?)
+                ON CONFLICT(entry_date) DO UPDATE SET body=excluded.body, updated_at=excluded.updated_at""",
+                (day_value, body, now, now),
+            )
+            connection.commit()
+        return {"date": day_value, "dailyNote": body}
+
+    def delete_daily_note(self, day_value: str) -> None:
+        self._parse_day(day_value)
+        with self.connect() as connection:
+            connection.execute("DELETE FROM daily_notes WHERE entry_date = ?", (day_value,))
+            connection.commit()
+
+    def list_daily_notes(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM daily_notes ORDER BY entry_date DESC"
+            ).fetchall()
+        return [
+            {
+                "date": row["entry_date"],
+                "body": row["body"],
+                "createdAt": row["created_at"],
+                "updatedAt": row["updated_at"],
+            }
+            for row in rows
+        ]
+
+    def _process_photo(self, source: bytes) -> tuple[bytes, bytes, int, int]:
+        if not source:
+            raise DomainError("Choose an image to upload.")
+        if len(source) > MAX_PHOTO_BYTES:
+            raise DomainError("Each source photo must be 50 MB or smaller.")
+        try:
+            with Image.open(BytesIO(source)) as opened:
+                if opened.format not in {"JPEG", "PNG", "HEIF", "WEBP"}:
+                    raise DomainError("Photos must be JPEG, PNG, HEIC, or WebP images.")
+                image = ImageOps.exif_transpose(opened)
+                if image.mode in {"RGBA", "LA"} or "transparency" in image.info:
+                    background = Image.new("RGB", image.size, "#fffaf0")
+                    alpha = image.convert("RGBA")
+                    background.paste(alpha, mask=alpha.getchannel("A"))
+                    image = background
+                else:
+                    image = image.convert("RGB")
+                image.thumbnail((MAX_PHOTO_EDGE, MAX_PHOTO_EDGE), Image.Resampling.LANCZOS)
+                width, height = image.size
+                full = BytesIO()
+                image.save(full, format="JPEG", quality=82, optimize=True)
+                if full.tell() > MAX_STORED_PHOTO_BYTES:
+                    raise DomainError("This photo is still too large after compression.")
+                thumbnail = image.copy()
+                thumbnail.thumbnail((THUMBNAIL_EDGE, THUMBNAIL_EDGE), Image.Resampling.LANCZOS)
+                thumb = BytesIO()
+                thumbnail.save(thumb, format="JPEG", quality=82, optimize=True)
+                return full.getvalue(), thumb.getvalue(), width, height
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            raise DomainError("Photos must be valid JPEG, PNG, HEIC, or WebP images.") from exc
+
+    def add_daily_photos(self, day_value: str, uploads: list[bytes]) -> list[dict]:
+        self._parse_day(day_value)
+        if not uploads:
+            raise DomainError("Choose at least one photo.")
+        processed = [self._process_photo(upload) for upload in uploads]
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            count = connection.execute(
+                "SELECT COUNT(*) FROM daily_photos WHERE entry_date = ?", (day_value,)
+            ).fetchone()[0]
+            if count + len(processed) > MAX_PHOTOS_PER_DAY:
+                raise DomainError(f"A day can contain at most {MAX_PHOTOS_PER_DAY} photos.")
+            now = self._utc_now()
+            for offset, (jpeg, thumbnail, width, height) in enumerate(processed):
+                connection.execute(
+                    """INSERT INTO daily_photos(entry_date, display_order, jpeg, thumbnail_jpeg, width, height, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (day_value, count + offset + 1, jpeg, thumbnail, width, height, now),
+                )
+            connection.commit()
+            rows = connection.execute(
+                "SELECT * FROM daily_photos WHERE entry_date = ? ORDER BY display_order",
+                (day_value,),
+            ).fetchall()
+        return [self._photo_summary(row) for row in rows]
+
+    def list_daily_photos(self, day_value: str) -> list[dict]:
+        self._parse_day(day_value)
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM daily_photos WHERE entry_date = ? ORDER BY display_order",
+                (day_value,),
+            ).fetchall()
+        return [self._photo_summary(row) for row in rows]
+
+    def list_photos(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM daily_photos ORDER BY entry_date DESC, display_order"
+            ).fetchall()
+        grouped: dict[str, list[dict]] = {}
+        for row in rows:
+            grouped.setdefault(row["entry_date"], []).append(self._photo_summary(row))
+        return [{"date": day, "photos": photos} for day, photos in grouped.items()]
+
+    def photo_data(self, photo_id: int, *, thumbnail: bool) -> bytes:
+        column = "thumbnail_jpeg" if thumbnail else "jpeg"
+        with self.connect() as connection:
+            row = connection.execute(
+                f"SELECT {column} FROM daily_photos WHERE id = ?", (photo_id,)
+            ).fetchone()
+        if row is None:
+            raise DomainError("Photo not found.")
+        return row[column]
+
+    def delete_daily_photo(self, photo_id: int) -> None:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT entry_date, display_order FROM daily_photos WHERE id = ?", (photo_id,)
+            ).fetchone()
+            if row is None:
+                raise DomainError("Photo not found.")
+            self._parse_day(row["entry_date"])
+            connection.execute("DELETE FROM daily_photos WHERE id = ?", (photo_id,))
+            connection.execute(
+                "UPDATE daily_photos SET display_order = display_order - 1 WHERE entry_date = ? AND display_order > ?",
+                (row["entry_date"], row["display_order"]),
+            )
+            connection.commit()
 
     def _occurrence(self, day_value: str, time_value: str | None) -> str:
         day = self._parse_day(day_value)
@@ -681,6 +876,12 @@ class MonsterSetsDatabase:
     def day(self, day_value: str) -> dict:
         self._parse_day(day_value)
         with self.connect() as connection:
+            note = connection.execute(
+                "SELECT body FROM daily_notes WHERE entry_date = ?", (day_value,)
+            ).fetchone()
+            photo_count = connection.execute(
+                "SELECT COUNT(*) FROM daily_photos WHERE entry_date = ?", (day_value,)
+            ).fetchone()[0]
             rows = connection.execute(
                 """
                 SELECT e.*, d.display_order
@@ -709,7 +910,12 @@ class MonsterSetsDatabase:
                         "sets": sets,
                     }
                 )
-        return {"date": day_value, "sections": sections}
+        return {
+            "date": day_value,
+            "sections": sections,
+            "dailyNote": note["body"] if note else None,
+            "photoCount": photo_count,
+        }
 
     def calendar(self, month: str) -> dict:
         if not re.fullmatch(r"\d{4}-\d{2}", month):

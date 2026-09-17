@@ -378,6 +378,7 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
             1,
             2,
             3,
+            4,
         ]
         assert (
             connection.execute(
@@ -405,6 +406,7 @@ def test_schema_v2_migration_adds_notes_without_changing_history(database):
             1,
             2,
             3,
+            4,
         ]
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
@@ -487,7 +489,7 @@ def test_restore_rolls_back_when_post_restore_validation_fails(database, monkeyp
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (4)", "schema is newer"),
+        ("INSERT INTO schema_migrations(version) VALUES (5)", "schema is newer"),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(

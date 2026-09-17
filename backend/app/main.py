@@ -8,12 +8,13 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .config import load_settings
 from .database import DomainError, MonsterSetsDatabase
 from .schemas import (
+    DailyNoteUpdate,
     DeleteConfirmation,
     ExerciseCreate,
     ExerciseNoteUpdate,
@@ -116,6 +117,55 @@ def update_exercise(exercise_id: int, payload: ExerciseUpdate) -> dict:
 @app.put("/api/exercises/{exercise_id}/note")
 def update_exercise_note(exercise_id: int, payload: ExerciseNoteUpdate) -> dict:
     return database.update_exercise_note(exercise_id, payload.body)
+
+
+@app.put("/api/days/{day}/note")
+def update_daily_note(day: str, payload: DailyNoteUpdate) -> dict:
+    return database.update_daily_note(day, payload.body)
+
+
+@app.delete("/api/days/{day}/note", status_code=204)
+def delete_daily_note(day: str) -> None:
+    database.delete_daily_note(day)
+
+
+@app.get("/api/notes")
+def list_daily_notes() -> list[dict]:
+    return database.list_daily_notes()
+
+
+@app.post("/api/days/{day}/photos", status_code=201)
+async def upload_daily_photos(day: str, files: list[UploadFile] = File()):  # noqa: B008
+    try:
+        return database.add_daily_photos(day, [await file.read() for file in files])
+    finally:
+        for file in files:
+            await file.close()
+
+
+@app.get("/api/days/{day}/photos")
+def list_daily_photos(day: str) -> list[dict]:
+    return database.list_daily_photos(day)
+
+
+@app.get("/api/photos")
+def list_photos() -> list[dict]:
+    return database.list_photos()
+
+
+@app.get("/api/photos/{photo_id}")
+def get_photo(photo_id: int) -> Response:
+    return Response(database.photo_data(photo_id, thumbnail=False), media_type="image/jpeg")
+
+
+@app.get("/api/photos/{photo_id}/thumbnail")
+def get_photo_thumbnail(photo_id: int) -> Response:
+    return Response(database.photo_data(photo_id, thumbnail=True), media_type="image/jpeg")
+
+
+@app.delete("/api/photos/{photo_id}", status_code=204)
+def delete_daily_photo(photo_id: int) -> None:
+    database.delete_daily_photo(photo_id)
 
 
 @app.post("/api/exercises/{exercise_id}/archive")

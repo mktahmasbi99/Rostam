@@ -6,6 +6,7 @@ COPY frontend/ ./
 RUN npm run build
 
 FROM python:3.13-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends libheif1 && rm -rf /var/lib/apt/lists/*
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     TZ=Europe/Warsaw \
