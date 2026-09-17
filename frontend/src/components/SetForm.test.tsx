@@ -24,6 +24,7 @@ const exercise: Exercise = {
   allowBodyweight: true,
   defaultWeightKg: "40",
   imageKey: null,
+  exerciseNote: null,
   archivedAt: null,
   hasHistory: true,
 };

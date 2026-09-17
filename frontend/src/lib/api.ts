@@ -35,6 +35,8 @@ export const api = {
     request<Exercise>("/api/exercises", json("POST", payload)),
   updateExercise: (id: number, payload: ExerciseUpdatePayload) =>
     request<Exercise>(`/api/exercises/${id}`, json("PATCH", payload)),
+  updateExerciseNote: (id: number, body: string) =>
+    request<Exercise>(`/api/exercises/${id}/note`, json("PUT", { body })),
   archiveExercise: (id: number) =>
     request<Exercise>(`/api/exercises/${id}/archive`, json("POST")),
   restoreExercise: (id: number) =>

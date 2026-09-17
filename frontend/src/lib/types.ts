@@ -29,6 +29,7 @@ export interface Exercise {
   allowBodyweight: boolean;
   defaultWeightKg: string | null;
   imageKey: string | null;
+  exerciseNote: string | null;
   archivedAt: string | null;
   hasHistory: boolean;
 }

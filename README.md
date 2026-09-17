@@ -13,12 +13,13 @@ Rostam is named after the legendary hero of Ferdowsi’s *Shahnameh* (*Book of K
 - Locks equipment and bodyweight eligibility when an exercise is created, then derives titles such as `Squats (Resistance Bands)` and uses that equipment automatically while logging.
 - Supports resistance bands, dumbbells, barbells, kettlebells, cables, weight machines, weighted vests, plates, ankle weights, sandbags, and custom equipment.
 - Remembers the latest chronologically preceding set for each exercise and prefills its measurement and resistance.
+- Keeps one current plaintext reference note per exercise for technique cues, video links, and progression reminders, shown directly on daily exercise cards.
 - Keeps measurement type, equipment, and bodyweight eligibility immutable; supports archive/restore for used exercises; and requires typing `DELETE` before permanently removing an unused exercise.
 - Shows a neutral calendar dot for any day containing at least one set.
 - Creates daily and weekly rotating backups (five of each), plus on-demand backups that persist until manually deleted.
 - Installs as a connected-only PWA from the Settings page, with browser-specific guidance when a native install prompt is unavailable.
 
-There are deliberately no goals, reminders, streaks, notes, perceived-effort fields, workout timers, or offline write queue in V1.
+There are deliberately no goals, reminders, streaks, date- or set-associated notes, perceived-effort fields, workout timers, or offline write queue in V1.
 
 ## Run locally
 

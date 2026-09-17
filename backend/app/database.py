@@ -66,7 +66,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "monster-sets"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class DomainError(ValueError):
@@ -314,6 +314,12 @@ class MonsterSetsDatabase:
                     (now,),
                 )
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (2)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 3").fetchone()
+                is None
+            ):
+                connection.execute("ALTER TABLE exercises ADD COLUMN exercise_note TEXT")
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (3)")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -455,6 +461,7 @@ class MonsterSetsDatabase:
             "allowBodyweight": bool(row["allow_bodyweight"]),
             "defaultWeightKg": format_weight(row["default_weight_grams"]),
             "imageKey": row["image_key"],
+            "exerciseNote": row["exercise_note"],
             "archivedAt": row["archived_at"],
             "hasHistory": has_history,
         }
@@ -606,6 +613,25 @@ class MonsterSetsDatabase:
                 return self._serialize_exercise(self._exercise_row(connection, exercise_id))
         except sqlite3.IntegrityError as exc:
             raise DomainError("An exercise with this name already exists.") from exc
+
+    def update_exercise_note(self, exercise_id: int, body: str) -> dict:
+        note = None if not body.strip() else body
+        with self.connect() as connection:
+            self._exercise_row(connection, exercise_id)
+            connection.execute(
+                "UPDATE exercises SET exercise_note = ?, updated_at = ? WHERE id = ?",
+                (note, self._utc_now(), exercise_id),
+            )
+            connection.commit()
+            row = connection.execute(
+                """
+                SELECT e.*, EXISTS(
+                    SELECT 1 FROM exercise_sets s WHERE s.exercise_id = e.id
+                ) AS has_history FROM exercises e WHERE e.id = ?
+                """,
+                (exercise_id,),
+            ).fetchone()
+            return self._serialize_exercise(row)
 
     def archive_exercise(self, exercise_id: int) -> dict:
         with self.connect() as connection:

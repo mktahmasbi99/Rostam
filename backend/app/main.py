@@ -16,6 +16,7 @@ from .database import DomainError, MonsterSetsDatabase
 from .schemas import (
     DeleteConfirmation,
     ExerciseCreate,
+    ExerciseNoteUpdate,
     ExerciseUpdate,
     RestoreConfirmation,
     SetWrite,
@@ -110,6 +111,11 @@ def get_exercise(exercise_id: int) -> dict:
 @app.patch("/api/exercises/{exercise_id}")
 def update_exercise(exercise_id: int, payload: ExerciseUpdate) -> dict:
     return database.update_exercise(exercise_id, payload)
+
+
+@app.put("/api/exercises/{exercise_id}/note")
+def update_exercise_note(exercise_id: int, payload: ExerciseNoteUpdate) -> dict:
+    return database.update_exercise_note(exercise_id, payload.body)
 
 
 @app.post("/api/exercises/{exercise_id}/archive")

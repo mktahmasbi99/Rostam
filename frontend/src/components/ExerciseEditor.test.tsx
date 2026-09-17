@@ -25,6 +25,7 @@ describe("ExerciseEditor", () => {
       allowBodyweight: false,
       defaultWeightKg: "15",
       imageKey: null,
+      exerciseNote: null,
       archivedAt: null,
       hasHistory: false,
     });
@@ -47,6 +48,7 @@ describe("ExerciseEditor", () => {
       defaultWeightKg: "15",
       imageKey: null,
     }));
+    expect(screen.queryByLabelText("Exercise note")).not.toBeInTheDocument();
   });
 
   it("locks measurement, equipment, and bodyweight eligibility while editing", () => {
@@ -60,6 +62,7 @@ describe("ExerciseEditor", () => {
       allowBodyweight: true,
       defaultWeightKg: "15",
       imageKey: null,
+      exerciseNote: "Keep elbows forward.",
       archivedAt: null,
       hasHistory: true,
     }} onSaved={vi.fn()} onCancel={vi.fn()} />);
@@ -68,5 +71,6 @@ describe("ExerciseEditor", () => {
     expect(screen.getByRole("button", { name: "Equipment" })).toBeDisabled();
     expect(screen.getByLabelText("Allow bodyweight sets")).toBeDisabled();
     expect(screen.getByLabelText(/Default kg/)).toBeEnabled();
+    expect(screen.queryByLabelText("Exercise note")).not.toBeInTheDocument();
   });
 });

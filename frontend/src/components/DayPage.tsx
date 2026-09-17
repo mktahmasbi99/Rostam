@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { formatDay, formatDuration, formatMeasurement, formatResistance } from "../lib/format";
 import type { DayData, Exercise, ExerciseSet } from "../lib/types";
 import { ExerciseImage } from "./ExerciseImage";
+import { ExerciseNote } from "./ExerciseNote";
 import { ExercisePicker } from "./ExercisePicker";
 import { SetForm } from "./SetForm";
 
@@ -85,8 +86,9 @@ export function DayPage({ day, today, onDayChange }: Props) {
       {!loading && !error && data.sections.length === 0 && !pendingExercise && <div className="empty-state"><img className="app-logo empty-logo" src="/rostam-logo.png" alt="" /><h2>No sets recorded</h2><p>Add the first exercise when movement finds you today.</p><button className="primary" onClick={() => setPickerOpen(true)}><Plus />Add exercise</button></div>}
 
       <div className="exercise-sections">
-        {data.sections.map((section) => <section className="exercise-card" key={section.exercise.id}>
+        {data.sections.map((section) => <section className="exercise-card" key={`${day}-${section.exercise.id}`}>
           <header className="exercise-card-header"><ExerciseImage imageKey={section.exercise.imageKey} name={section.exercise.name} size="large" /><div><h2>{section.exercise.name}</h2><strong className="daily-total">{total(section.exercise, section.total)}</strong></div></header>
+          <ExerciseNote exercise={section.exercise} />
           <div className="set-list">
             {section.sets.map((set, index) => editingSet?.id === set.id ? <SetForm key={set.id} exercise={section.exercise} day={day} existing={set} onSaved={() => void saved()} onCancel={() => setEditingSet(null)} /> : <div className="set-row" key={set.id}>
               <span className="set-number">{index + 1}</span>
@@ -99,7 +101,7 @@ export function DayPage({ day, today, onDayChange }: Props) {
           {addingTo === section.exercise.id ? <SetForm exercise={section.exercise} day={day} onSaved={() => void saved()} onCancel={() => setAddingTo(null)} /> : <button className="add-set" onClick={() => { setEditingSet(null); setAddingTo(section.exercise.id); }}><Plus />Add set</button>}
         </section>)}
 
-        {pendingExercise && <section className="exercise-card pending-card"><header className="exercise-card-header"><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div><h2>{pendingExercise.name}</h2><span className="daily-total">New today</span></div></header><SetForm exercise={pendingExercise} day={day} onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></section>}
+        {pendingExercise && <section className="exercise-card pending-card"><header className="exercise-card-header"><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div><h2>{pendingExercise.name}</h2><span className="daily-total">New today</span></div></header><ExerciseNote exercise={pendingExercise} /><SetForm exercise={pendingExercise} day={day} onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></section>}
       </div>
 
       {pickerOpen && <ExercisePicker presentIds={[...presentIds, ...(pendingExercise ? [pendingExercise.id] : [])]} onClose={() => setPickerOpen(false)} onChoose={(exercise) => { setPickerOpen(false); setPendingExercise(exercise); setAddingTo(null); setEditingSet(null); }} />}

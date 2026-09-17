@@ -41,6 +41,12 @@ class ExerciseUpdate(BaseModel):
     imageKey: str | None = Field(default=None, max_length=100)
 
 
+class ExerciseNoteUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    body: str
+
+
 class DeleteConfirmation(BaseModel):
     confirmation: str
 

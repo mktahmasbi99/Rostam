@@ -227,6 +227,29 @@ def test_calendar_has_only_nonempty_days(database):
     assert database.calendar(today[:7])["activeDates"] == []
 
 
+def test_exercise_note_is_global_unrestricted_and_clearable(database):
+    today = database.today().isoformat()
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+    database.add_set(pushups["id"], today, set_payload())
+    body = "Keep elbows forward.\nhttps://example.com/technique\n" + ("x" * 10_000)
+
+    saved = database.update_exercise_note(pushups["id"], body)
+
+    assert saved["exerciseNote"] == body
+    assert saved["hasHistory"] is True
+    assert database.exercise(pushups["id"])["exerciseNote"] == body
+    assert database.list_exercises("active", "Push", None)[0]["exerciseNote"] == body
+    assert database.day(today)["sections"][0]["exercise"]["exerciseNote"] == body
+
+    archived = database.archive_exercise(pushups["id"])
+    assert archived["exerciseNote"] == body
+    assert (
+        database.update_exercise_note(pushups["id"], "Changed while archived")["exerciseNote"]
+        == "Changed while archived"
+    )
+    assert database.update_exercise_note(pushups["id"], " \n\t")["exerciseNote"] is None
+
+
 def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(tmp_path):
     path = tmp_path / "legacy.sqlite3"
     timestamp = "2026-09-13T08:00:00+00:00"
@@ -354,7 +377,37 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
         assert [row[0] for row in connection.execute("SELECT version FROM schema_migrations")] == [
             1,
             2,
+            3,
         ]
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM exercises WHERE exercise_note IS NOT NULL"
+            ).fetchone()[0]
+            == 0
+        )
+
+
+def test_schema_v2_migration_adds_notes_without_changing_history(database):
+    today = database.today().isoformat()
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+    saved_set = database.add_set(pushups["id"], today, set_payload(repetitions=17))
+    with sqlite3.connect(database.path) as connection:
+        connection.execute("DELETE FROM schema_migrations WHERE version = 3")
+        connection.execute("ALTER TABLE exercises DROP COLUMN exercise_note")
+        connection.commit()
+
+    migrated = MonsterSetsDatabase(database.settings)
+
+    assert migrated.exercise(pushups["id"])["exerciseNote"] is None
+    assert migrated.day(today)["sections"][0]["sets"][0]["id"] == saved_set["id"]
+    with migrated.connect() as connection:
+        assert [row[0] for row in connection.execute("SELECT version FROM schema_migrations")] == [
+            1,
+            2,
+            3,
+        ]
+        assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
 def test_backup_retention_is_per_category_and_on_demand_is_unlimited(database):
@@ -372,12 +425,15 @@ def test_restore_replaces_live_data_and_keeps_a_safety_backup(database):
     today = database.today().isoformat()
     pushups = next(item for item in database.list_exercises("active", "Push", None))
     database.add_set(pushups["id"], today, set_payload(repetitions=10))
+    database.update_exercise_note(pushups["id"], "Original cue")
     source = database.create_backup("on-demand")
     database.add_set(pushups["id"], today, set_payload(time="09:12", repetitions=20))
+    database.update_exercise_note(pushups["id"], "Changed cue")
 
     result = database.restore_backup(source["id"], "RESTORE")
 
     assert database.day(today)["sections"][0]["total"] == 10
+    assert database.exercise(pushups["id"])["exerciseNote"] == "Original cue"
     safety_path = database.backup_path(result["safetyBackup"]["id"])
     with sqlite3.connect(safety_path) as connection:
         assert connection.execute("SELECT SUM(repetitions) FROM exercise_sets").fetchone()[0] == 30
@@ -431,7 +487,7 @@ def test_restore_rolls_back_when_post_restore_validation_fails(database, monkeyp
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (3)", "schema is newer"),
+        ("INSERT INTO schema_migrations(version) VALUES (4)", "schema is newer"),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(

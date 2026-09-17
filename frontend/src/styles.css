@@ -48,7 +48,7 @@ h1, h2, h3 { color: var(--heading); }
 button, .icon-button { min-height: 44px; min-width: 44px; border: 1px solid transparent; border-radius: 12px; background: var(--surface-2); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 5px rgba(21, 38, 53, .08); transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease; }
 button:hover:not(:disabled) { filter: none; transform: translateY(-1px); box-shadow: 0 5px 12px rgba(21, 38, 53, .14); }
 button:active:not(:disabled) { transform: translateY(0); box-shadow: 0 1px 3px rgba(21, 38, 53, .12); }
-button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .primary { background: linear-gradient(135deg, var(--accent), var(--accent-dark)); color: var(--accent-ink); font-weight: 800; padding: 0 17px; box-shadow: 0 7px 16px rgba(89, 52, 10, .3); }
 .secondary { padding: 0 17px; border-color: var(--line); background: var(--surface); color: var(--accent-dark); font-weight: 750; }
 .danger { color: var(--danger); }
@@ -75,6 +75,17 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .exercise-image img { width: 100%; height: 100%; object-fit: contain; filter: invert(1); }
 .image-fallback { background: var(--accent); color: var(--accent-ink); font-size: 1.35rem; font-weight: 900; }
 
+.add-exercise-note { width: calc(100% - 36px); min-height: 44px; margin: 0 18px 12px; border: 1px dashed var(--line); background: transparent; color: var(--accent-dark); font-weight: 750; }
+.exercise-note, .exercise-note-editor { margin: 0 18px 12px; padding: 12px; border-radius: 14px; background: var(--surface-2); }
+.exercise-note-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; }
+.exercise-note-heading .icon-button { width: 36px; min-width: 36px; min-height: 36px; background: transparent; box-shadow: none; }
+.exercise-note-heading svg { width: 17px; }
+.exercise-note-body { margin: 0; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.exercise-note-body a { overflow-wrap: anywhere; }
+.exercise-note-editor { display: grid; gap: 10px; }
+.exercise-note-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.exercise-note-actions button { min-height: 42px; }
+
 .set-list { border-top: 1px solid var(--line); }
 .set-row { min-height: 62px; display: grid; grid-template-columns: 34px 50px minmax(65px, .8fr) minmax(90px, 1.2fr) auto; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: .89rem; }
 .set-number { width: 29px; height: 29px; border-radius: 9px; display: grid; place-items: center; background: var(--surface-2); font-weight: 800; color: var(--muted); }
@@ -90,7 +101,8 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .set-form-grid > label, .set-form-grid > fieldset, .duration-fields { min-width: 0; }
 .set-form-grid fieldset { border: 0; padding: 0; margin: 0; }
 label, legend, .field-label { color: var(--label); font-size: .82rem; font-weight: 750; display: grid; gap: 6px; }
-input, select { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--input); color: var(--ink); font-size: 16px; }
+input, select, textarea { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--input); color: var(--ink); font-size: 16px; }
+textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: vertical; }
 .duration-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .segmented { display: grid; grid-template-columns: repeat(2, 1fr); padding: 3px; background: var(--surface-2); border-radius: 14px; }
 .segmented button { min-height: 42px; background: transparent; font-weight: 750; }

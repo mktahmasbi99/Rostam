@@ -68,6 +68,22 @@ def test_set_api_rejects_client_supplied_equipment(database, monkeypatch):
     assert response.status_code == 422
 
 
+def test_exercise_note_api_preserves_plaintext_and_clears_whitespace(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    exercise = next(item for item in database.list_exercises("active", "Push", None))
+    client = TestClient(main.app)
+    body = "Hands below shoulders.\nhttps://example.com/push-ups"
+
+    saved = client.put(f"/api/exercises/{exercise['id']}/note", json={"body": body})
+
+    assert saved.status_code == 200
+    assert saved.json()["exerciseNote"] == body
+    assert client.get(f"/api/exercises/{exercise['id']}").json()["exerciseNote"] == body
+    cleared = client.put(f"/api/exercises/{exercise['id']}/note", json={"body": "  \n"})
+    assert cleared.status_code == 200
+    assert cleared.json()["exerciseNote"] is None
+
+
 def test_restore_backup_endpoint(database, monkeypatch):
     monkeypatch.setattr(main, "database", database)
     source = database.create_backup("on-demand")
