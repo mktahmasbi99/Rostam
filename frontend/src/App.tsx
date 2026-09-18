@@ -59,10 +59,10 @@ export default function App() {
     {calendarOpen && <CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} />}
     <nav className="bottom-nav" aria-label="Primary navigation">
       <button aria-label="Today" title="Today" className={tab === "today" ? "active" : ""} onClick={() => { setSelectedDay(config.today); setTab("today"); setCalendarOpen(false); }}><ListChecks /></button>
+      <button aria-label="Exercises" title="Exercises" className={tab === "exercises" ? "active" : ""} onClick={() => { setTab("exercises"); setCalendarOpen(false); }}><Dumbbell /></button>
       <button aria-label="Notes" title="Notes" className={tab === "notes" ? "active" : ""} onClick={() => { setTab("notes"); setCalendarOpen(false); }}><NotebookPen /></button>
       <button aria-label="Photos" title="Photos" className={tab === "photos" ? "active" : ""} onClick={() => { setTab("photos"); setCalendarOpen(false); }}><Images /></button>
       <button aria-label="Measurements" title="Measurements" className={tab === "measurements" ? "active" : ""} onClick={() => { setTab("measurements"); setCalendarOpen(false); }}><Ruler /></button>
-      <button aria-label="Exercises" title="Exercises" className={tab === "exercises" ? "active" : ""} onClick={() => { setTab("exercises"); setCalendarOpen(false); }}><Dumbbell /></button>
       <button aria-label="Settings" title="Settings" className={tab === "settings" ? "active" : ""} onClick={() => { setTab("settings"); setCalendarOpen(false); }}><Settings /></button>
     </nav>
   </div>;
