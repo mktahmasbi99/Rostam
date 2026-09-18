@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { formatDay, formatDuration, formatMeasurement, formatResistance } from "../lib/format";
@@ -9,19 +9,13 @@ import { DailyJournal } from "./DailyJournal";
 import { ExercisePicker } from "./ExercisePicker";
 import { SetForm } from "./SetForm";
 
-function shiftDay(day: string, amount: number): string {
-  const value = new Date(`${day}T12:00:00Z`);
-  value.setUTCDate(value.getUTCDate() + amount);
-  return value.toISOString().slice(0, 10);
-}
-
 interface Props {
   day: string;
   today: string;
-  onDayChange: (day: string) => void;
+  onOpenCalendar: () => void;
 }
 
-export function DayPage({ day, today, onDayChange }: Props) {
+export function DayPage({ day, today, onOpenCalendar }: Props) {
   const [data, setData] = useState<DayData>({ date: day, sections: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -75,9 +69,7 @@ export function DayPage({ day, today, onDayChange }: Props) {
   return (
     <main className="page day-page">
       <header className="day-header">
-        <button className="date-arrow" aria-label="Previous day" onClick={() => onDayChange(shiftDay(day, -1))}><ChevronLeft /></button>
-        <div><h1>{formatDay(day, today)}</h1>{day !== today && <time>{day}</time>}</div>
-        <button className="date-arrow" aria-label="Next day" disabled={day >= today} onClick={() => onDayChange(shiftDay(day, 1))}><ChevronRight /></button>
+        <div><h1><button className="day-title" aria-label="Choose a day" onClick={onOpenCalendar}>{formatDay(day, today)}</button></h1>{day !== today && <time>{day}</time>}</div>
       </header>
 
       <div className="day-actions">
