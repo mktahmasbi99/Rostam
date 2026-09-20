@@ -8,6 +8,7 @@ MeasurementType = Literal["repetitions", "duration"]
 ResistanceKind = Literal["bodyweight", "external"]
 Equipment = Literal[
     "resistance_band",
+    "resistance_tube",
     "dumbbell",
     "barbell",
     "kettlebell",
@@ -29,7 +30,6 @@ class ExerciseCreate(BaseModel):
     equipment: Equipment | None = None
     customEquipment: str | None = Field(default=None, max_length=80)
     allowBodyweight: bool = True
-    defaultWeightKg: str | None = None
     imageKey: str | None = Field(default=None, max_length=100)
 
 
@@ -37,7 +37,6 @@ class ExerciseUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     baseName: str = Field(min_length=1, max_length=100)
-    defaultWeightKg: str | None = None
     imageKey: str | None = Field(default=None, max_length=100)
 
 

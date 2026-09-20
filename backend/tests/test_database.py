@@ -17,7 +17,6 @@ def exercise_payload(**overrides):
         "equipment": None,
         "customEquipment": None,
         "allowBodyweight": True,
-        "defaultWeightKg": None,
         "imageKey": None,
     }
     values.update(overrides)
@@ -135,7 +134,7 @@ def test_fixed_equipment_is_used_for_external_sets(database):
         exercise_payload(
             baseName="Press",
             measurementType="repetitions",
-            equipment="resistance_band",
+            equipment="resistance_tube",
         )
     )
 
@@ -143,8 +142,25 @@ def test_fixed_equipment_is_used_for_external_sets(database):
         exercise["id"], today, set_payload(resistanceKind="external", weightKg="17.5")
     )
 
-    assert result["equipment"] == "resistance_band"
+    assert exercise["name"] == "Press (Resistance tubes)"
+    assert "defaultWeightKg" not in exercise
+    assert result["equipment"] == "resistance_tube"
     assert result["weightKg"] == "17.5"
+
+
+def test_prefill_without_a_previous_set_has_no_default_weight(database):
+    exercise = database.create_exercise(
+        exercise_payload(
+            baseName="Press",
+            measurementType="repetitions",
+            equipment="resistance_tube",
+        )
+    )
+
+    prefill = database.prefill(exercise["id"], "2000-01-01", "12:00")
+
+    assert prefill["source"] == "defaults"
+    assert prefill["weightKg"] is None
 
 
 def test_mixed_resistance_sets_total_and_stable_day_order(database):
@@ -399,14 +415,14 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
     assert (
         migrated.update_exercise(
             6,
-            SimpleNamespace(baseName="Deadlift", defaultWeightKg=None, imageKey="deadlift"),
+            SimpleNamespace(baseName="Deadlift", imageKey="deadlift"),
         )["name"]
         == "Deadlift"
     )
     assert (
         migrated.update_exercise(
             3,
-            SimpleNamespace(baseName="Front Squats", defaultWeightKg=None, imageKey="squat"),
+            SimpleNamespace(baseName="Front Squats", imageKey="squat"),
         )["name"]
         == "Front Squats (Resistance Bands)"
     )
@@ -422,12 +438,24 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
             4,
             5,
             6,
+            7,
         ]
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM exercises WHERE exercise_note IS NOT NULL"
             ).fetchone()[0]
             == 0
+        )
+        connection.execute("UPDATE exercises SET default_weight_grams = 6000 WHERE id = 6")
+        connection.execute("DELETE FROM schema_migrations WHERE version = 7")
+        connection.commit()
+    migrated.migrate()
+    with migrated.connect() as connection:
+        assert (
+            connection.execute(
+                "SELECT default_weight_grams FROM exercises WHERE id = 6"
+            ).fetchone()[0]
+            is None
         )
 
 
@@ -452,6 +480,7 @@ def test_schema_v2_migration_adds_notes_without_changing_history(database):
             4,
             5,
             6,
+            7,
         ]
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
@@ -534,7 +563,7 @@ def test_restore_rolls_back_when_post_restore_validation_fails(database, monkeyp
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (7)", "schema is newer"),
+        ("INSERT INTO schema_migrations(version) VALUES (8)", "schema is newer"),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(

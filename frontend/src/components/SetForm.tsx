@@ -18,7 +18,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
   const [minutes, setMinutes] = useState(existing?.durationMinutes?.toString() ?? "");
   const [seconds, setSeconds] = useState(existing?.durationSeconds?.toString() ?? "");
   const [resistance, setResistance] = useState<ResistanceKind>(existing?.resistanceKind ?? (exercise.equipment ? "external" : "bodyweight"));
-  const [weight, setWeight] = useState(existing?.weightKg ?? exercise.defaultWeightKg ?? "");
+  const [weight, setWeight] = useState(existing?.weightKg ?? "");
   const [loading, setLoading] = useState(!existing);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

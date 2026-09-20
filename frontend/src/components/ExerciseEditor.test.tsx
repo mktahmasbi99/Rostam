@@ -17,13 +17,12 @@ describe("ExerciseEditor", () => {
     const onSaved = vi.fn();
     vi.mocked(api.createExercise).mockResolvedValue({
       id: 20,
-      name: "Squats (Resistance Bands)",
-      baseName: "Squats",
+      name: "Lateral raises (Resistance tubes)",
+      baseName: "Lateral raises",
       measurementType: "repetitions",
-      equipment: "resistance_band",
+      equipment: "resistance_tube",
       customEquipment: null,
       allowBodyweight: false,
-      defaultWeightKg: "15",
       imageKey: null,
       exerciseNote: null,
       archivedAt: null,
@@ -31,21 +30,20 @@ describe("ExerciseEditor", () => {
     });
     render(<ExerciseEditor onSaved={onSaved} onCancel={vi.fn()} />);
 
-    await user.type(screen.getByLabelText("Exercise name"), "Squats");
+    await user.type(screen.getByLabelText("Exercise name"), "Lateral raises");
     await user.click(screen.getByRole("button", { name: "Equipment" }));
-    await user.selectOptions(screen.getByLabelText("Equipment"), "resistance_band");
-    expect(screen.getByText("Squats (Resistance Bands)")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Equipment"), "resistance_tube");
+    expect(screen.getByText("Lateral raises (Resistance tubes)")).toBeInTheDocument();
     await user.click(screen.getByLabelText("Allow bodyweight sets"));
-    await user.type(screen.getByLabelText(/Default kg/), "15");
+    expect(screen.queryByLabelText(/Default kg/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Save exercise" }));
 
     await waitFor(() => expect(api.createExercise).toHaveBeenCalledWith({
-      baseName: "Squats",
+      baseName: "Lateral raises",
       measurementType: "repetitions",
-      equipment: "resistance_band",
+      equipment: "resistance_tube",
       customEquipment: null,
       allowBodyweight: false,
-      defaultWeightKg: "15",
       imageKey: null,
     }));
     expect(screen.queryByLabelText("Exercise note")).not.toBeInTheDocument();
@@ -60,7 +58,6 @@ describe("ExerciseEditor", () => {
       equipment: "resistance_band",
       customEquipment: null,
       allowBodyweight: true,
-      defaultWeightKg: "15",
       imageKey: null,
       exerciseNote: "Keep elbows forward.",
       archivedAt: null,
@@ -70,7 +67,7 @@ describe("ExerciseEditor", () => {
     expect(screen.getByRole("button", { name: "Repetitions" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Equipment" })).toBeDisabled();
     expect(screen.getByLabelText("Allow bodyweight sets")).toBeDisabled();
-    expect(screen.getByLabelText(/Default kg/)).toBeEnabled();
+    expect(screen.queryByLabelText(/Default kg/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Exercise note")).not.toBeInTheDocument();
   });
 });

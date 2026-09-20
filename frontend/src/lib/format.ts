@@ -2,6 +2,7 @@ import type { Equipment, ExerciseSet } from "./types";
 
 export const equipmentLabels: Record<Equipment, string> = {
   resistance_band: "Resistance band",
+  resistance_tube: "Resistance tubes",
   dumbbell: "Dumbbell",
   barbell: "Barbell",
   kettlebell: "Kettlebell",
@@ -16,6 +17,7 @@ export const equipmentLabels: Record<Equipment, string> = {
 
 export const equipmentTitleLabels: Record<Exclude<Equipment, "other">, string> = {
   resistance_band: "Resistance Bands",
+  resistance_tube: "Resistance tubes",
   dumbbell: "Dumbbells",
   barbell: "Barbell",
   kettlebell: "Kettlebell",

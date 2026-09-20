@@ -21,7 +21,6 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment>(exercise?.equipment ?? "dumbbell");
   const [customEquipment, setCustomEquipment] = useState(exercise?.customEquipment ?? "");
   const [allowBodyweight, setAllowBodyweight] = useState(exercise?.allowBodyweight ?? true);
-  const [weight, setWeight] = useState(exercise?.defaultWeightKg ?? "");
   const [imageKey, setImageKey] = useState<string | null>(exercise?.imageKey ?? null);
   const [imageSearch, setImageSearch] = useState("");
   const [showPictures, setShowPictures] = useState(false);
@@ -44,12 +43,11 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
 
   async function save() {
     setSaving(true);
-    setError("");
-    try {
-      const saved = exercise
+      setError("");
+      try {
+        const saved = exercise
         ? await api.updateExercise(exercise.id, {
             baseName,
-            defaultWeightKg: exercise.equipment ? weight || null : null,
             imageKey,
           })
         : await api.createExercise({
@@ -58,7 +56,6 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
             equipment: fixedEquipment,
             customEquipment: fixedEquipment === "other" ? customEquipment : null,
             allowBodyweight,
-            defaultWeightKg: fixedEquipment ? weight || null : null,
             imageKey,
           });
       onSaved(saved);
@@ -90,7 +87,6 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
       </fieldset>
       {usesEquipment && <div className="form-grid">
         <label>Equipment<select value={selectedEquipment} onChange={(event) => setSelectedEquipment(event.target.value as Equipment)} disabled={Boolean(exercise)}>{equipment.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
-        <label>Default kg <span className="optional">optional</span><input inputMode="decimal" value={weight} onChange={(event) => setWeight(event.target.value)} placeholder="e.g. 12.5" /></label>
         {selectedEquipment === "other" && <label className="full">Equipment name<input value={customEquipment} onChange={(event) => setCustomEquipment(event.target.value)} required disabled={Boolean(exercise)} /></label>}
       </div>}
       <label className="checkbox-row"><input type="checkbox" checked={allowBodyweight} onChange={(event) => setAllowBodyweight(event.target.checked)} disabled={Boolean(exercise) || !usesEquipment} />Allow bodyweight sets</label>

@@ -18,6 +18,7 @@ from .config import Settings
 
 EQUIPMENT = {
     "resistance_band",
+    "resistance_tube",
     "dumbbell",
     "barbell",
     "kettlebell",
@@ -32,6 +33,7 @@ EQUIPMENT = {
 
 EQUIPMENT_TITLES = {
     "resistance_band": "Resistance Bands",
+    "resistance_tube": "Resistance tubes",
     "dumbbell": "Dumbbells",
     "barbell": "Barbell",
     "kettlebell": "Kettlebell",
@@ -70,7 +72,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "monster-sets"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 MAX_DAILY_NOTE_LENGTH = 20_000
 MAX_PHOTOS_PER_DAY = 10
 # Source files may be large camera originals. The stored JPEG is capped separately.
@@ -422,6 +424,12 @@ class MonsterSetsDatabase:
                     """
                 )
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (6)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 7").fetchone()
+                is None
+            ):
+                connection.execute("UPDATE exercises SET default_weight_grams = NULL")
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (7)")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -793,14 +801,11 @@ class MonsterSetsDatabase:
         equipment: str | None,
         custom_equipment: str | None,
         allow_bodyweight: bool,
-        weight_kg: str | None,
-    ) -> tuple[str | None, str | None, int | None]:
+    ) -> tuple[str | None, str | None]:
         if equipment is None:
             if not allow_bodyweight:
                 raise DomainError("An exercise must allow bodyweight or use equipment.")
-            if weight_kg is not None and weight_kg.strip():
-                raise DomainError("Bodyweight-only exercises cannot have a default weight.")
-            return None, None, None
+            return None, None
         if equipment not in EQUIPMENT:
             raise DomainError("Choose equipment.")
         custom = " ".join((custom_equipment or "").split()) or None
@@ -808,10 +813,7 @@ class MonsterSetsDatabase:
             raise DomainError("Name the custom equipment.")
         if equipment != "other":
             custom = None
-        weight = parse_weight_grams(weight_kg, allow_blank=True)
-        if weight == 0:
-            weight = None
-        return equipment, custom, weight
+        return equipment, custom
 
     def _validate_set(
         self,
@@ -868,7 +870,6 @@ class MonsterSetsDatabase:
             "equipment": row["equipment"],
             "customEquipment": row["custom_equipment"],
             "allowBodyweight": bool(row["allow_bodyweight"]),
-            "defaultWeightKg": format_weight(row["default_weight_grams"]),
             "imageKey": row["image_key"],
             "exerciseNote": row["exercise_note"],
             "archivedAt": row["archived_at"],
@@ -938,11 +939,10 @@ class MonsterSetsDatabase:
 
     def create_exercise(self, payload) -> dict:
         base_name, _ = normalize_name(payload.baseName)
-        equipment, custom, weight = self._validate_exercise_features(
+        equipment, custom = self._validate_exercise_features(
             payload.equipment,
             payload.customEquipment,
             payload.allowBodyweight,
-            payload.defaultWeightKg,
         )
         name, normalized = normalize_name(exercise_title(base_name, equipment, custom))
         resistance = "external" if equipment is not None else "bodyweight"
@@ -954,10 +954,10 @@ class MonsterSetsDatabase:
                     INSERT INTO exercises(
                         name, normalized_name, base_name, measurement_type,
                         default_resistance_kind, default_equipment,
-                        default_custom_equipment, default_weight_grams, image_key,
+                        default_custom_equipment, image_key,
                         equipment, custom_equipment, allow_bodyweight,
                         created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         name,
@@ -967,7 +967,6 @@ class MonsterSetsDatabase:
                         resistance,
                         equipment,
                         custom,
-                        weight,
                         payload.imageKey,
                         equipment,
                         custom,
@@ -996,23 +995,20 @@ class MonsterSetsDatabase:
                     else base_name
                 )
                 name, normalized = normalize_name(updated_title)
-                _, _, weight = self._validate_exercise_features(
+                self._validate_exercise_features(
                     current["equipment"],
                     current["custom_equipment"],
                     bool(current["allow_bodyweight"]),
-                    payload.defaultWeightKg,
                 )
                 connection.execute(
                     """
                     UPDATE exercises SET name = ?, normalized_name = ?, base_name = ?,
-                        default_weight_grams = ?,
                         image_key = ?, updated_at = ? WHERE id = ?
                     """,
                     (
                         name,
                         normalized,
                         base_name,
-                        weight,
                         payload.imageKey,
                         self._utc_now(),
                         exercise_id,
@@ -1165,7 +1161,7 @@ class MonsterSetsDatabase:
                 result = self._serialize_set(row)
                 if result["resistanceKind"] == "bodyweight" and not exercise["allow_bodyweight"]:
                     result["resistanceKind"] = "external"
-                    result["weightKg"] = format_weight(exercise["default_weight_grams"])
+                    result["weightKg"] = None
                 elif result["resistanceKind"] == "external" and exercise["equipment"] is None:
                     result["resistanceKind"] = "bodyweight"
                     result["weightKg"] = None
@@ -1179,7 +1175,7 @@ class MonsterSetsDatabase:
                 "resistanceKind": (
                     "external" if exercise["equipment"] is not None else "bodyweight"
                 ),
-                "weightKg": format_weight(exercise["default_weight_grams"]),
+                "weightKg": None,
             }
 
     def add_set(self, exercise_id: int, day_value: str, payload) -> dict:

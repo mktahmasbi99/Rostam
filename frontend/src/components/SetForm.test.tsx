@@ -22,7 +22,6 @@ const exercise: Exercise = {
   equipment: "resistance_band",
   customEquipment: null,
   allowBodyweight: true,
-  defaultWeightKg: "40",
   imageKey: null,
   exerciseNote: null,
   archivedAt: null,
@@ -34,7 +33,7 @@ describe("SetForm", () => {
     const user = userEvent.setup();
     vi.mocked(api.config).mockResolvedValue({ today: "2026-09-16", timezone: "Europe/Warsaw", version: "1" });
     vi.mocked(api.prefill).mockResolvedValue({
-      source: "defaults",
+      source: "previous",
       time: null,
       repetitions: 12,
       durationMinutes: null,

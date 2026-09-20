@@ -17,7 +17,6 @@ const exercise: Exercise = {
   equipment: null,
   customEquipment: null,
   allowBodyweight: true,
-  defaultWeightKg: null,
   imageKey: "push-up",
   exerciseNote: null,
   archivedAt: null,

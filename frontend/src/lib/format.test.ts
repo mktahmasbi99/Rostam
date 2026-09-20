@@ -21,6 +21,7 @@ const base: ExerciseSet = {
 describe("formatting", () => {
   it("generates canonical equipment titles", () => {
     expect(exerciseTitle("  Squats  ", "resistance_band", "")).toBe("Squats (Resistance Bands)");
+    expect(exerciseTitle("Lateral raises", "resistance_tube", "")).toBe("Lateral raises (Resistance tubes)");
     expect(exerciseTitle("Ab Rollouts", null, "")).toBe("Ab Rollouts");
   });
 
@@ -30,6 +31,7 @@ describe("formatting", () => {
 
   it("shows complete external resistance context", () => {
     expect(formatResistance({ ...base, resistanceKind: "external", weightKg: "25", equipment: "resistance_band" })).toBe("25 kg · Resistance band");
+    expect(formatResistance({ ...base, resistanceKind: "external", weightKg: "25", equipment: "resistance_tube" })).toBe("25 kg · Resistance tubes");
   });
 
   it("shows Bodyweight explicitly", () => {

@@ -2,6 +2,7 @@ export type MeasurementType = "repetitions" | "duration";
 export type ResistanceKind = "bodyweight" | "external";
 export type Equipment =
   | "resistance_band"
+  | "resistance_tube"
   | "dumbbell"
   | "barbell"
   | "kettlebell"
@@ -32,7 +33,6 @@ export interface Exercise {
   equipment: Equipment | null;
   customEquipment: string | null;
   allowBodyweight: boolean;
-  defaultWeightKg: string | null;
   imageKey: string | null;
   exerciseNote: string | null;
   archivedAt: string | null;
@@ -88,13 +88,11 @@ export interface ExerciseCreatePayload {
   equipment: Equipment | null;
   customEquipment: string | null;
   allowBodyweight: boolean;
-  defaultWeightKg: string | null;
   imageKey: string | null;
 }
 
 export interface ExerciseUpdatePayload {
   baseName: string;
-  defaultWeightKg: string | null;
   imageKey: string | null;
 }
 

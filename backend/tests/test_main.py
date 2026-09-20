@@ -30,21 +30,19 @@ def test_exercise_api_generates_title_and_rejects_immutable_updates(database, mo
         json={
             "baseName": "Overhead press",
             "measurementType": "repetitions",
-            "equipment": "resistance_band",
+            "equipment": "resistance_tube",
             "customEquipment": None,
             "allowBodyweight": True,
-            "defaultWeightKg": "40",
             "imageKey": None,
         },
     )
 
     assert created.status_code == 201
-    assert created.json()["name"] == "Overhead press (Resistance Bands)"
+    assert created.json()["name"] == "Overhead press (Resistance tubes)"
     rejected = client.patch(
         f"/api/exercises/{created.json()['id']}",
         json={
             "baseName": "Overhead press",
-            "defaultWeightKg": "40",
             "imageKey": None,
             "equipment": "barbell",
         },
@@ -64,7 +62,6 @@ def test_set_api_rejects_client_supplied_equipment(database, monkeypatch):
                 "equipment": "resistance_band",
                 "customEquipment": None,
                 "allowBodyweight": True,
-                "defaultWeightKg": None,
                 "imageKey": None,
             },
         )()
