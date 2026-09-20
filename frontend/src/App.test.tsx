@@ -30,13 +30,31 @@ describe("Rostam shell", () => {
     expect(screen.queryByText(/goal/i)).not.toBeInTheDocument();
   });
 
-  it("opens a calendar day through the standard ledger", async () => {
+  it("opens the calendar from the day heading and returns through the standard ledger", async () => {
     const user = userEvent.setup();
     render(<App />);
     await screen.findByRole("heading", { name: "Today" });
-    await user.click(screen.getByRole("button", { name: "Calendar" }));
+    await user.click(screen.getByRole("button", { name: "Choose a day" }));
     await waitFor(() => expect(api.calendar).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: /2026-09-13, exercise recorded/ }));
+    expect(screen.getByRole("dialog", { name: "Calendar" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "2026-09-12" }));
+    await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-12"));
+    expect(screen.queryByRole("button", { name: "Calendar" })).not.toBeInTheDocument();
+  });
+
+  it("jumps from the calendar back to today", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Choose a day" }));
+    await user.click(screen.getByRole("button", { name: "Jump to Today" }));
     expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
+  });
+
+  it("closes the calendar when its backdrop is clicked", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Choose a day" }));
+    await user.click(screen.getByTestId("calendar-backdrop"));
+    expect(screen.queryByRole("dialog", { name: "Calendar" })).not.toBeInTheDocument();
   });
 });

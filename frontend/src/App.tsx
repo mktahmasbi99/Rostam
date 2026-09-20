@@ -1,4 +1,4 @@
-import { CalendarDays, Dumbbell, Images, ListChecks, NotebookPen, Ruler, Settings } from "lucide-react";
+import { Dumbbell, Images, ListChecks, NotebookPen, Ruler, Settings } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { CalendarPage } from "./components/CalendarPage";
 import { DayPage } from "./components/DayPage";
@@ -11,10 +11,11 @@ import { usePwaInstall } from "./hooks/usePwaInstall";
 import { api } from "./lib/api";
 import type { Config } from "./lib/types";
 
-type Tab = "today" | "calendar" | "notes" | "photos" | "measurements" | "exercises" | "settings";
+type Tab = "today" | "notes" | "photos" | "measurements" | "exercises" | "settings";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("today");
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [config, setConfig] = useState<Config | null>(null);
   const [selectedDay, setSelectedDay] = useState("");
   const [error, setError] = useState("");
@@ -48,22 +49,21 @@ export default function App() {
   return <div className="app-shell">
     <div className="brand"><img className="app-logo brand-logo" src="/rostam-logo.png" alt="" /><strong>Rostam</strong></div>
     <div className="content">
-      {tab === "today" && <DayPage day={selectedDay} today={config.today} onDayChange={setSelectedDay} />}
-      {tab === "calendar" && <CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
+      {tab === "today" && <DayPage day={selectedDay} today={config.today} onOpenCalendar={() => setCalendarOpen(true)} />}
       {tab === "notes" && <NotesPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "photos" && <PhotosPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "measurements" && <MeasurementsPage today={config.today} />}
       {tab === "exercises" && <ExercisesPage />}
       {tab === "settings" && <SettingsPage config={config} pwaInstall={pwaInstall} />}
     </div>
+    {calendarOpen && <CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} />}
     <nav className="bottom-nav" aria-label="Primary navigation">
-      <button aria-label="Today" title="Today" className={tab === "today" ? "active" : ""} onClick={() => { setSelectedDay(config.today); setTab("today"); }}><ListChecks /></button>
-      <button aria-label="Calendar" title="Calendar" className={tab === "calendar" ? "active" : ""} onClick={() => setTab("calendar")}><CalendarDays /></button>
-      <button aria-label="Notes" title="Notes" className={tab === "notes" ? "active" : ""} onClick={() => setTab("notes")}><NotebookPen /></button>
-      <button aria-label="Photos" title="Photos" className={tab === "photos" ? "active" : ""} onClick={() => setTab("photos")}><Images /></button>
-      <button aria-label="Measurements" title="Measurements" className={tab === "measurements" ? "active" : ""} onClick={() => setTab("measurements")}><Ruler /></button>
-      <button aria-label="Exercises" title="Exercises" className={tab === "exercises" ? "active" : ""} onClick={() => setTab("exercises")}><Dumbbell /></button>
-      <button aria-label="Settings" title="Settings" className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}><Settings /></button>
+      <button aria-label="Today" title="Today" className={tab === "today" ? "active" : ""} onClick={() => { setSelectedDay(config.today); setTab("today"); setCalendarOpen(false); }}><ListChecks /></button>
+      <button aria-label="Exercises" title="Exercises" className={tab === "exercises" ? "active" : ""} onClick={() => { setTab("exercises"); setCalendarOpen(false); }}><Dumbbell /></button>
+      <button aria-label="Notes" title="Notes" className={tab === "notes" ? "active" : ""} onClick={() => { setTab("notes"); setCalendarOpen(false); }}><NotebookPen /></button>
+      <button aria-label="Photos" title="Photos" className={tab === "photos" ? "active" : ""} onClick={() => { setTab("photos"); setCalendarOpen(false); }}><Images /></button>
+      <button aria-label="Measurements" title="Measurements" className={tab === "measurements" ? "active" : ""} onClick={() => { setTab("measurements"); setCalendarOpen(false); }}><Ruler /></button>
+      <button aria-label="Settings" title="Settings" className={tab === "settings" ? "active" : ""} onClick={() => { setTab("settings"); setCalendarOpen(false); }}><Settings /></button>
     </nav>
   </div>;
 }
