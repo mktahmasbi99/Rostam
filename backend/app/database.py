@@ -72,7 +72,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "monster-sets"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 MAX_DAILY_NOTE_LENGTH = 20_000
 MAX_PHOTOS_PER_DAY = 10
 # Source files may be large camera originals. The stored JPEG is capped separately.
@@ -430,6 +430,101 @@ class MonsterSetsDatabase:
             ):
                 connection.execute("UPDATE exercises SET default_weight_grams = NULL")
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (7)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 8").fetchone()
+                is None
+            ):
+                connection.commit()
+                connection.execute("PRAGMA foreign_keys = OFF")
+                connection.executescript(
+                    """
+                    CREATE TABLE exercises_v8 (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        seed_key TEXT UNIQUE,
+                        name TEXT NOT NULL,
+                        normalized_name TEXT NOT NULL UNIQUE,
+                        measurement_type TEXT NOT NULL CHECK (
+                            measurement_type IN ('repetitions', 'duration', 'timed_repetitions')
+                        ),
+                        default_resistance_kind TEXT NOT NULL
+                            CHECK (default_resistance_kind IN ('bodyweight', 'external')),
+                        default_equipment TEXT,
+                        default_custom_equipment TEXT,
+                        default_weight_grams INTEGER CHECK (default_weight_grams > 0),
+                        image_key TEXT,
+                        archived_at TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        base_name TEXT,
+                        equipment TEXT,
+                        custom_equipment TEXT,
+                        allow_bodyweight INTEGER NOT NULL DEFAULT 0
+                            CHECK (allow_bodyweight IN (0, 1)),
+                        exercise_note TEXT
+                    );
+                    INSERT INTO exercises_v8 SELECT * FROM exercises;
+                    CREATE TABLE exercise_sets_v8 (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        exercise_id INTEGER NOT NULL,
+                        entry_date TEXT NOT NULL,
+                        occurred_at TEXT NOT NULL,
+                        repetitions INTEGER CHECK (repetitions > 0),
+                        duration_seconds INTEGER CHECK (duration_seconds > 0),
+                        hold_seconds INTEGER CHECK (hold_seconds > 0),
+                        resistance_kind TEXT NOT NULL
+                            CHECK (resistance_kind IN ('bodyweight', 'external')),
+                        weight_grams INTEGER CHECK (weight_grams > 0),
+                        equipment TEXT,
+                        custom_equipment TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        CHECK (
+                            (repetitions IS NOT NULL AND duration_seconds IS NULL)
+                            OR (
+                                repetitions IS NULL AND duration_seconds IS NOT NULL
+                                AND hold_seconds IS NULL
+                            )
+                        ),
+                        FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE RESTRICT
+                    );
+                    INSERT INTO exercise_sets_v8(
+                        id, exercise_id, entry_date, occurred_at, repetitions, duration_seconds,
+                        resistance_kind, weight_grams, equipment, custom_equipment, created_at,
+                        updated_at
+                    ) SELECT
+                        id, exercise_id, entry_date, occurred_at, repetitions, duration_seconds,
+                        resistance_kind, weight_grams, equipment, custom_equipment, created_at,
+                        updated_at
+                    FROM exercise_sets;
+                    DROP TABLE exercise_sets;
+                    DROP TABLE exercises;
+                    ALTER TABLE exercises_v8 RENAME TO exercises;
+                    ALTER TABLE exercise_sets_v8 RENAME TO exercise_sets;
+                    CREATE INDEX idx_sets_day_exercise_order
+                        ON exercise_sets(entry_date, exercise_id, occurred_at, created_at, id);
+                    CREATE INDEX idx_sets_exercise_order
+                        ON exercise_sets(exercise_id, occurred_at, created_at, id);
+                    CREATE INDEX idx_sets_day ON exercise_sets(entry_date);
+                    """
+                )
+                connection.execute(
+                    """
+                    UPDATE exercises SET measurement_type = 'timed_repetitions', updated_at = ?
+                    WHERE normalized_name = 'side plank leg lift' AND measurement_type = 'repetitions'
+                    """,
+                    (self._utc_now(),),
+                )
+                connection.execute(
+                    """
+                    UPDATE exercise_sets SET hold_seconds = 10
+                    WHERE exercise_id IN (
+                        SELECT id FROM exercises WHERE normalized_name = 'side plank leg lift'
+                    ) AND repetitions IS NOT NULL
+                    """
+                )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (8)")
+                connection.commit()
+                connection.execute("PRAGMA foreign_keys = ON")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -821,17 +916,22 @@ class MonsterSetsDatabase:
         repetitions: int | None,
         duration_minutes: int | None,
         duration_seconds: int | None,
+        hold_minutes: int | None,
+        hold_seconds: int | None,
         resistance_kind: str,
         weight_kg: str | None,
-    ) -> tuple[int | None, int | None, str, int | None, str | None, str | None]:
+    ) -> tuple[int | None, int | None, int | None, str, int | None, str | None, str | None]:
         if exercise["measurement_type"] == "repetitions":
-            if duration_minutes is not None or duration_seconds is not None:
+            if any(
+                value is not None
+                for value in (duration_minutes, duration_seconds, hold_minutes, hold_seconds)
+            ):
                 raise DomainError("A repetition exercise cannot contain a duration.")
             if repetitions is None or repetitions <= 0:
                 raise DomainError("Repetitions must be a positive whole number.")
-            measured_reps, measured_duration = repetitions, None
-        else:
-            if repetitions is not None:
+            measured_reps, measured_duration, measured_hold = repetitions, None, None
+        elif exercise["measurement_type"] == "duration":
+            if repetitions is not None or hold_minutes is not None or hold_seconds is not None:
                 raise DomainError("A duration exercise cannot contain repetitions.")
             minutes = duration_minutes or 0
             seconds = duration_seconds or 0
@@ -840,12 +940,25 @@ class MonsterSetsDatabase:
             total = minutes * 60 + seconds
             if total <= 0 or total > 86400:
                 raise DomainError("Duration must be between 1 second and 24 hours.")
-            measured_reps, measured_duration = None, total
+            measured_reps, measured_duration, measured_hold = None, total, None
+        else:
+            if duration_minutes is not None or duration_seconds is not None:
+                raise DomainError("A timed repetition exercise cannot contain a duration.")
+            if repetitions is None or repetitions <= 0:
+                raise DomainError("Repetitions must be a positive whole number.")
+            minutes = hold_minutes or 0
+            seconds = hold_seconds or 0
+            if minutes < 0 or seconds < 0 or seconds > 59:
+                raise DomainError("Hold seconds must be between 0 and 59.")
+            total = minutes * 60 + seconds
+            if total <= 0 or total > 86400:
+                raise DomainError("Hold duration must be between 1 second and 24 hours.")
+            measured_reps, measured_duration, measured_hold = repetitions, None, total
 
         if resistance_kind == "bodyweight":
             if not exercise["allow_bodyweight"]:
                 raise DomainError("Bodyweight is not allowed for this exercise.")
-            return measured_reps, measured_duration, "bodyweight", None, None, None
+            return measured_reps, measured_duration, measured_hold, "bodyweight", None, None, None
         equipment = exercise["equipment"]
         custom = exercise["custom_equipment"]
         if equipment is None:
@@ -854,8 +967,16 @@ class MonsterSetsDatabase:
         if weight == 0:
             if not exercise["allow_bodyweight"]:
                 raise DomainError("Weight must be greater than zero for this exercise.")
-            return measured_reps, measured_duration, "bodyweight", None, None, None
-        return measured_reps, measured_duration, "external", weight, equipment, custom
+            return measured_reps, measured_duration, measured_hold, "bodyweight", None, None, None
+        return (
+            measured_reps,
+            measured_duration,
+            measured_hold,
+            "external",
+            weight,
+            equipment,
+            custom,
+        )
 
     def _serialize_exercise(self, row: sqlite3.Row) -> dict:
         try:
@@ -878,6 +999,7 @@ class MonsterSetsDatabase:
 
     def _serialize_set(self, row: sqlite3.Row) -> dict:
         duration = row["duration_seconds"]
+        hold = row["hold_seconds"]
         return {
             "id": row["id"],
             "exerciseId": row["exercise_id"],
@@ -887,6 +1009,8 @@ class MonsterSetsDatabase:
             "repetitions": row["repetitions"],
             "durationMinutes": None if duration is None else duration // 60,
             "durationSeconds": None if duration is None else duration % 60,
+            "holdMinutes": None if hold is None else hold // 60,
+            "holdSeconds": None if hold is None else hold % 60,
             "resistanceKind": row["resistance_kind"],
             "weightKg": format_weight(row["weight_grams"]),
             "equipment": row["equipment"],
@@ -907,7 +1031,7 @@ class MonsterSetsDatabase:
             clauses.append("normalized_name LIKE ?")
             params.append(f"%{normalize_name(query)[1]}%")
         if measurement_type:
-            if measurement_type not in {"repetitions", "duration"}:
+            if measurement_type not in {"repetitions", "duration", "timed_repetitions"}:
                 raise DomainError("Invalid measurement type.")
             clauses.append("measurement_type = ?")
             params.append(measurement_type)
@@ -1108,7 +1232,7 @@ class MonsterSetsDatabase:
                 ]
                 total = sum(
                     (item["repetitions"] or 0)
-                    if exercise["measurement_type"] == "repetitions"
+                    if exercise["measurement_type"] in {"repetitions", "timed_repetitions"}
                     else (item["durationMinutes"] or 0) * 60 + (item["durationSeconds"] or 0)
                     for item in sets
                 )
@@ -1172,6 +1296,8 @@ class MonsterSetsDatabase:
                 "repetitions": None,
                 "durationMinutes": None,
                 "durationSeconds": None,
+                "holdMinutes": None,
+                "holdSeconds": None,
                 "resistanceKind": (
                     "external" if exercise["equipment"] is not None else "bodyweight"
                 ),
@@ -1186,11 +1312,13 @@ class MonsterSetsDatabase:
             exercise = self._exercise_row(connection, exercise_id)
             if exercise["archived_at"] is not None:
                 raise DomainError("Restore this exercise before adding a set.")
-            reps, duration, resistance, weight, equipment, custom = self._validate_set(
+            reps, duration, hold, resistance, weight, equipment, custom = self._validate_set(
                 exercise,
                 payload.repetitions,
                 payload.durationMinutes,
                 payload.durationSeconds,
+                payload.holdMinutes,
+                payload.holdSeconds,
                 payload.resistanceKind,
                 payload.weightKg,
             )
@@ -1213,9 +1341,9 @@ class MonsterSetsDatabase:
                 """
                 INSERT INTO exercise_sets(
                     exercise_id, entry_date, occurred_at, repetitions,
-                    duration_seconds, resistance_kind, weight_grams, equipment,
+                    duration_seconds, hold_seconds, resistance_kind, weight_grams, equipment,
                     custom_equipment, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     exercise_id,
@@ -1223,6 +1351,7 @@ class MonsterSetsDatabase:
                     occurred_at,
                     reps,
                     duration,
+                    hold,
                     resistance,
                     weight,
                     equipment,
@@ -1251,24 +1380,27 @@ class MonsterSetsDatabase:
                 if payload.time is None
                 else self._occurrence(current["entry_date"], payload.time)
             )
-            reps, duration, resistance, weight, equipment, custom = self._validate_set(
+            reps, duration, hold, resistance, weight, equipment, custom = self._validate_set(
                 exercise,
                 payload.repetitions,
                 payload.durationMinutes,
                 payload.durationSeconds,
+                payload.holdMinutes,
+                payload.holdSeconds,
                 payload.resistanceKind,
                 payload.weightKg,
             )
             connection.execute(
                 """
                 UPDATE exercise_sets SET occurred_at = ?, repetitions = ?,
-                    duration_seconds = ?, resistance_kind = ?, weight_grams = ?,
+                    duration_seconds = ?, hold_seconds = ?, resistance_kind = ?, weight_grams = ?,
                     equipment = ?, custom_equipment = ?, updated_at = ? WHERE id = ?
                 """,
                 (
                     occurred_at,
                     reps,
                     duration,
+                    hold,
                     resistance,
                     weight,
                     equipment,

@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-MeasurementType = Literal["repetitions", "duration"]
+MeasurementType = Literal["repetitions", "duration", "timed_repetitions"]
 ResistanceKind = Literal["bodyweight", "external"]
 Equipment = Literal[
     "resistance_band",
@@ -82,5 +82,7 @@ class SetWrite(BaseModel):
     repetitions: int | None = None
     durationMinutes: int | None = None
     durationSeconds: int | None = None
+    holdMinutes: int | None = None
+    holdSeconds: int | None = None
     resistanceKind: ResistanceKind
     weightKg: str | None = None

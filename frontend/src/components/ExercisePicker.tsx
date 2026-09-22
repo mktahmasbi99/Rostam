@@ -31,14 +31,13 @@ export function ExercisePicker({ presentIds, onChoose, onClose }: Props) {
   return (
     <Modal title="Add exercise" onClose={onClose} wide>
       <div className="picker-toolbar"><label className="search-box"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={query} onChange={(event) => setQuery(event.target.value)} autoFocus /></label><button className="primary" onClick={() => setCreating(true)}><Plus />New exercise</button></div>
-      <div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Repetitions</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button></div>
+      <div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Repetitions</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed repetitions</button></div>
       {notice && <p className="notice" role="status">{notice}</p>}
       {error && <p className="error" role="alert">{error}</p>}
       <div className="exercise-results">
-        {exercises.map((exercise) => <button key={exercise.id} className="exercise-result" onClick={() => { if (presentIds.includes(exercise.id)) { setNotice(`${exercise.name} is already added to this day.`); return; } onChoose(exercise); }}><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><span><strong>{exercise.name}</strong><small>{exercise.measurementType === "repetitions" ? "Repetitions" : "Duration"}</small></span></button>)}
+        {exercises.map((exercise) => <button key={exercise.id} className="exercise-result" onClick={() => { if (presentIds.includes(exercise.id)) { setNotice(`${exercise.name} is already added to this day.`); return; } onChoose(exercise); }}><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><span><strong>{exercise.name}</strong><small>{exercise.measurementType === "repetitions" ? "Repetitions" : exercise.measurementType === "duration" ? "Duration" : "Timed repetitions"}</small></span></button>)}
         {!error && exercises.length === 0 && <p className="empty-copy">No matching exercises.</p>}
       </div>
     </Modal>
   );
 }
-

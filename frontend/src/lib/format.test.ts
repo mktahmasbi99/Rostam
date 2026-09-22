@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exerciseTitle, formatDuration, formatResistance } from "./format";
+import { exerciseTitle, formatDuration, formatMeasurement, formatResistance } from "./format";
 import type { ExerciseSet } from "./types";
 
 const base: ExerciseSet = {
@@ -11,6 +11,8 @@ const base: ExerciseSet = {
   repetitions: 15,
   durationMinutes: null,
   durationSeconds: null,
+  holdMinutes: null,
+  holdSeconds: null,
   resistanceKind: "bodyweight",
   weightKg: null,
   equipment: null,
@@ -27,6 +29,11 @@ describe("formatting", () => {
 
   it("adds durations using clock notation", () => {
     expect(formatDuration(135)).toBe("2:15");
+  });
+
+  it("formats timed repetitions with a readable per-rep hold", () => {
+    expect(formatMeasurement({ ...base, repetitions: 4, holdMinutes: 0, holdSeconds: 10 })).toBe("4 reps × 10s hold");
+    expect(formatMeasurement({ ...base, repetitions: 4, holdMinutes: 1, holdSeconds: 5 })).toBe("4 reps × 1m 5s hold");
   });
 
   it("shows complete external resistance context", () => {

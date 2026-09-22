@@ -1,7 +1,7 @@
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
-import { formatDay, formatDuration, formatMeasurement, formatResistance } from "../lib/format";
+import { formatDay, formatDuration, formatHoldDuration, formatMeasurement, formatResistance } from "../lib/format";
 import type { DayData, Exercise, ExerciseSet } from "../lib/types";
 import { ExerciseImage } from "./ExerciseImage";
 import { ExerciseNote } from "./ExerciseNote";
@@ -62,8 +62,12 @@ export function DayPage({ day, today, onOpenCalendar, onPreviousDay, onNextDay }
     }
   }
 
-  function total(exercise: Exercise, amount: number): string {
-    return exercise.measurementType === "repetitions" ? `${amount} reps` : formatDuration(amount);
+  function total(exercise: Exercise, amount: number, sets: ExerciseSet[]): string {
+    if (exercise.measurementType === "repetitions") return `${amount} reps`;
+    if (exercise.measurementType === "duration") return formatDuration(amount);
+    const holds = [...new Set(sets.map((set) => (set.holdMinutes ?? 0) * 60 + (set.holdSeconds ?? 0)))];
+    const formattedHolds = holds.map(formatHoldDuration).join(", ");
+    return holds.length === 1 ? `${amount} reps × ${formattedHolds} hold` : `${amount} reps · ${formattedHolds} holds`;
   }
 
   const presentIds = data.sections.map((section) => section.exercise.id);
@@ -87,7 +91,7 @@ export function DayPage({ day, today, onOpenCalendar, onPreviousDay, onNextDay }
 
       <div className="exercise-sections">
         {data.sections.map((section) => <section className="exercise-card" key={`${day}-${section.exercise.id}`}>
-          <header className="exercise-card-header"><ExerciseImage imageKey={section.exercise.imageKey} name={section.exercise.name} size="large" /><div><h2>{section.exercise.name}</h2><strong className="daily-total">{total(section.exercise, section.total)}</strong></div></header>
+          <header className="exercise-card-header"><ExerciseImage imageKey={section.exercise.imageKey} name={section.exercise.name} size="large" /><div><h2>{section.exercise.name}</h2><strong className="daily-total">{total(section.exercise, section.total, section.sets)}</strong></div></header>
           <ExerciseNote exercise={section.exercise} />
           <div className="set-list">
             {section.sets.map((set, index) => editingSet?.id === set.id ? <SetForm key={set.id} exercise={section.exercise} day={day} existing={set} onSaved={() => void saved()} onCancel={() => setEditingSet(null)} /> : <div className="set-row" key={set.id}>

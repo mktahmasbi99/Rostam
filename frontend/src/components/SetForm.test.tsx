@@ -38,6 +38,8 @@ describe("SetForm", () => {
       repetitions: 12,
       durationMinutes: null,
       durationSeconds: null,
+      holdMinutes: null,
+      holdSeconds: null,
       resistanceKind: "external",
       weightKg: "40",
     });
@@ -67,6 +69,8 @@ describe("SetForm", () => {
         repetitions: 10,
         durationMinutes: null,
         durationSeconds: null,
+        holdMinutes: null,
+        holdSeconds: null,
         resistanceKind: "external",
         weightKg: "40",
         equipment: "resistance_band",
@@ -79,5 +83,35 @@ describe("SetForm", () => {
 
     expect(screen.queryByRole("button", { name: "BW" })).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("40")).toBeInTheDocument();
+  });
+
+  it("edits timed repetitions with a per-repetition hold", () => {
+    render(<SetForm
+      exercise={{ ...exercise, measurementType: "timed_repetitions", equipment: null }}
+      day="2026-09-16"
+      existing={{
+        id: 4,
+        exerciseId: exercise.id,
+        date: "2026-09-16",
+        occurredAt: "2026-09-16T10:00:00+00:00",
+        time: "12:00",
+        repetitions: 4,
+        durationMinutes: null,
+        durationSeconds: null,
+        holdMinutes: 0,
+        holdSeconds: 10,
+        resistanceKind: "bodyweight",
+        weightKg: null,
+        equipment: null,
+        customEquipment: null,
+        createdAt: "2026-09-16T10:00:00+00:00",
+      }}
+      onSaved={vi.fn()}
+      onCancel={vi.fn()}
+    />);
+
+    expect(screen.getByLabelText("Reps")).toHaveValue(4);
+    expect(screen.getByLabelText("Hold minutes")).toHaveValue(0);
+    expect(screen.getByLabelText("Hold seconds")).toHaveValue(10);
   });
 });

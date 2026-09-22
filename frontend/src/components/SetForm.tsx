@@ -17,6 +17,8 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
   const [repetitions, setRepetitions] = useState(existing?.repetitions?.toString() ?? "");
   const [minutes, setMinutes] = useState(existing?.durationMinutes?.toString() ?? "");
   const [seconds, setSeconds] = useState(existing?.durationSeconds?.toString() ?? "");
+  const [holdMinutes, setHoldMinutes] = useState(existing?.holdMinutes?.toString() ?? "");
+  const [holdSeconds, setHoldSeconds] = useState(existing?.holdSeconds?.toString() ?? "");
   const [resistance, setResistance] = useState<ResistanceKind>(existing?.resistanceKind ?? (exercise.equipment ? "external" : "bodyweight"));
   const [weight, setWeight] = useState(existing?.weightKg ?? "");
   const [loading, setLoading] = useState(!existing);
@@ -30,6 +32,8 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
       setRepetitions(prefill.repetitions?.toString() ?? "");
       setMinutes(prefill.durationMinutes?.toString() ?? "");
       setSeconds(prefill.durationSeconds?.toString() ?? "");
+      setHoldMinutes(prefill.holdMinutes?.toString() ?? "");
+      setHoldSeconds(prefill.holdSeconds?.toString() ?? "");
     }
     if (!resistanceEdited.current) {
       setResistance(prefill.resistanceKind);
@@ -74,6 +78,8 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
       repetitions: exercise.measurementType === "repetitions" ? Number(repetitions) : null,
       durationMinutes: exercise.measurementType === "duration" ? Number(minutes || 0) : null,
       durationSeconds: exercise.measurementType === "duration" ? Number(seconds || 0) : null,
+      holdMinutes: exercise.measurementType === "timed_repetitions" ? Number(holdMinutes || 0) : null,
+      holdSeconds: exercise.measurementType === "timed_repetitions" ? Number(holdSeconds || 0) : null,
       resistanceKind: resistance,
       weightKg: resistance === "external" ? weight : null,
     };
@@ -101,7 +107,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
         {resistance === "external" && <>
           <label>kg<input inputMode="decimal" value={weight} onChange={(event) => { resistanceEdited.current = true; setWeight(event.target.value); }} placeholder="0 = BW" required /></label>
         </>}
-        {exercise.measurementType === "repetitions" ? <label>Reps<input type="number" min="1" step="1" inputMode="numeric" value={repetitions} onChange={(event) => { measurementEdited.current = true; setRepetitions(event.target.value); }} required autoFocus /></label> : <div className="duration-fields"><label>Minutes<input type="number" min="0" step="1" inputMode="numeric" value={minutes} onChange={(event) => { measurementEdited.current = true; setMinutes(event.target.value); }} autoFocus /></label><label>Seconds<input type="number" min="0" max="59" step="1" inputMode="numeric" value={seconds} onChange={(event) => { measurementEdited.current = true; setSeconds(event.target.value); }} /></label></div>}
+        {exercise.measurementType === "duration" ? <div className="duration-fields"><label>Minutes<input type="number" min="0" step="1" inputMode="numeric" value={minutes} onChange={(event) => { measurementEdited.current = true; setMinutes(event.target.value); }} autoFocus /></label><label>Seconds<input type="number" min="0" max="59" step="1" inputMode="numeric" value={seconds} onChange={(event) => { measurementEdited.current = true; setSeconds(event.target.value); }} /></label></div> : exercise.measurementType === "timed_repetitions" ? <><label>Reps<input type="number" min="1" step="1" inputMode="numeric" value={repetitions} onChange={(event) => { measurementEdited.current = true; setRepetitions(event.target.value); }} required autoFocus /></label><div className="duration-fields"><label>Hold minutes<input type="number" min="0" step="1" inputMode="numeric" value={holdMinutes} onChange={(event) => { measurementEdited.current = true; setHoldMinutes(event.target.value); }} /></label><label>Hold seconds<input type="number" min="0" max="59" step="1" inputMode="numeric" value={holdSeconds} onChange={(event) => { measurementEdited.current = true; setHoldSeconds(event.target.value); }} /></label></div></> : <label>Reps<input type="number" min="1" step="1" inputMode="numeric" value={repetitions} onChange={(event) => { measurementEdited.current = true; setRepetitions(event.target.value); }} required autoFocus /></label>}
       </div>
       {error && <div className="save-error" role="alert"><span>{error} Your values remain unsaved on this page.</span><button type="button" onClick={() => void save()}><RotateCcw />Retry</button></div>}
       <div className="draft-actions"><button type="button" className="icon-button" aria-label="Cancel set" onClick={onCancel}><X /></button><button type="submit" className="save-set" aria-label="Save set" disabled={saving}><Check />{saving ? "Saving" : "Save"}</button></div>

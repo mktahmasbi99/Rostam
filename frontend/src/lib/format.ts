@@ -42,7 +42,18 @@ export function formatDuration(seconds: number): string {
   return `${minutes}:${remainder.toString().padStart(2, "0")}`;
 }
 
+export function formatHoldDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  if (!minutes) return `${remainder}s`;
+  if (!remainder) return `${minutes}m`;
+  return `${minutes}m ${remainder}s`;
+}
+
 export function formatMeasurement(set: ExerciseSet): string {
+  if (set.repetitions !== null && set.holdMinutes !== null && set.holdSeconds !== null) {
+    return `${set.repetitions} reps × ${formatHoldDuration(set.holdMinutes * 60 + set.holdSeconds)} hold`;
+  }
   if (set.repetitions !== null) return `${set.repetitions} reps`;
   return formatDuration((set.durationMinutes ?? 0) * 60 + (set.durationSeconds ?? 0));
 }

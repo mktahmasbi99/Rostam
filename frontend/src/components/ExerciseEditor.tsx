@@ -75,6 +75,7 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
         <div className="segmented">
           <button type="button" className={measurement === "repetitions" ? "selected" : ""} onClick={() => setMeasurement("repetitions")} disabled={Boolean(exercise)}>Repetitions</button>
           <button type="button" className={measurement === "duration" ? "selected" : ""} onClick={() => setMeasurement("duration")} disabled={Boolean(exercise)}>Duration</button>
+          <button type="button" className={measurement === "timed_repetitions" ? "selected" : ""} onClick={() => setMeasurement("timed_repetitions")} disabled={Boolean(exercise)}>Timed repetitions</button>
         </div>
       </fieldset>
       <fieldset>

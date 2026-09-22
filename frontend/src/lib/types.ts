@@ -1,4 +1,4 @@
-export type MeasurementType = "repetitions" | "duration";
+export type MeasurementType = "repetitions" | "duration" | "timed_repetitions";
 export type ResistanceKind = "bodyweight" | "external";
 export type Equipment =
   | "resistance_band"
@@ -48,6 +48,8 @@ export interface ExerciseSet {
   repetitions: number | null;
   durationMinutes: number | null;
   durationSeconds: number | null;
+  holdMinutes: number | null;
+  holdSeconds: number | null;
   resistanceKind: ResistanceKind;
   weightKg: string | null;
   equipment: Equipment | null;
@@ -78,6 +80,8 @@ export interface SetPayload {
   repetitions: number | null;
   durationMinutes: number | null;
   durationSeconds: number | null;
+  holdMinutes: number | null;
+  holdSeconds: number | null;
   resistanceKind: ResistanceKind;
   weightKg: string | null;
 }

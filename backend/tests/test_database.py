@@ -29,6 +29,8 @@ def set_payload(**overrides):
         "repetitions": 15,
         "durationMinutes": None,
         "durationSeconds": None,
+        "holdMinutes": None,
+        "holdSeconds": None,
         "resistanceKind": "bodyweight",
         "weightKg": None,
     }
@@ -230,6 +232,37 @@ def test_duration_total(database):
     assert database.day(today)["sections"][0]["total"] == 135
 
 
+def test_timed_repetitions_validate_prefill_and_total(database):
+    today = (database.today() - __import__("datetime").timedelta(days=1)).isoformat()
+    exercise = database.create_exercise(
+        exercise_payload(baseName="Side Plank Leg Lift", measurementType="timed_repetitions")
+    )
+    first = database.add_set(
+        exercise["id"],
+        today,
+        set_payload(time="08:00", repetitions=4, holdMinutes=0, holdSeconds=10),
+    )
+    database.add_set(
+        exercise["id"],
+        today,
+        set_payload(time="08:30", repetitions=4, holdMinutes=1, holdSeconds=5),
+    )
+
+    assert first["holdMinutes"] == 0
+    assert first["holdSeconds"] == 10
+    assert database.day(today)["sections"][0]["total"] == 8
+    prefill = database.prefill(exercise["id"], today, "08:45")
+    assert (prefill["repetitions"], prefill["holdMinutes"], prefill["holdSeconds"]) == (4, 1, 5)
+    with pytest.raises(DomainError, match="Hold duration"):
+        database.add_set(exercise["id"], today, set_payload(repetitions=4))
+    with pytest.raises(DomainError, match="cannot contain a duration"):
+        database.add_set(
+            exercise["id"],
+            today,
+            set_payload(repetitions=4, durationSeconds=10, holdSeconds=10),
+        )
+
+
 def test_measurement_types_cannot_be_mixed(database):
     today = database.today().isoformat()
     exercises = {item["name"]: item for item in database.list_exercises("active", "", None)}
@@ -240,7 +273,7 @@ def test_measurement_types_cannot_be_mixed(database):
 
 
 def test_previous_set_prefill_is_chronological(database):
-    today = database.today().isoformat()
+    today = (database.today() - __import__("datetime").timedelta(days=1)).isoformat()
     pushups = next(item for item in database.list_exercises("active", "Push", None))
     database.add_set(pushups["id"], today, set_payload(time="08:00", repetitions=10))
     database.add_set(pushups["id"], today, set_payload(time="12:00", repetitions=20))
@@ -431,15 +464,9 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
         assert connection.execute("SELECT SUM(repetitions) FROM exercise_sets").fetchone()[0] == 72
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
-        assert [row[0] for row in connection.execute("SELECT version FROM schema_migrations")] == [
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-        ]
+        assert [
+            row[0] for row in connection.execute("SELECT version FROM schema_migrations")
+        ] == list(range(1, 9))
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM exercises WHERE exercise_note IS NOT NULL"
@@ -473,15 +500,9 @@ def test_schema_v2_migration_adds_notes_without_changing_history(database):
     assert migrated.exercise(pushups["id"])["exerciseNote"] is None
     assert migrated.day(today)["sections"][0]["sets"][0]["id"] == saved_set["id"]
     with migrated.connect() as connection:
-        assert [row[0] for row in connection.execute("SELECT version FROM schema_migrations")] == [
-            1,
-            2,
-            3,
-            4,
-            5,
-            6,
-            7,
-        ]
+        assert [
+            row[0] for row in connection.execute("SELECT version FROM schema_migrations")
+        ] == list(range(1, 9))
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
@@ -563,7 +584,7 @@ def test_restore_rolls_back_when_post_restore_validation_fails(database, monkeyp
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (8)", "schema is newer"),
+        ("INSERT INTO schema_migrations(version) VALUES (9)", "schema is newer"),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(
@@ -584,3 +605,26 @@ def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(
 def test_restore_rejects_path_traversal(database):
     with pytest.raises(DomainError, match="Invalid backup identifier"):
         database.restore_backup("../outside.sqlite3", "RESTORE")
+
+
+def test_restore_schema_v7_backup_migrates_side_plank_history(database):
+    today = (database.today() - __import__("datetime").timedelta(days=1)).isoformat()
+    exercise = database.create_exercise(
+        exercise_payload(baseName="Side Plank Leg Lift", measurementType="repetitions")
+    )
+    for time_value in ("08:00", "08:30"):
+        database.add_set(exercise["id"], today, set_payload(time=time_value, repetitions=4))
+    source = database.create_backup("on-demand")
+    with sqlite3.connect(database.backup_path(source["id"])) as connection:
+        connection.execute("DELETE FROM schema_migrations WHERE version = 8")
+        connection.commit()
+
+    database.restore_backup(source["id"], "RESTORE")
+
+    restored = database.exercise(exercise["id"])
+    assert restored["measurementType"] == "timed_repetitions"
+    sets = database.day(today)["sections"][0]["sets"]
+    assert [(item["repetitions"], item["holdMinutes"], item["holdSeconds"]) for item in sets] == [
+        (4, 0, 10),
+        (4, 0, 10),
+    ]
