@@ -38,7 +38,7 @@ describe("Rostam shell", () => {
     await waitFor(() => expect(api.calendar).toHaveBeenCalled());
     expect(screen.getByRole("dialog", { name: "Calendar" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "2026-09-12" }));
-    await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-12"));
+    await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-12", expect.any(AbortSignal)));
     expect(screen.queryByRole("button", { name: "Calendar" })).not.toBeInTheDocument();
   });
 
@@ -58,12 +58,12 @@ describe("Rostam shell", () => {
     expect(screen.getByRole("button", { name: "Next day" })).toBeDisabled();
 
     await user.click(screen.getByRole("button", { name: "Previous day" }));
-    await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-12"));
+    await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-12", expect.any(AbortSignal)));
     expect(screen.getByText("2026-09-12")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next day" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "Next day" }));
-    await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-13"));
+    await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-13", expect.any(AbortSignal)));
   });
 
   it("closes the calendar when its backdrop is clicked", async () => {

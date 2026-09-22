@@ -1,8 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { api } from "../lib/api";
-import type { Exercise } from "../lib/types";
+import type { DayData, Exercise } from "../lib/types";
 import { DayPage } from "./DayPage";
 
 vi.mock("../lib/api", () => ({
@@ -28,6 +28,16 @@ const exercise: Exercise = {
   archivedAt: null,
   hasHistory: false,
 };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
 describe("DayPage exercise notes", () => {
   it("shows the note action on persisted exercise cards", async () => {
@@ -68,5 +78,73 @@ describe("DayPage exercise notes", () => {
     render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
 
     expect(await screen.findByText("8 reps · 10s, 15s holds")).toBeInTheDocument();
+  });
+
+  it("ignores a superseded day request after navigation", async () => {
+    const first = deferred<DayData>();
+    const second = deferred<DayData>();
+    vi.mocked(api.day).mockReset()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const props = {
+      today: "2026-09-17",
+      onOpenCalendar: vi.fn(),
+      onPreviousDay: vi.fn(),
+      onNextDay: vi.fn(),
+    };
+    const { rerender } = render(<DayPage day="2026-09-16" {...props} />);
+    await waitFor(() => expect(api.day).toHaveBeenCalledTimes(1));
+    const firstSignal = vi.mocked(api.day).mock.calls[0][1];
+
+    rerender(<DayPage day="2026-09-17" {...props} />);
+    await waitFor(() => expect(api.day).toHaveBeenCalledTimes(2));
+    expect(firstSignal?.aborted).toBe(true);
+
+    await act(async () => {
+      second.resolve({ date: "2026-09-17", sections: [] });
+      await Promise.resolve();
+    });
+    expect(await screen.findByText("No sets recorded")).toBeInTheDocument();
+
+    await act(async () => {
+      first.reject(new Error("Older request failed"));
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Older request failed")).not.toBeInTheDocument();
+    expect(screen.queryByText("Push-ups")).not.toBeInTheDocument();
+  });
+
+  it("does not overwrite a newer day with an older response", async () => {
+    const first = deferred<DayData>();
+    const second = deferred<DayData>();
+    vi.mocked(api.day).mockReset()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const props = {
+      today: "2026-09-17",
+      onOpenCalendar: vi.fn(),
+      onPreviousDay: vi.fn(),
+      onNextDay: vi.fn(),
+    };
+    const { rerender } = render(<DayPage day="2026-09-16" {...props} />);
+    await waitFor(() => expect(api.day).toHaveBeenCalledTimes(1));
+    rerender(<DayPage day="2026-09-17" {...props} />);
+    await waitFor(() => expect(api.day).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      second.resolve({ date: "2026-09-17", sections: [] });
+      await Promise.resolve();
+    });
+    expect(await screen.findByText("No sets recorded")).toBeInTheDocument();
+
+    await act(async () => {
+      first.resolve({
+        date: "2026-09-16",
+        sections: [{ exercise, displayOrder: 1, total: 10, sets: [] }],
+      });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Push-ups")).not.toBeInTheDocument();
+    expect(screen.queryByText("Loading sets…")).not.toBeInTheDocument();
   });
 });

@@ -29,7 +29,8 @@ export const api = {
   createBodyMeasurement: (payload: BodyMeasurementPayload) => request<BodyMeasurement>("/api/body-measurements", json("POST", payload)),
   updateBodyMeasurement: (id: number, payload: BodyMeasurementPayload) => request<BodyMeasurement>(`/api/body-measurements/${id}`, json("PATCH", payload)),
   deleteBodyMeasurement: (id: number) => request<void>(`/api/body-measurements/${id}`, { method: "DELETE" }),
-  day: (day: string) => request<DayData>(`/api/days/${day}`),
+  day: (day: string, signal?: AbortSignal) =>
+    request<DayData>(`/api/days/${day}`, { signal }),
   calendar: (month: string) =>
     request<{ month: string; activeDates: string[] }>(`/api/calendar/${month}`),
   exercises: (status = "active", query = "", measurementType = "") => {

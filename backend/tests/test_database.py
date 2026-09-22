@@ -1,13 +1,21 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
+from io import BytesIO
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
+from PIL import Image
 
 from app.config import Settings
-from app.database import DomainError, MonsterSetsDatabase
+from app.database import (
+    PHOTO_SUMMARY_COLUMNS,
+    DomainError,
+    MonsterSetsDatabase,
+    parse_weight_grams,
+)
 
 
 def exercise_payload(**overrides):
@@ -48,6 +56,12 @@ def profile_payload(**overrides):
     values = {"heightCm": "181.5", "dateOfBirth": "1990-09-17"}
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+def image_upload() -> bytes:
+    output = BytesIO()
+    Image.new("RGB", (8, 8), "#995c12").save(output, format="PNG")
+    return output.getvalue()
 
 
 def test_initial_library_is_seeded_once(database):
@@ -92,6 +106,98 @@ def test_body_measurements_and_profile_validate_and_keep_optional_values(databas
         database.update_profile(profile_payload(dateOfBirth="2026-09-18"))
     database.delete_body_measurement(created["id"])
     assert database.list_body_measurements() == [waist]
+
+
+@pytest.mark.parametrize("value", ["20260916", "2026-W38-2", "2026-13-01"])
+def test_dates_require_calendar_format(database, value):
+    with pytest.raises(DomainError, match="YYYY-MM-DD"):
+        database.day(value)
+
+
+def test_dates_are_canonical_before_persistence(database, monkeypatch):
+    monkeypatch.setattr(database, "today", lambda: date(2026, 9, 17))
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+
+    with pytest.raises(DomainError, match="YYYY-MM-DD"):
+        database.add_set(pushups["id"], "20260916", set_payload())
+    with pytest.raises(DomainError, match="YYYY-MM-DD"):
+        database.create_body_measurement(measurement_payload(date="2026-W38-2", waistCm=None))
+    with pytest.raises(DomainError, match="YYYY-MM-DD"):
+        database.update_profile(profile_payload(dateOfBirth="1990-W01-1"))
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity", "1e1000000"])
+def test_weight_rejects_non_finite_and_extreme_values(value):
+    with pytest.raises(DomainError):
+        parse_weight_grams(value, allow_blank=False)
+
+
+def test_numeric_limits_are_enforced(database, monkeypatch):
+    monkeypatch.setattr(database, "today", lambda: date(2026, 9, 17))
+    assert parse_weight_grams("10000", allow_blank=False) == 10_000_000
+    with pytest.raises(DomainError, match="at most"):
+        parse_weight_grams("10000.001", allow_blank=False)
+    with pytest.raises(DomainError, match="negative"):
+        parse_weight_grams("-1", allow_blank=False)
+
+    profile = database.update_profile(profile_payload(heightCm="300"))
+    assert profile["heightCm"] == "300"
+    with pytest.raises(DomainError, match="at most"):
+        database.update_profile(profile_payload(heightCm="300.1"))
+    for value in ("NaN", "Infinity", "-Infinity"):
+        with pytest.raises(DomainError, match="finite"):
+            database.update_profile(profile_payload(heightCm=value))
+    with pytest.raises(DomainError, match="at most"):
+        database.update_profile(profile_payload(heightCm="1e1000000"))
+
+    waist = database.create_body_measurement(measurement_payload(weightKg=None, waistCm="500"))
+    assert waist["waistCm"] == "500"
+    with pytest.raises(DomainError, match="at most"):
+        database.create_body_measurement(
+            measurement_payload(date="2026-09-15", weightKg=None, waistCm="500.1")
+        )
+    for value in ("NaN", "Infinity", "-Infinity"):
+        with pytest.raises(DomainError, match="finite"):
+            database.create_body_measurement(
+                measurement_payload(date="2026-09-15", weightKg=None, waistCm=value)
+            )
+    with pytest.raises(DomainError, match="at most"):
+        database.create_body_measurement(
+            measurement_payload(date="2026-09-15", weightKg=None, waistCm="1e1000000")
+        )
+
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+    maximum = database.add_set(pushups["id"], "2026-09-17", set_payload(repetitions=1_000_000))
+    assert maximum["repetitions"] == 1_000_000
+    with pytest.raises(DomainError, match="at most"):
+        database.add_set(pushups["id"], "2026-09-17", set_payload(repetitions=1_000_001))
+
+
+def test_occurrences_reject_nonexistent_and_ambiguous_dst_times(database, monkeypatch):
+    monkeypatch.setattr(database, "today", lambda: date(2026, 9, 17))
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+
+    normal = database.add_set(pushups["id"], "2026-03-28", set_payload(time="02:30"))
+    assert normal["time"] == "02:30"
+    editable = database.add_set(pushups["id"], "2026-03-29", set_payload(time="01:30"))
+    with pytest.raises(DomainError, match="does not exist"):
+        database.add_set(pushups["id"], "2026-03-29", set_payload(time="02:30"))
+    with pytest.raises(DomainError, match="does not exist"):
+        database.update_set(editable["id"], set_payload(time="02:30"))
+    with pytest.raises(DomainError, match="ambiguous"):
+        database.add_set(pushups["id"], "2025-10-26", set_payload(time="02:30"))
+
+
+def test_photo_summaries_exclude_blobs_and_photo_endpoints_return_them(database):
+    assert "jpeg" not in PHOTO_SUMMARY_COLUMNS
+    assert "thumbnail_jpeg" not in PHOTO_SUMMARY_COLUMNS
+
+    photos = database.add_daily_photos(database.today().isoformat(), [image_upload()])
+
+    assert database.list_daily_photos(database.today().isoformat()) == photos
+    assert database.list_photos()[0]["photos"] == photos
+    assert database.photo_data(photos[0]["id"], thumbnail=False).startswith(b"\xff\xd8")
+    assert database.photo_data(photos[0]["id"], thumbnail=True).startswith(b"\xff\xd8")
 
 
 def test_names_are_case_and_whitespace_insensitive(database):

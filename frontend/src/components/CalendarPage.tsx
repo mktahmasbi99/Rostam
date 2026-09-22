@@ -42,11 +42,13 @@ export function CalendarPage({ today, onChooseDay, onClose }: Props) {
   return <div className="calendar-backdrop" data-testid="calendar-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="calendar-dialog" role="dialog" aria-modal="true" aria-labelledby="calendar-title">
       <header className="calendar-dialog-header"><h1 id="calendar-title">Calendar</h1><button className="icon-button" aria-label="Close calendar" onClick={onClose}><X /></button></header>
-      <p className="calendar-description">A dot means at least one exercise occurred.</p>
-      <div className="month-header"><button className="icon-button" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft /></button><h2>{title}</h2><button className="icon-button" aria-label="Next month" disabled={month >= today.slice(0, 7)} onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight /></button></div>
-      <div className="calendar-grid weekday-row">{weekdays.map((day) => <span key={day}>{day}</span>)}</div>
-      <div className="calendar-grid">{cells.map((day, index) => day ? <button key={day} className={`calendar-day ${day === today ? "today" : ""}`} disabled={day > today} onClick={() => onChooseDay(day)} aria-label={`${day}${activeDates.includes(day) ? ", exercise recorded" : ""}`}><span>{Number(day.slice(-2))}</span>{activeDates.includes(day) && <i className="activity-dot" />}</button> : <span key={`blank-${index}`} />)}</div>
-      {error && <p className="error" role="alert">{error}</p>}
+      <div className="calendar-dialog-body">
+        <p className="calendar-description">A dot means at least one exercise occurred.</p>
+        <div className="month-header"><button className="icon-button" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft /></button><h2>{title}</h2><button className="icon-button" aria-label="Next month" disabled={month >= today.slice(0, 7)} onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight /></button></div>
+        <div className="calendar-grid weekday-row">{weekdays.map((day) => <span key={day}>{day}</span>)}</div>
+        <div className="calendar-grid">{cells.map((day, index) => day ? <button key={day} className={`calendar-day ${day === today ? "today" : ""}`} disabled={day > today} onClick={() => onChooseDay(day)} aria-label={`${day}${activeDates.includes(day) ? ", exercise recorded" : ""}`}><span>{Number(day.slice(-2))}</span>{activeDates.includes(day) && <i className="activity-dot" />}</button> : <span key={`blank-${index}`} />)}</div>
+        {error && <p className="error" role="alert">{error}</p>}
+      </div>
       <button className="primary calendar-jump" onClick={() => onChooseDay(today)}>Jump to Today</button>
     </section>
   </div>;

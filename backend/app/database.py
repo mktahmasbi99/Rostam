@@ -75,11 +75,24 @@ BACKUP_FORMAT_VERSION = 1
 SCHEMA_VERSION = 8
 MAX_DAILY_NOTE_LENGTH = 20_000
 MAX_PHOTOS_PER_DAY = 10
+MAX_REPETITIONS = 1_000_000
+MAX_WEIGHT_KG = Decimal(10000)
+MAX_HEIGHT_CM = Decimal(300)
+MAX_WAIST_CM = Decimal(500)
 # Source files may be large camera originals. The stored JPEG is capped separately.
 MAX_PHOTO_BYTES = 50 * 1024 * 1024
 MAX_STORED_PHOTO_BYTES = 5 * 1024 * 1024
 MAX_PHOTO_EDGE = 2560
 THUMBNAIL_EDGE = 480
+PHOTO_SUMMARY_COLUMNS = (
+    "id",
+    "entry_date",
+    "display_order",
+    "width",
+    "height",
+    "created_at",
+)
+PHOTO_SUMMARY_SELECT = ", ".join(PHOTO_SUMMARY_COLUMNS)
 
 register_heif_opener()
 
@@ -114,10 +127,14 @@ def parse_weight_grams(value: str | None, *, allow_blank: bool) -> int | None:
         kilograms = Decimal(value.strip().replace(",", "."))
     except InvalidOperation as exc:
         raise DomainError("Weight must be a valid number.") from exc
+    if not kilograms.is_finite():
+        raise DomainError("Weight must be a finite number.")
     if kilograms == 0:
         return 0
     if kilograms < 0:
         raise DomainError("Weight cannot be negative.")
+    if kilograms > MAX_WEIGHT_KG:
+        raise DomainError(f"Weight must be at most {MAX_WEIGHT_KG:,} kg.")
     grams = int((kilograms * 1000).quantize(Decimal(1), rounding=ROUND_HALF_UP))
     if grams <= 0:
         raise DomainError("Weight is too small.")
@@ -545,6 +562,8 @@ class MonsterSetsDatabase:
         return self.now_local().date()
 
     def _parse_day(self, value: str) -> date:
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise DomainError("Date must use YYYY-MM-DD.")
         try:
             parsed = date.fromisoformat(value)
         except ValueError as exc:
@@ -554,15 +573,21 @@ class MonsterSetsDatabase:
         return parsed
 
     @staticmethod
-    def _parse_positive_millimetres(value: str | None, label: str) -> int | None:
+    def _parse_positive_millimetres(
+        value: str | None, label: str, maximum_centimetres: Decimal
+    ) -> int | None:
         if value is None or not value.strip():
             return None
         try:
             centimetres = Decimal(value.strip().replace(",", "."))
         except InvalidOperation as exc:
             raise DomainError(f"{label} must be a valid number.") from exc
+        if not centimetres.is_finite():
+            raise DomainError(f"{label} must be a finite number.")
         if centimetres <= 0:
             raise DomainError(f"{label} must be positive.")
+        if centimetres > maximum_centimetres:
+            raise DomainError(f"{label} must be at most {maximum_centimetres:,} cm.")
         millimetres = int((centimetres * 10).quantize(Decimal(1), rounding=ROUND_HALF_UP))
         if millimetres <= 0:
             raise DomainError(f"{label} is too small.")
@@ -597,9 +622,11 @@ class MonsterSetsDatabase:
         }
 
     def update_profile(self, payload) -> dict:
-        height_mm = self._parse_positive_millimetres(payload.heightCm, "Height")
+        height_mm = self._parse_positive_millimetres(payload.heightCm, "Height", MAX_HEIGHT_CM)
         birth_date = None
         if payload.dateOfBirth:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", payload.dateOfBirth):
+                raise DomainError("Date of birth must use YYYY-MM-DD.")
             try:
                 birth_date = date.fromisoformat(payload.dateOfBirth)
             except ValueError as exc:
@@ -640,7 +667,9 @@ class MonsterSetsDatabase:
         weight_grams = parse_weight_grams(payload.weightKg, allow_blank=True)
         if weight_grams == 0:
             raise DomainError("Weight must be positive.")
-        waist_mm = self._parse_positive_millimetres(payload.waistCm, "Waist circumference")
+        waist_mm = self._parse_positive_millimetres(
+            payload.waistCm, "Waist circumference", MAX_WAIST_CM
+        )
         if (weight_grams is None) == (waist_mm is None):
             raise DomainError("Record exactly one measurement.")
         measurement_type = "weight" if weight_grams is not None else "waist"
@@ -668,7 +697,9 @@ class MonsterSetsDatabase:
         weight_grams = parse_weight_grams(payload.weightKg, allow_blank=True)
         if weight_grams == 0:
             raise DomainError("Weight must be positive.")
-        waist_mm = self._parse_positive_millimetres(payload.waistCm, "Waist circumference")
+        waist_mm = self._parse_positive_millimetres(
+            payload.waistCm, "Waist circumference", MAX_WAIST_CM
+        )
         if (weight_grams is None) == (waist_mm is None):
             raise DomainError("Record exactly one measurement.")
         measurement_type = "weight" if weight_grams is not None else "waist"
@@ -811,7 +842,8 @@ class MonsterSetsDatabase:
                 )
             connection.commit()
             rows = connection.execute(
-                "SELECT * FROM daily_photos WHERE entry_date = ? ORDER BY display_order",
+                f"SELECT {PHOTO_SUMMARY_SELECT} FROM daily_photos "
+                "WHERE entry_date = ? ORDER BY display_order",
                 (day_value,),
             ).fetchall()
         return [self._photo_summary(row) for row in rows]
@@ -820,7 +852,8 @@ class MonsterSetsDatabase:
         self._parse_day(day_value)
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM daily_photos WHERE entry_date = ? ORDER BY display_order",
+                f"SELECT {PHOTO_SUMMARY_SELECT} FROM daily_photos "
+                "WHERE entry_date = ? ORDER BY display_order",
                 (day_value,),
             ).fetchall()
         return [self._photo_summary(row) for row in rows]
@@ -828,7 +861,8 @@ class MonsterSetsDatabase:
     def list_photos(self) -> list[dict]:
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM daily_photos ORDER BY entry_date DESC, display_order"
+                f"SELECT {PHOTO_SUMMARY_SELECT} FROM daily_photos "
+                "ORDER BY entry_date DESC, display_order"
             ).fetchall()
         grouped: dict[str, list[dict]] = {}
         for row in rows:
@@ -860,15 +894,25 @@ class MonsterSetsDatabase:
             )
             connection.commit()
 
+    def _resolve_local_occurrence(self, day: date, parsed_time: time) -> datetime:
+        naive = datetime.combine(day, parsed_time)
+        candidates: dict[datetime, datetime] = {}
+        for fold in (0, 1):
+            candidate = naive.replace(tzinfo=self.settings.timezone, fold=fold)
+            round_trip = candidate.astimezone(UTC).astimezone(self.settings.timezone)
+            if round_trip.replace(tzinfo=None) == naive:
+                candidates[candidate.astimezone(UTC)] = candidate
+        if not candidates:
+            raise DomainError("Time does not exist in the configured timezone on this date.")
+        if len(candidates) > 1:
+            raise DomainError("Time is ambiguous in the configured timezone on this date.")
+        return next(iter(candidates.values()))
+
     def _occurrence(self, day_value: str, time_value: str | None) -> str:
         day = self._parse_day(day_value)
         now = self.now_local()
         if time_value is None:
-            local = (
-                now
-                if day == now.date()
-                else datetime.combine(day, now.timetz(), self.settings.timezone)
-            )
+            local = now if day == now.date() else self._resolve_local_occurrence(day, now.time())
         else:
             if not re.fullmatch(r"\d{2}:\d{2}", time_value):
                 raise DomainError("Time must use HH:MM.")
@@ -876,7 +920,7 @@ class MonsterSetsDatabase:
                 parsed_time = time.fromisoformat(time_value)
             except ValueError as exc:
                 raise DomainError("Time must be valid.") from exc
-            local = datetime.combine(day, parsed_time, self.settings.timezone)
+            local = self._resolve_local_occurrence(day, parsed_time)
         if local > now:
             raise DomainError("Exercise sets cannot occur in the future.")
         return local.astimezone(UTC).isoformat(timespec="microseconds")
@@ -929,6 +973,8 @@ class MonsterSetsDatabase:
                 raise DomainError("A repetition exercise cannot contain a duration.")
             if repetitions is None or repetitions <= 0:
                 raise DomainError("Repetitions must be a positive whole number.")
+            if repetitions > MAX_REPETITIONS:
+                raise DomainError(f"Repetitions must be at most {MAX_REPETITIONS:,}.")
             measured_reps, measured_duration, measured_hold = repetitions, None, None
         elif exercise["measurement_type"] == "duration":
             if repetitions is not None or hold_minutes is not None or hold_seconds is not None:
@@ -946,6 +992,8 @@ class MonsterSetsDatabase:
                 raise DomainError("A timed repetition exercise cannot contain a duration.")
             if repetitions is None or repetitions <= 0:
                 raise DomainError("Repetitions must be a positive whole number.")
+            if repetitions > MAX_REPETITIONS:
+                raise DomainError(f"Repetitions must be at most {MAX_REPETITIONS:,}.")
             minutes = hold_minutes or 0
             seconds = hold_seconds or 0
             if minutes < 0 or seconds < 0 or seconds > 59:

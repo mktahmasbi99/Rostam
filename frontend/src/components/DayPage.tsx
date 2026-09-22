@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { formatDay, formatDuration, formatHoldDuration, formatMeasurement, formatResistance } from "../lib/format";
 import type { DayData, Exercise, ExerciseSet } from "../lib/types";
@@ -25,24 +25,31 @@ export function DayPage({ day, today, onOpenCalendar, onPreviousDay, onNextDay }
   const [pendingExercise, setPendingExercise] = useState<Exercise | null>(null);
   const [addingTo, setAddingTo] = useState<number | null>(null);
   const [editingSet, setEditingSet] = useState<ExerciseSet | null>(null);
+  const latestLoad = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
+    const loadId = ++latestLoad.current;
     setLoading(true);
     setError("");
     try {
-      setData(await api.day(day));
+      const next = await api.day(day, signal);
+      if (signal?.aborted || loadId !== latestLoad.current) return;
+      setData(next);
     } catch (caught) {
+      if (signal?.aborted || loadId !== latestLoad.current) return;
       setError(caught instanceof Error ? caught.message : "Could not load this day.");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted && loadId === latestLoad.current) setLoading(false);
     }
   }, [day]);
 
   useEffect(() => {
+    const controller = new AbortController();
     setPendingExercise(null);
     setAddingTo(null);
     setEditingSet(null);
-    void load();
+    void load(controller.signal);
+    return () => controller.abort();
   }, [load]);
 
   async function saved() {
