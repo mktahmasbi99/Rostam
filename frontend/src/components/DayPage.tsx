@@ -1,4 +1,4 @@
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { formatDay, formatDuration, formatMeasurement, formatResistance } from "../lib/format";
@@ -13,9 +13,11 @@ interface Props {
   day: string;
   today: string;
   onOpenCalendar: () => void;
+  onPreviousDay: () => void;
+  onNextDay: () => void;
 }
 
-export function DayPage({ day, today, onOpenCalendar }: Props) {
+export function DayPage({ day, today, onOpenCalendar, onPreviousDay, onNextDay }: Props) {
   const [data, setData] = useState<DayData>({ date: day, sections: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -69,7 +71,9 @@ export function DayPage({ day, today, onOpenCalendar }: Props) {
   return (
     <main className="page day-page">
       <header className="day-header">
-        <div><h1><button className="day-title" aria-label="Choose a day" onClick={onOpenCalendar}>{formatDay(day, today)}</button></h1>{day !== today && <time>{day}</time>}</div>
+        <button className="day-navigation" aria-label="Previous day" title="Previous day" onClick={onPreviousDay}><ChevronLeft /></button>
+        <div><h1><button className="day-title" aria-label="Choose a day" onClick={onOpenCalendar}>{formatDay(day, today)}</button></h1><time>{day}</time></div>
+        <button className="day-navigation" aria-label="Next day" title="Next day" disabled={day >= today} onClick={onNextDay}><ChevronRight /></button>
       </header>
 
       <div className="day-actions">

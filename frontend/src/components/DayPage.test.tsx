@@ -35,7 +35,7 @@ describe("DayPage exercise notes", () => {
       date: "2026-09-17",
       sections: [{ exercise, displayOrder: 1, total: 10, sets: [] }],
     });
-    render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} />);
+    render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
 
     expect(await screen.findByRole("button", { name: "Add exercise note" })).toBeInTheDocument();
   });
@@ -44,7 +44,7 @@ describe("DayPage exercise notes", () => {
     const user = userEvent.setup();
     vi.mocked(api.day).mockResolvedValue({ date: "2026-09-17", sections: [] });
     vi.mocked(api.exercises).mockResolvedValue([exercise]);
-    render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} />);
+    render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
 
     await user.click((await screen.findAllByRole("button", { name: "Add exercise" }))[0]);
     await user.click(await screen.findByRole("button", { name: /Push-ups/ }));

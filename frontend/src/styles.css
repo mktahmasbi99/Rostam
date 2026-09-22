@@ -58,8 +58,9 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .bottom-nav button { background: transparent; border-radius: 12px; color: var(--muted); display: flex; }
 .bottom-nav button.active { color: var(--accent-dark); background: var(--accent-soft); }
 
-.day-header { text-align: center; margin-bottom: 16px; }
+.day-header { display: grid; grid-template-columns: 52px minmax(0, 1fr) 52px; align-items: center; text-align: center; margin-bottom: 16px; }
 .day-header h1 { margin: 0; }
+.day-navigation { width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0; justify-self: center; border-radius: 50%; background: color-mix(in srgb, var(--surface) 76%, transparent); }
 .day-title { display: inline; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; box-shadow: none; font: inherit; cursor: pointer; }
 .day-title:hover:not(:disabled), .day-title:active:not(:disabled) { transform: none; box-shadow: none; }
 .day-actions { display: flex; align-items: center; justify-content: space-between; min-height: 58px; margin: 0 2px 20px; }

@@ -50,6 +50,22 @@ describe("Rostam shell", () => {
     expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
   });
 
+  it("navigates between days from the ledger header without allowing future dates", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByRole("heading", { name: "Today" });
+    expect(screen.getByRole("button", { name: "Next day" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Previous day" }));
+    await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-12"));
+    expect(screen.getByText("2026-09-12")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next day" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Next day" }));
+    await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-13"));
+  });
+
   it("closes the calendar when its backdrop is clicked", async () => {
     const user = userEvent.setup();
     render(<App />);

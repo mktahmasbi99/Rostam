@@ -13,6 +13,12 @@ import type { Config } from "./lib/types";
 
 type Tab = "today" | "notes" | "photos" | "measurements" | "exercises" | "settings";
 
+function shiftDay(day: string, amount: number): string {
+  const value = new Date(`${day}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + amount);
+  return value.toISOString().slice(0, 10);
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>("today");
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -49,7 +55,13 @@ export default function App() {
   return <div className="app-shell">
     <div className="brand"><img className="app-logo brand-logo" src="/rostam-logo.png" alt="" /><strong>Rostam</strong></div>
     <div className="content">
-      {tab === "today" && <DayPage day={selectedDay} today={config.today} onOpenCalendar={() => setCalendarOpen(true)} />}
+      {tab === "today" && <DayPage
+        day={selectedDay}
+        today={config.today}
+        onOpenCalendar={() => setCalendarOpen(true)}
+        onPreviousDay={() => setSelectedDay(shiftDay(selectedDay, -1))}
+        onNextDay={() => setSelectedDay(shiftDay(selectedDay, 1))}
+      />}
       {tab === "notes" && <NotesPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "photos" && <PhotosPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "measurements" && <MeasurementsPage today={config.today} />}
