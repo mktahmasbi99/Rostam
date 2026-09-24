@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
+import tempfile
 import threading
 import unicodedata
 from collections.abc import Iterator
@@ -72,7 +74,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "monster-sets"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 MAX_DAILY_NOTE_LENGTH = 20_000
 MAX_PHOTOS_PER_DAY = 10
 MAX_REPETITIONS = 1_000_000
@@ -154,6 +156,7 @@ class MonsterSetsDatabase:
         self.path = settings.database_path
         self._backup_lock = threading.RLock()
         self._database_lock = threading.RLock()
+        self._backup_notifications: list[dict[str, str]] = []
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.migrate()
 
@@ -231,6 +234,22 @@ class MonsterSetsDatabase:
                 CREATE TABLE IF NOT EXISTS backup_runs (
                     category TEXT PRIMARY KEY,
                     last_scheduled_date TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS backup_settings (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    daily_enabled INTEGER NOT NULL DEFAULT 1 CHECK (daily_enabled IN (0, 1)),
+                    daily_time TEXT NOT NULL DEFAULT '01:00',
+                    daily_retention INTEGER NOT NULL DEFAULT 7 CHECK (daily_retention BETWEEN 1 AND 365),
+                    weekly_enabled INTEGER NOT NULL DEFAULT 1 CHECK (weekly_enabled IN (0, 1)),
+                    weekly_weekday INTEGER NOT NULL DEFAULT 6 CHECK (weekly_weekday BETWEEN 0 AND 6),
+                    weekly_time TEXT NOT NULL DEFAULT '01:00',
+                    weekly_retention INTEGER NOT NULL DEFAULT 8 CHECK (weekly_retention BETWEEN 1 AND 365),
+                    safety_retention INTEGER NOT NULL DEFAULT 8 CHECK (safety_retention BETWEEN 1 AND 365)
+                );
+                CREATE TABLE IF NOT EXISTS system_notifications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    message TEXT NOT NULL,
+                    created_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS backup_metadata (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -542,6 +561,12 @@ class MonsterSetsDatabase:
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (8)")
                 connection.commit()
                 connection.execute("PRAGMA foreign_keys = ON")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 9").fetchone()
+                is None
+            ):
+                connection.execute("INSERT OR IGNORE INTO backup_settings(id) VALUES (1)")
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (9)")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -1234,14 +1259,19 @@ class MonsterSetsDatabase:
     def delete_exercise(self, exercise_id: int, confirmation: str) -> None:
         if confirmation != "DELETE":
             raise DomainError("Type DELETE to permanently delete this exercise.")
-        with self.connect() as connection:
-            self._exercise_row(connection, exercise_id)
-            if connection.execute(
-                "SELECT 1 FROM exercise_sets WHERE exercise_id = ? LIMIT 1", (exercise_id,)
-            ).fetchone():
-                raise DomainError("Exercises with history cannot be deleted; archive it instead.")
-            connection.execute("DELETE FROM exercises WHERE id = ?", (exercise_id,))
-            connection.commit()
+        with self._backup_lock:
+            with self.connect() as connection:
+                self._exercise_row(connection, exercise_id)
+                if connection.execute(
+                    "SELECT 1 FROM exercise_sets WHERE exercise_id = ? LIMIT 1", (exercise_id,)
+                ).fetchone():
+                    raise DomainError(
+                        "Exercises with history cannot be deleted; archive it instead."
+                    )
+            self.create_backup("pre-delete")
+            with self.connect() as connection:
+                connection.execute("DELETE FROM exercises WHERE id = ?", (exercise_id,))
+                connection.commit()
 
     def _set_rows(
         self, connection: sqlite3.Connection, day: str, exercise_id: int
@@ -1485,16 +1515,34 @@ class MonsterSetsDatabase:
             connection.commit()
 
     def create_backup(self, category: str) -> dict:
-        if category not in {"daily", "weekly", "on-demand"}:
+        """Take a consistent online snapshot; never copy a WAL database on disk."""
+        if category not in {
+            "daily",
+            "weekly",
+            "on-demand",
+            "pre-restore",
+            "pre-import",
+            "pre-delete",
+        }:
             raise DomainError("Invalid backup category.")
         with self._backup_lock:
             directory = self.settings.backup_directory
             directory.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+            stamp = self.now_local().strftime("%Y%m%dT%H%M%S%z")
             path = directory / f"{category}-{stamp}.sqlite3"
-            with self.connect() as source:
-                target = sqlite3.connect(path)
+            number = 1
+            while path.exists():
+                path = directory / f"{category}-{stamp}-{number}.sqlite3"
+                number += 1
+            try:
+                # Deliberately fresh connections, not a request/transaction connection.
+                source = sqlite3.connect(self.path, timeout=5)
+                target = sqlite3.connect(path, timeout=5)
                 try:
+                    source.execute("PRAGMA foreign_keys = ON")
+                    source.execute("PRAGMA busy_timeout = 5000")
+                    target.execute("PRAGMA foreign_keys = ON")
+                    target.execute("PRAGMA busy_timeout = 5000")
                     source.backup(target)
                     target.execute(
                         """
@@ -1504,15 +1552,26 @@ class MonsterSetsDatabase:
                             format_version=excluded.format_version,
                             created_at=excluded.created_at, category=excluded.category
                         """,
-                        (BACKUP_APP_ID, BACKUP_FORMAT_VERSION, self._utc_now(), category),
+                        (
+                            BACKUP_APP_ID,
+                            BACKUP_FORMAT_VERSION,
+                            self.now_local().isoformat(),
+                            category,
+                        ),
                     )
                     target.commit()
-                    if target.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                    if target.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                         raise DomainError("Backup integrity check failed.")
                 finally:
                     target.close()
+                    source.close()
+            except Exception:
+                path.unlink(missing_ok=True)
+                raise
             if category in {"daily", "weekly"}:
-                self._prune(category, 5)
+                self._prune(category, self.backup_settings()[f"{category}Retention"])
+            elif category.startswith("pre-"):
+                self._prune_safety()
             return self._backup_info(path)
 
     def _prune(self, category: str, retention: int) -> None:
@@ -1524,14 +1583,34 @@ class MonsterSetsDatabase:
         for path in files[retention:]:
             path.unlink()
 
+    def _prune_safety(self) -> None:
+        paths = sorted(
+            (
+                path
+                for category in ("pre-restore", "pre-import", "pre-delete")
+                for path in self.settings.backup_directory.glob(f"{category}-*.sqlite3")
+            ),
+            key=lambda item: item.stat().st_mtime_ns,
+            reverse=True,
+        )
+        for path in paths[self.backup_settings()["safetyRetention"] :]:
+            path.unlink()
+
     def _backup_info(self, path: Path) -> dict:
         stat = path.stat()
-        category = path.name.split("-20", 1)[0]
+        with sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True) as connection:
+            row = connection.execute(
+                "SELECT category, created_at FROM backup_metadata WHERE id = 1"
+            ).fetchone()
+        category, created_at = (
+            row if row else ("unknown", datetime.fromtimestamp(stat.st_mtime, UTC).isoformat())
+        )
         return {
             "id": path.name,
             "category": category,
-            "createdAt": datetime.fromtimestamp(stat.st_mtime, UTC).isoformat(),
+            "createdAt": created_at,
             "sizeBytes": stat.st_size,
+            "isSafety": category.startswith("pre-"),
         }
 
     def list_backups(self) -> list[dict]:
@@ -1548,8 +1627,9 @@ class MonsterSetsDatabase:
     def backup_path(self, backup_id: str) -> Path:
         if Path(backup_id).name != backup_id:
             raise DomainError("Invalid backup identifier.")
-        path = self.settings.backup_directory / backup_id
-        if not path.is_file():
+        path = (self.settings.backup_directory / backup_id).resolve()
+        directory = self.settings.backup_directory.resolve()
+        if path.parent != directory or not path.is_file():
             raise DomainError("Backup not found.")
         return path
 
@@ -1557,22 +1637,30 @@ class MonsterSetsDatabase:
         with self._backup_lock:
             self.backup_path(backup_id).unlink()
 
-    def _validate_restore_source(self, path: Path) -> None:
+    def _validate_restore_source(self, path: Path, *, marked: bool = True) -> None:
         try:
             source = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
             source.row_factory = sqlite3.Row
             try:
-                if source.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                if source.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                     raise DomainError("Backup integrity check failed.")
                 if source.execute("PRAGMA foreign_key_check").fetchone() is not None:
                     raise DomainError("Backup foreign key check failed.")
-                metadata = source.execute(
-                    "SELECT app_id, format_version FROM backup_metadata WHERE id = 1"
-                ).fetchone()
-                if metadata is None or metadata["app_id"] != BACKUP_APP_ID:
-                    raise DomainError("Backup is not a Rostam database.")
-                if not 1 <= metadata["format_version"] <= BACKUP_FORMAT_VERSION:
-                    raise DomainError("Backup format is not supported.")
+                if marked:
+                    metadata = source.execute(
+                        "SELECT app_id, format_version FROM backup_metadata WHERE id = 1"
+                    ).fetchone()
+                    if metadata is None or metadata["app_id"] != BACKUP_APP_ID:
+                        raise DomainError("Backup is not a Rostam database.")
+                    if metadata["format_version"] != BACKUP_FORMAT_VERSION:
+                        raise DomainError("Backup format is not supported.")
+                elif (
+                    source.execute(
+                        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='exercises'"
+                    ).fetchone()
+                    is None
+                ):
+                    raise DomainError("Import is not a compatible Rostam database.")
                 newest = source.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0]
                 if newest is not None and newest > SCHEMA_VERSION:
                     raise DomainError("Backup schema is newer than this Rostam version.")
@@ -1581,9 +1669,9 @@ class MonsterSetsDatabase:
         except (sqlite3.Error, OSError) as exc:
             raise DomainError("Backup is not a valid SQLite database.") from exc
 
-    def _copy_database(self, source_path: Path) -> None:
+    def _copy_database(self, source_path: Path, destination: Path) -> None:
         source = sqlite3.connect(f"{source_path.resolve().as_uri()}?mode=ro", uri=True)
-        target = sqlite3.connect(self.path, timeout=5)
+        target = sqlite3.connect(destination, timeout=5)
         try:
             source.backup(target)
         finally:
@@ -1611,40 +1699,153 @@ class MonsterSetsDatabase:
             source_path = self.backup_path(backup_id)
             return self.restore_path(source_path, confirmation, source=backup_id)
 
-    def restore_path(self, source_path: Path, confirmation: str, *, source: str) -> dict:
+    def _stage_database(self, source_path: Path) -> Path:
+        with tempfile.NamedTemporaryFile(
+            prefix="rostam-stage-", suffix=".sqlite3", dir=self.path.parent, delete=False
+        ) as temporary:
+            staged = Path(temporary.name)
+        try:
+            self._copy_database(source_path, staged)
+            return staged
+        except (sqlite3.Error, OSError) as exc:
+            staged.unlink(missing_ok=True)
+            raise DomainError("Backup is not a valid SQLite database.") from exc
+
+    def _replacement(
+        self, source_path: Path, confirmation: str, *, source: str, marked: bool, category: str
+    ) -> dict:
         if confirmation != "RESTORE":
             raise DomainError("Type RESTORE to replace the live database.")
         with self._backup_lock, self._database_lock:
-            self._validate_restore_source(source_path)
-            safety_backup = self.create_backup("on-demand")
-            safety_path = self.backup_path(safety_backup["id"])
+            staged = self._stage_database(source_path)
             try:
-                self._copy_database(source_path)
-                self.migrate()
-                self._verify_live_database()
-            except (DomainError, OSError, sqlite3.Error) as exc:
-                try:
-                    self._copy_database(safety_path)
-                    self.migrate()
-                    self._verify_live_database()
-                except (DomainError, OSError, sqlite3.Error) as rollback_error:
-                    raise DomainError(
-                        "Restore failed and the automatic rollback also failed. Stop the server immediately."
-                    ) from rollback_error
-                raise DomainError("Restore failed; the live database was rolled back.") from exc
+                self._validate_restore_source(staged, marked=marked)
+                current_settings = self.backup_settings()
+                staged_db = MonsterSetsDatabase(
+                    Settings(staged, self.settings.timezone_name, self.settings.timezone)
+                )
+                staged_db._verify_live_database()
+                self._validate_restore_source(staged)
+                safety_backup = self.create_backup(category)
+                # Keep policy owned by the live server, never by historical data.
+                staged_db.update_backup_settings(current_settings)
+                os.replace(staged, self.path)
+                for suffix in ("-wal", "-shm"):
+                    Path(f"{self.path}{suffix}").unlink(missing_ok=True)
+            finally:
+                staged.unlink(missing_ok=True)
             return {"source": source, "safetyBackup": safety_backup}
 
+    def restore_path(self, source_path: Path, confirmation: str, *, source: str) -> dict:
+        return self._replacement(
+            source_path, confirmation, source=source, marked=True, category="pre-restore"
+        )
+
+    def import_path(self, source_path: Path, confirmation: str, *, source: str) -> dict:
+        if confirmation != "IMPORT":
+            raise DomainError("Type IMPORT to replace the live database.")
+        return self._replacement(
+            source_path, "RESTORE", source=source, marked=False, category="pre-import"
+        )
+
+    def backup_settings(self) -> dict:
+        with self.connect() as connection:
+            row = connection.execute("SELECT * FROM backup_settings WHERE id = 1").fetchone()
+        return {
+            "dailyEnabled": bool(row["daily_enabled"]),
+            "dailyTime": row["daily_time"],
+            "dailyRetention": row["daily_retention"],
+            "weeklyEnabled": bool(row["weekly_enabled"]),
+            "weeklyWeekday": row["weekly_weekday"],
+            "weeklyTime": row["weekly_time"],
+            "weeklyRetention": row["weekly_retention"],
+            "safetyRetention": row["safety_retention"],
+        }
+
+    def record_backup_failure(self, message: str) -> None:
+        notification = {"message": message, "createdAt": self.now_local().isoformat()}
+        try:
+            with self.connect() as connection:
+                connection.execute(
+                    "INSERT INTO system_notifications(message, created_at) VALUES (?, ?)",
+                    (notification["message"], notification["createdAt"]),
+                )
+                connection.commit()
+        except (sqlite3.Error, OSError):
+            self._backup_notifications.append(notification)
+
+    def backup_notifications(self) -> list[dict[str, str]]:
+        try:
+            with self.connect() as connection:
+                saved = [
+                    {"message": row["message"], "createdAt": row["created_at"]}
+                    for row in connection.execute(
+                        "SELECT message, created_at FROM system_notifications ORDER BY id DESC LIMIT 20"
+                    )
+                ]
+            return self._backup_notifications + saved
+        except (sqlite3.Error, OSError):
+            return self._backup_notifications.copy()
+
+    def update_backup_settings(self, payload: dict) -> dict:
+        required = set(self.backup_settings())
+        if (
+            set(payload) != required
+            or any(
+                not isinstance(payload[key], int) or not 1 <= payload[key] <= 365
+                for key in ("dailyRetention", "weeklyRetention", "safetyRetention")
+            )
+            or not isinstance(payload["dailyEnabled"], bool)
+            or not isinstance(payload["weeklyEnabled"], bool)
+            or not isinstance(payload["weeklyWeekday"], int)
+            or not 0 <= payload["weeklyWeekday"] <= 6
+            or any(
+                not isinstance(payload[key], str)
+                or not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d", payload[key])
+                for key in ("dailyTime", "weeklyTime")
+            )
+        ):
+            raise DomainError("Invalid backup schedule settings.")
+        with self.connect() as connection:
+            connection.execute(
+                "UPDATE backup_settings SET daily_enabled=?, daily_time=?, daily_retention=?, weekly_enabled=?, weekly_weekday=?, weekly_time=?, weekly_retention=?, safety_retention=? WHERE id=1",
+                (
+                    payload["dailyEnabled"],
+                    payload["dailyTime"],
+                    payload["dailyRetention"],
+                    payload["weeklyEnabled"],
+                    payload["weeklyWeekday"],
+                    payload["weeklyTime"],
+                    payload["weeklyRetention"],
+                    payload["safetyRetention"],
+                ),
+            )
+            connection.commit()
+        self._prune("daily", payload["dailyRetention"])
+        self._prune("weekly", payload["weeklyRetention"])
+        self._prune_safety()
+        return self.backup_settings()
+
     def run_scheduled_backups(self) -> None:
-        today = self.today()
-        daily_date = today - timedelta(days=1)
-        sunday_offset = (today.weekday() + 1) % 7
-        weekly_date = today - timedelta(days=sunday_offset)
+        now = self.now_local()
+        config = self.backup_settings()
+        today = now.date()
         with self.connect() as connection:
             runs = {
                 row["category"]: row["last_scheduled_date"]
                 for row in connection.execute("SELECT * FROM backup_runs")
             }
-        for category, logical_date in (("daily", daily_date), ("weekly", weekly_date)):
+        schedules = (
+            ("daily", config["dailyEnabled"], today, config["dailyTime"]),
+            ("weekly", config["weeklyEnabled"], today, config["weeklyTime"]),
+        )
+        for category, enabled, logical_date, scheduled_time in schedules:
+            if (
+                not enabled
+                or now.strftime("%H:%M") < scheduled_time
+                or (category == "weekly" and today.weekday() != config["weeklyWeekday"])
+            ):
+                continue
             if runs.get(category) == logical_date.isoformat():
                 continue
             self.create_backup(category)

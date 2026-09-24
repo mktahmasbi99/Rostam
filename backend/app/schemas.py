@@ -75,6 +75,23 @@ class RestoreConfirmation(BaseModel):
     confirmation: str
 
 
+class ImportConfirmation(BaseModel):
+    confirmation: str
+
+
+class BackupSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dailyEnabled: bool
+    dailyTime: str
+    dailyRetention: int
+    weeklyEnabled: bool
+    weeklyWeekday: int
+    weeklyTime: str
+    weeklyRetention: int
+    safetyRetention: int
+
+
 class SetWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

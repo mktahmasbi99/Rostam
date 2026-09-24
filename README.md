@@ -17,7 +17,7 @@ Rostam is named after the legendary hero of Ferdowsi’s *Shahnameh* (*Book of K
 - Keeps private day-level notes and compressed JPEG photos (up to 10 per date) inside SQLite, so downloads and restores include them without affecting exercise calculations. Camera originals may be up to 50 MiB; processed stored photos are capped at 5 MiB each.
 - Keeps measurement type, equipment, and bodyweight eligibility immutable; supports archive/restore for used exercises; and requires typing `DELETE` before permanently removing an unused exercise.
 - Shows a neutral calendar dot for any day containing at least one set.
-- Creates daily and weekly rotating backups (five of each), plus on-demand backups that persist until manually deleted.
+- Creates WAL-safe SQLite snapshots in `/data/backups`: daily (7 retained), weekly (8 retained), safety snapshots (8 shared across restore/import/delete), and on-demand backups that persist until manually deleted.
 - Installs as a connected-only PWA from the Settings page, with browser-specific guidance when a native install prompt is unavailable.
 
 There are deliberately no goals, reminders, streaks, date- or set-associated notes, perceived-effort fields, workout timers, or offline write queue in V1.
@@ -87,7 +87,9 @@ Keep the service private behind Tailscale or another trusted network boundary; R
 
 ### Restore
 
-Settings can restore a server-held backup or an uploaded `.sqlite3` backup. Rostam validates the SQLite integrity, foreign keys, backup identifier, format, and schema before changing live data. Every restore requires typing `RESTORE` and first creates an on-demand safety backup of the current ledger. Uploaded files are temporary and are deleted after the operation.
+Settings can restore a server-held backup or an uploaded `.sqlite3` backup. Rostam validates SQLite integrity, foreign keys, identifier, format, and schema in a staged file before changing live data. Every restore requires typing `RESTORE`, then creates a `pre-restore` safety snapshot before an atomic replacement. Uploaded restore/import files are limited to 100 MiB and are temporary.
+
+Legacy database import is intentionally separate from restore and is an Advanced operation requiring `IMPORT`; it accepts only compatible older Rostam database shapes. Do not manually copy a live `rostam.sqlite3` while WAL is active: use the in-app backup download, which uses SQLite's online backup API. A downloaded backup is a full database snapshot, but does not include files outside SQLite or server configuration other than the backup policy retained during restore.
 
 If the app cannot start or an in-app restore is unavailable, stop the container, make a safety copy of `deploy/data`, replace `rostam.sqlite3` with the chosen downloaded backup, then start the container again. Do not replace a live SQLite database while the service is running.
 

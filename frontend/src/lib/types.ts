@@ -102,10 +102,13 @@ export interface ExerciseUpdatePayload {
 
 export interface Backup {
   id: string;
-  category: "daily" | "weekly" | "on-demand";
+  category: "daily" | "weekly" | "on-demand" | "pre-restore" | "pre-import" | "pre-delete";
   createdAt: string;
   sizeBytes: number;
+  isSafety?: boolean;
 }
+
+export interface BackupSettings { dailyEnabled: boolean; dailyTime: string; dailyRetention: number; weeklyEnabled: boolean; weeklyWeekday: number; weeklyTime: string; weeklyRetention: number; safetyRetention: number; }
 
 export interface RestoreResult {
   source: string;

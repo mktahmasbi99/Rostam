@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from .config import load_settings
 from .database import DomainError, MonsterSetsDatabase
 from .schemas import (
+    BackupSettingsUpdate,
     BodyMeasurementWrite,
     DailyNoteUpdate,
     DeleteConfirmation,
@@ -33,11 +34,11 @@ async def backup_scheduler() -> None:
     while True:
         try:
             await asyncio.to_thread(database.run_scheduled_backups)
-        except (DomainError, OSError, sqlite3.Error):
+        except (DomainError, OSError, sqlite3.Error) as exc:
             # A failed scheduled backup must not terminate the web application.
             # The next scheduler pass will retry because the logical run date is
             # recorded only after a successful backup.
-            pass
+            database.record_backup_failure(f"Scheduled backup failed: {exc}")
         await asyncio.sleep(60)
 
 
@@ -263,12 +264,55 @@ async def restore_uploaded_backup(
         delete=False,
     ) as temporary:
         path = Path(temporary.name)
+        size = 0
         while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > 100 * 1024 * 1024:
+                raise DomainError("Backup uploads are limited to 100 MiB.")
             temporary.write(chunk)
     try:
         if path.stat().st_size == 0:
             raise DomainError("Choose a SQLite backup file to restore.")
         return database.restore_path(path, confirmation, source=file.filename or "uploaded backup")
+    finally:
+        await file.close()
+        path.unlink(missing_ok=True)
+
+
+@app.get("/api/backups/settings")
+def get_backup_settings() -> dict:
+    return database.backup_settings()
+
+
+@app.put("/api/backups/settings")
+def update_backup_settings(payload: BackupSettingsUpdate) -> dict:
+    return database.update_backup_settings(payload.model_dump())
+
+
+@app.get("/api/backups/notifications")
+def get_backup_notifications() -> list[dict[str, str]]:
+    return database.backup_notifications()
+
+
+@app.post("/api/backups/import-legacy")
+async def import_legacy_database(
+    confirmation: str = Form(),
+    file: UploadFile = File(),  # noqa: B008
+) -> dict:
+    with tempfile.NamedTemporaryFile(
+        prefix="legacy-import-", suffix=".sqlite3", dir=database.path.parent, delete=False
+    ) as temporary:
+        path = Path(temporary.name)
+        size = 0
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > 100 * 1024 * 1024:
+                raise DomainError("Import uploads are limited to 100 MiB.")
+            temporary.write(chunk)
+    try:
+        if path.stat().st_size == 0:
+            raise DomainError("Choose a legacy SQLite file to import.")
+        return database.import_path(path, confirmation, source=file.filename or "legacy database")
     finally:
         await file.close()
         path.unlink(missing_ok=True)

@@ -1,4 +1,4 @@
-import type { Backup, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, SetPayload } from "./types";
+import type { Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, SetPayload } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -69,6 +69,8 @@ export const api = {
   deleteSet: (id: number) => request<void>(`/api/sets/${id}`, json("DELETE")),
   backups: () => request<Backup[]>("/api/backups"),
   createBackup: () => request<Backup>("/api/backups/on-demand", json("POST")),
+  backupSettings: () => request<BackupSettings>("/api/backups/settings"),
+  updateBackupSettings: (payload: BackupSettings) => request<BackupSettings>("/api/backups/settings", json("PUT", payload)),
   deleteBackup: (id: string) =>
     request<void>(`/api/backups/${encodeURIComponent(id)}`, json("DELETE")),
   restoreBackup: (id: string, confirmation: string) =>
@@ -78,5 +80,11 @@ export const api = {
     form.append("confirmation", confirmation);
     form.append("file", file);
     return request<RestoreResult>("/api/backups/restore-upload", { method: "POST", body: form });
+  },
+  importLegacy: (file: File, confirmation: string) => {
+    const form = new FormData();
+    form.append("confirmation", confirmation);
+    form.append("file", file);
+    return request<RestoreResult>("/api/backups/import-legacy", { method: "POST", body: form });
   },
 };

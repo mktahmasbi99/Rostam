@@ -572,7 +572,7 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 9))
+        ] == list(range(1, 10))
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM exercises WHERE exercise_note IS NOT NULL"
@@ -608,7 +608,7 @@ def test_schema_v2_migration_adds_notes_without_changing_history(database):
     with migrated.connect() as connection:
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 9))
+        ] == list(range(1, 10))
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
@@ -619,8 +619,8 @@ def test_backup_retention_is_per_category_and_on_demand_is_unlimited(database):
         database.create_backup("weekly")
         database.create_backup("on-demand")
     backups = database.list_backups()
-    assert sum(item["category"] == "daily" for item in backups) == 5
-    assert sum(item["category"] == "weekly" for item in backups) == 5
+    assert sum(item["category"] == "daily" for item in backups) == 7
+    assert sum(item["category"] == "weekly" for item in backups) == 7
     assert sum(item["category"] == "on-demand" for item in backups) == 7
 
 
@@ -663,24 +663,18 @@ def test_restore_rejects_invalid_source_without_creating_a_safety_backup(databas
     assert database.list_backups() == before
 
 
-def test_restore_rolls_back_when_post_restore_validation_fails(database, monkeypatch):
+def test_restore_validates_staged_database_before_atomic_replacement(database, monkeypatch):
     today = database.today().isoformat()
     pushups = next(item for item in database.list_exercises("active", "Push", None))
     database.add_set(pushups["id"], today, set_payload(repetitions=10))
     source = database.create_backup("on-demand")
     database.add_set(pushups["id"], today, set_payload(time="09:12", repetitions=20))
-    verify = database._verify_live_database
-    calls = 0
 
-    def fail_once():
-        nonlocal calls
-        calls += 1
-        if calls == 1:
-            raise DomainError("simulated verification failure")
-        verify()
+    def fail_staged(_):
+        raise DomainError("simulated staged validation failure")
 
-    monkeypatch.setattr(database, "_verify_live_database", fail_once)
-    with pytest.raises(DomainError, match="rolled back"):
+    monkeypatch.setattr(MonsterSetsDatabase, "_verify_live_database", fail_staged)
+    with pytest.raises(DomainError, match="staged validation"):
         database.restore_backup(source["id"], "RESTORE")
 
     assert database.day(today)["sections"][0]["total"] == 30
@@ -690,7 +684,7 @@ def test_restore_rolls_back_when_post_restore_validation_fails(database, monkeyp
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (9)", "schema is newer"),
+        ("INSERT INTO schema_migrations(version) VALUES (10)", "schema is newer"),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(
@@ -734,3 +728,24 @@ def test_restore_schema_v7_backup_migrates_side_plank_history(database):
         (4, 0, 10),
         (4, 0, 10),
     ]
+
+
+def test_restore_keeps_current_backup_policy_and_import_creates_safety_copy(database):
+    source = database.create_backup("on-demand")
+    policy = database.backup_settings()
+    policy["dailyRetention"] = 13
+    database.update_backup_settings(policy)
+
+    database.restore_backup(source["id"], "RESTORE")
+    assert database.backup_settings()["dailyRetention"] == 13
+
+    legacy = database.path.parent / "legacy.sqlite3"
+    database._copy_database(database.path, legacy)
+    with sqlite3.connect(legacy) as connection:
+        connection.execute("DROP TABLE backup_metadata")
+        connection.commit()
+    result = database.import_path(legacy, "IMPORT", source="legacy.sqlite3")
+    assert result["safetyBackup"]["category"] == "pre-import"
+    with database.connect() as connection:
+        assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        assert connection.execute("PRAGMA foreign_key_check").fetchone() is None

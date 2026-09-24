@@ -107,7 +107,7 @@ def test_restore_backup_endpoint(database, monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.json()["safetyBackup"]["category"] == "on-demand"
+    assert response.json()["safetyBackup"]["category"] == "pre-restore"
 
 
 def test_restore_upload_endpoint_removes_temporary_file(database, monkeypatch):
