@@ -50,6 +50,17 @@ describe("Rostam shell", () => {
     expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
   });
 
+  it("returns to Today when the header logo is clicked", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Exercises" }));
+    expect(await screen.findByRole("heading", { name: "Exercises" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Go to Today" }));
+    expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
+  });
+
   it("navigates between days from the ledger header without allowing future dates", async () => {
     const user = userEvent.setup();
     render(<App />);

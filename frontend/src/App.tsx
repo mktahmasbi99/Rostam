@@ -52,8 +52,14 @@ export default function App() {
 
   if (!config) return <div className="startup"><img className="app-logo startup-logo" src="/rostam-logo.png" alt="" /><h1>Rostam</h1>{error ? <><p className="error">{error}</p><button onClick={() => void loadConfig()}>Retry</button></> : <p>Loading your ledger…</p>}</div>;
 
+  const goToToday = () => {
+    setSelectedDay(config.today);
+    setTab("today");
+    setCalendarOpen(false);
+  };
+
   return <div className="app-shell">
-    <div className="brand"><img className="app-logo brand-logo" src="/rostam-logo.png" alt="" /><strong>Rostam</strong></div>
+    <div className="brand"><button className="brand-home" aria-label="Go to Today" title="Go to Today" onClick={goToToday}><img className="app-logo brand-logo" src="/rostam-logo.png" alt="" /></button><strong>Rostam</strong></div>
     <div className="content">
       {tab === "today" && <DayPage
         day={selectedDay}
@@ -70,7 +76,7 @@ export default function App() {
     </div>
     {calendarOpen && <CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} />}
     <nav className="bottom-nav" aria-label="Primary navigation">
-      <button aria-label="Today" title="Today" className={tab === "today" ? "active" : ""} onClick={() => { setSelectedDay(config.today); setTab("today"); setCalendarOpen(false); }}><ListChecks /></button>
+      <button aria-label="Today" title="Today" className={tab === "today" ? "active" : ""} onClick={goToToday}><ListChecks /></button>
       <button aria-label="Exercises" title="Exercises" className={tab === "exercises" ? "active" : ""} onClick={() => { setTab("exercises"); setCalendarOpen(false); }}><Dumbbell /></button>
       <button aria-label="Notes" title="Notes" className={tab === "notes" ? "active" : ""} onClick={() => { setTab("notes"); setCalendarOpen(false); }}><NotebookPen /></button>
       <button aria-label="Photos" title="Photos" className={tab === "photos" ? "active" : ""} onClick={() => { setTab("photos"); setCalendarOpen(false); }}><Images /></button>

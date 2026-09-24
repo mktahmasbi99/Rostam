@@ -40,6 +40,8 @@ h1, h2, h3 { color: var(--heading); }
 .app-shell { min-height: 100vh; padding-bottom: calc(82px + env(safe-area-inset-bottom)); }
 .content { width: min(100%, 900px); margin: 0 auto; }
 .brand { display: none; }
+.brand-home { min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; box-shadow: none; }
+.brand-home:hover:not(:disabled), .brand-home:active:not(:disabled) { transform: none; box-shadow: none; }
 .page { padding: 24px 18px 40px; }
 .section-title h1, .day-header h1 { font-size: clamp(2rem, 8vw, 3.4rem); letter-spacing: -.055em; margin-bottom: 4px; }
 .section-title p, .day-header time { color: var(--muted); }
