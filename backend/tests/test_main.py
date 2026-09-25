@@ -82,6 +82,30 @@ def test_set_api_rejects_client_supplied_equipment(database, monkeypatch):
     assert response.status_code == 422
 
 
+def test_exercise_history_endpoint_returns_grouped_sessions(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    exercise = next(item for item in database.list_exercises("active", "Push", None))
+    payload = {
+        "time": "08:00",
+        "repetitions": 10,
+        "durationMinutes": None,
+        "durationSeconds": None,
+        "holdMinutes": None,
+        "holdSeconds": None,
+        "resistanceKind": "bodyweight",
+        "weightKg": None,
+    }
+    database.add_set(exercise["id"], "2026-09-01", type("Payload", (), payload)())
+    database.add_set(exercise["id"], "2026-09-10", type("Payload", (), payload)())
+
+    response = TestClient(main.app).get(
+        f"/api/exercises/{exercise['id']}/history?beforeDate=2026-09-10&limit=10"
+    )
+
+    assert response.status_code == 200
+    assert [session["date"] for session in response.json()["sessions"]] == ["2026-09-01"]
+
+
 def test_exercise_note_api_preserves_plaintext_and_clears_whitespace(database, monkeypatch):
     monkeypatch.setattr(main, "database", database)
     exercise = next(item for item in database.list_exercises("active", "Push", None))

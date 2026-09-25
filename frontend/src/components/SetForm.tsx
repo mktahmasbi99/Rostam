@@ -24,21 +24,59 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
   const [loading, setLoading] = useState(!existing);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const measurementEdited = useRef(false);
+  const measurementEdited = useRef({ repetitions: false, minutes: false, seconds: false, holdMinutes: false, holdSeconds: false });
   const resistanceEdited = useRef(false);
+  const firstMeasurementInput = useRef<HTMLInputElement>(null);
+  const [suggested, setSuggested] = useState({ repetitions: false, minutes: false, seconds: false, holdMinutes: false, holdSeconds: false, weight: false });
+
+  useEffect(() => {
+    const firstMeasurementSuggested = exercise.measurementType === "duration" ? suggested.minutes : suggested.repetitions;
+    if (!existing && !loading && firstMeasurementInput.current && firstMeasurementSuggested) {
+      firstMeasurementInput.current.select();
+    }
+  }, [existing, exercise.measurementType, loading, suggested.minutes, suggested.repetitions]);
 
   function applyPrefill(prefill: Awaited<ReturnType<typeof api.prefill>>) {
-    if (!measurementEdited.current) {
+    if (!measurementEdited.current.repetitions) {
       setRepetitions(prefill.repetitions?.toString() ?? "");
+      setSuggested((current) => ({ ...current, repetitions: prefill.source === "previous" && prefill.repetitions !== null }));
+    }
+    if (!measurementEdited.current.minutes) {
       setMinutes(prefill.durationMinutes?.toString() ?? "");
+      setSuggested((current) => ({ ...current, minutes: prefill.source === "previous" && prefill.durationMinutes !== null }));
+    }
+    if (!measurementEdited.current.seconds) {
       setSeconds(prefill.durationSeconds?.toString() ?? "");
+      setSuggested((current) => ({ ...current, seconds: prefill.source === "previous" && prefill.durationSeconds !== null }));
+    }
+    if (!measurementEdited.current.holdMinutes) {
       setHoldMinutes(prefill.holdMinutes?.toString() ?? "");
+      setSuggested((current) => ({ ...current, holdMinutes: prefill.source === "previous" && prefill.holdMinutes !== null }));
+    }
+    if (!measurementEdited.current.holdSeconds) {
       setHoldSeconds(prefill.holdSeconds?.toString() ?? "");
+      setSuggested((current) => ({ ...current, holdSeconds: prefill.source === "previous" && prefill.holdSeconds !== null }));
     }
     if (!resistanceEdited.current) {
       setResistance(prefill.resistanceKind);
       setWeight(prefill.weightKg ?? "");
+      setSuggested((current) => ({ ...current, weight: prefill.source === "previous" && prefill.weightKg !== null }));
     }
+    if (prefill.source === "previous" && document.activeElement instanceof HTMLInputElement && document.activeElement.type === "number") {
+      document.activeElement.select();
+    }
+  }
+
+  function editMeasurement(field: keyof typeof measurementEdited.current, value: string, update: (value: string) => void) {
+    measurementEdited.current[field] = true;
+    setSuggested((current) => ({ ...current, [field]: false }));
+    update(value);
+  }
+
+  function editWeight(value: string) {
+    resistanceEdited.current = true;
+    setSuggested((current) => ({ ...current, weight: false }));
+    setWeight(value);
   }
 
   async function refreshPrefill(atTime: string) {
@@ -105,9 +143,9 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
           <div className="segmented compact"><button type="button" className={resistance === "bodyweight" ? "selected" : ""} onClick={() => { resistanceEdited.current = true; setResistance("bodyweight"); }}>BW</button><button type="button" className={resistance === "external" ? "selected" : ""} onClick={() => { resistanceEdited.current = true; setResistance("external"); }}>kg</button></div>
         </fieldset>}
         {resistance === "external" && <>
-          <label>kg<input inputMode="decimal" value={weight} onChange={(event) => { resistanceEdited.current = true; setWeight(event.target.value); }} placeholder="0 = BW" required /></label>
+          <label>kg<input className={suggested.weight ? "suggested-value" : ""} inputMode="decimal" value={weight} onFocus={(event) => suggested.weight && event.currentTarget.select()} onClick={(event) => suggested.weight && event.currentTarget.select()} onKeyDown={(event) => suggested.weight && event.currentTarget.select()} onChange={(event) => editWeight(event.target.value)} placeholder="0 = BW" required /></label>
         </>}
-        {exercise.measurementType === "duration" ? <div className="duration-fields"><label>Minutes<input type="number" min="0" step="1" inputMode="numeric" value={minutes} onChange={(event) => { measurementEdited.current = true; setMinutes(event.target.value); }} autoFocus /></label><label>Seconds<input type="number" min="0" max="59" step="1" inputMode="numeric" value={seconds} onChange={(event) => { measurementEdited.current = true; setSeconds(event.target.value); }} /></label></div> : exercise.measurementType === "timed_repetitions" ? <><label>Reps<input type="number" min="1" step="1" inputMode="numeric" value={repetitions} onChange={(event) => { measurementEdited.current = true; setRepetitions(event.target.value); }} required autoFocus /></label><div className="duration-fields"><label>Hold minutes<input type="number" min="0" step="1" inputMode="numeric" value={holdMinutes} onChange={(event) => { measurementEdited.current = true; setHoldMinutes(event.target.value); }} /></label><label>Hold seconds<input type="number" min="0" max="59" step="1" inputMode="numeric" value={holdSeconds} onChange={(event) => { measurementEdited.current = true; setHoldSeconds(event.target.value); }} /></label></div></> : <label>Reps<input type="number" min="1" step="1" inputMode="numeric" value={repetitions} onChange={(event) => { measurementEdited.current = true; setRepetitions(event.target.value); }} required autoFocus /></label>}
+        {exercise.measurementType === "duration" ? <div className="duration-fields"><label>Minutes<input ref={firstMeasurementInput} className={suggested.minutes ? "suggested-value" : ""} type="number" min="0" step="1" inputMode="numeric" value={minutes} onFocus={(event) => suggested.minutes && event.currentTarget.select()} onClick={(event) => suggested.minutes && event.currentTarget.select()} onKeyDown={(event) => suggested.minutes && event.currentTarget.select()} onChange={(event) => editMeasurement("minutes", event.target.value, setMinutes)} autoFocus /></label><label>Seconds<input className={suggested.seconds ? "suggested-value" : ""} type="number" min="0" max="59" step="1" inputMode="numeric" value={seconds} onFocus={(event) => suggested.seconds && event.currentTarget.select()} onClick={(event) => suggested.seconds && event.currentTarget.select()} onKeyDown={(event) => suggested.seconds && event.currentTarget.select()} onChange={(event) => editMeasurement("seconds", event.target.value, setSeconds)} /></label></div> : exercise.measurementType === "timed_repetitions" ? <><label>Reps<input ref={firstMeasurementInput} className={suggested.repetitions ? "suggested-value" : ""} type="number" min="1" step="1" inputMode="numeric" value={repetitions} onFocus={(event) => suggested.repetitions && event.currentTarget.select()} onClick={(event) => suggested.repetitions && event.currentTarget.select()} onKeyDown={(event) => suggested.repetitions && event.currentTarget.select()} onChange={(event) => editMeasurement("repetitions", event.target.value, setRepetitions)} required autoFocus /></label><div className="duration-fields"><label>Hold minutes<input className={suggested.holdMinutes ? "suggested-value" : ""} type="number" min="0" step="1" inputMode="numeric" value={holdMinutes} onFocus={(event) => suggested.holdMinutes && event.currentTarget.select()} onClick={(event) => suggested.holdMinutes && event.currentTarget.select()} onKeyDown={(event) => suggested.holdMinutes && event.currentTarget.select()} onChange={(event) => editMeasurement("holdMinutes", event.target.value, setHoldMinutes)} /></label><label>Hold seconds<input className={suggested.holdSeconds ? "suggested-value" : ""} type="number" min="0" max="59" step="1" inputMode="numeric" value={holdSeconds} onFocus={(event) => suggested.holdSeconds && event.currentTarget.select()} onClick={(event) => suggested.holdSeconds && event.currentTarget.select()} onKeyDown={(event) => suggested.holdSeconds && event.currentTarget.select()} onChange={(event) => editMeasurement("holdSeconds", event.target.value, setHoldSeconds)} /></label></div></> : <label>Reps<input ref={firstMeasurementInput} className={suggested.repetitions ? "suggested-value" : ""} type="number" min="1" step="1" inputMode="numeric" value={repetitions} onFocus={(event) => suggested.repetitions && event.currentTarget.select()} onClick={(event) => suggested.repetitions && event.currentTarget.select()} onKeyDown={(event) => suggested.repetitions && event.currentTarget.select()} onChange={(event) => editMeasurement("repetitions", event.target.value, setRepetitions)} required autoFocus /></label>}
       </div>
       {error && <div className="save-error" role="alert"><span>{error} Your values remain unsaved on this page.</span><button type="button" onClick={() => void save()}><RotateCcw />Retry</button></div>}
       <div className="draft-actions"><button type="button" className="icon-button" aria-label="Cancel set" onClick={onCancel}><X /></button><button type="submit" className="save-set" aria-label="Save set" disabled={saving}><Check />{saving ? "Saving" : "Save"}</button></div>

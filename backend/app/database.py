@@ -1670,6 +1670,45 @@ class MonsterSetsDatabase:
             ).fetchall()
         return {"month": month, "activeDates": [row["entry_date"] for row in rows]}
 
+    def exercise_history(self, exercise_id: int, before_date: str | None, limit: int) -> dict:
+        if not 1 <= limit <= 50:
+            raise DomainError("History limit must be between 1 and 50.")
+        if before_date is not None:
+            before = self._parse_day(before_date)
+        else:
+            before = None
+        with self.connect() as connection:
+            exercise = self._exercise_row(connection, exercise_id)
+            params: list[object] = [exercise_id]
+            cutoff = ""
+            if before is not None:
+                cutoff = " AND entry_date < ?"
+                params.append(before.isoformat())
+            dates = connection.execute(
+                f"""
+                SELECT DISTINCT entry_date FROM exercise_sets
+                WHERE exercise_id = ?{cutoff}
+                ORDER BY entry_date DESC LIMIT ?
+                """,
+                (*params, limit + 1),
+            ).fetchall()
+            has_more = len(dates) > limit
+            dates = dates[:limit]
+            sessions = []
+            for date_row in dates:
+                session_date = date_row["entry_date"]
+                rows = self._set_rows(connection, session_date, exercise_id)
+                sets = [self._serialize_set(row) for row in rows]
+                total = sum(
+                    (item["repetitions"] or 0)
+                    if exercise["measurement_type"] in {"repetitions", "timed_repetitions"}
+                    else (item["durationMinutes"] or 0) * 60 + (item["durationSeconds"] or 0)
+                    for item in sets
+                )
+                sessions.append({"date": session_date, "total": total, "sets": sets})
+        next_before = sessions[-1]["date"] if has_more else None
+        return {"sessions": sessions, "nextBeforeDate": next_before}
+
     def prefill(self, exercise_id: int, day_value: str, time_value: str | None) -> dict:
         before = self._occurrence(day_value, time_value)
         with self.connect() as connection:

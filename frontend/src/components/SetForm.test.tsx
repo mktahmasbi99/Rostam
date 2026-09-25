@@ -85,6 +85,33 @@ describe("SetForm", () => {
     expect(screen.getByDisplayValue("40")).toBeInTheDocument();
   });
 
+  it("shows previous numeric values as suggestions and replaces them on typing", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.config).mockResolvedValue({ today: "2026-09-16", timezone: "Europe/Warsaw", version: "1" });
+    vi.mocked(api.prefill).mockResolvedValue({
+      source: "previous",
+      time: null,
+      repetitions: 12,
+      durationMinutes: null,
+      durationSeconds: null,
+      holdMinutes: null,
+      holdSeconds: null,
+      resistanceKind: "external",
+      weightKg: "40",
+    });
+    render(<SetForm exercise={exercise} day="2026-09-16" onSaved={vi.fn()} onCancel={vi.fn()} />);
+
+    const reps = await screen.findByLabelText("Reps");
+    expect(reps).toHaveClass("suggested-value");
+    await user.click(reps);
+    await user.keyboard("15");
+    expect(reps).toHaveValue(15);
+    expect(reps).not.toHaveClass("suggested-value");
+
+    const weight = screen.getByLabelText("kg");
+    expect(weight).toHaveClass("suggested-value");
+  });
+
   it("edits timed repetitions with a per-repetition hold", () => {
     render(<SetForm
       exercise={{ ...exercise, measurementType: "timed_repetitions", equipment: null }}

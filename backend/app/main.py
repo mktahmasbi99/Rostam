@@ -124,6 +124,15 @@ def get_calendar(month: str) -> dict:
     return database.calendar(month)
 
 
+@app.get("/api/exercises/{exercise_id}/history")
+def get_exercise_history(
+    exercise_id: int,
+    before_date: Annotated[str | None, Query(alias="beforeDate")] = None,
+    limit: int = 10,
+) -> dict:
+    return database.exercise_history(exercise_id, before_date, limit)
+
+
 @app.get("/api/exercises")
 def list_exercises(
     status: str = "active",

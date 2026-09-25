@@ -90,6 +90,17 @@ export interface DaySection {
   sets: ExerciseSet[];
 }
 
+export interface ExerciseHistorySession {
+  date: string;
+  total: number;
+  sets: ExerciseSet[];
+}
+
+export interface ExerciseHistoryPage {
+  sessions: ExerciseHistorySession[];
+  nextBeforeDate: string | null;
+}
+
 export interface DayData {
   date: string;
   sections: DaySection[];

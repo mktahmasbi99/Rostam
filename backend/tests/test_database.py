@@ -414,6 +414,35 @@ def test_previous_set_prefill_is_chronological(database):
     assert database.prefill(pushups["id"], today, "13:00")["repetitions"] == 20
 
 
+def test_exercise_history_groups_days_and_paginates(database):
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+    database.add_set(pushups["id"], "2026-09-01", set_payload(time="08:00", repetitions=30))
+    database.add_set(pushups["id"], "2026-09-01", set_payload(time="08:30", repetitions=50))
+    database.add_set(pushups["id"], "2026-09-10", set_payload(time="09:00", repetitions=77))
+    database.add_set(pushups["id"], "2026-09-17", set_payload(time="10:00", repetitions=12))
+
+    first = database.exercise_history(pushups["id"], None, 2)
+    assert [session["date"] for session in first["sessions"]] == ["2026-09-17", "2026-09-10"]
+    assert first["sessions"][1]["total"] == 77
+    assert [item["repetitions"] for item in first["sessions"][1]["sets"]] == [77]
+    assert first["nextBeforeDate"] == "2026-09-10"
+
+    older = database.exercise_history(pushups["id"], first["nextBeforeDate"], 2)
+    assert [session["date"] for session in older["sessions"]] == ["2026-09-01"]
+    assert older["nextBeforeDate"] is None
+
+    before_day = database.exercise_history(pushups["id"], "2026-09-10", 10)
+    assert [session["date"] for session in before_day["sessions"]] == ["2026-09-01"]
+
+
+def test_exercise_history_rejects_invalid_limits(database):
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+    with pytest.raises(DomainError, match="between 1 and 50"):
+        database.exercise_history(pushups["id"], None, 0)
+    with pytest.raises(DomainError, match="YYYY-MM-DD"):
+        database.exercise_history(pushups["id"], "not-a-date", 10)
+
+
 def test_deleting_final_set_removes_day_section(database):
     today = database.today().isoformat()
     pushups = next(item for item in database.list_exercises("active", "Push", None))

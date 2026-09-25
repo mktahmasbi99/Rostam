@@ -67,6 +67,7 @@ export default function App() {
         onOpenCalendar={() => setCalendarOpen(true)}
         onPreviousDay={() => setSelectedDay(shiftDay(selectedDay, -1))}
         onNextDay={() => setSelectedDay(shiftDay(selectedDay, 1))}
+        onChooseDay={(day) => setSelectedDay(day)}
       />}
       {tab === "notes" && <NotesPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "photos" && <PhotosPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}

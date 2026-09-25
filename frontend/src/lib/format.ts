@@ -64,6 +64,14 @@ export function formatResistance(set: ExerciseSet): string {
   return `${set.weightKg} kg · ${equipment}`;
 }
 
+export function formatExerciseTotal(exercise: { measurementType: string }, amount: number, sets: ExerciseSet[]): string {
+  if (exercise.measurementType === "repetitions") return `${amount} reps`;
+  if (exercise.measurementType === "duration") return formatDuration(amount);
+  const holds = [...new Set(sets.map((set) => (set.holdMinutes ?? 0) * 60 + (set.holdSeconds ?? 0)))];
+  const formattedHolds = holds.map(formatHoldDuration).join(", ");
+  return holds.length === 1 ? `${amount} reps × ${formattedHolds} hold` : `${amount} reps · ${formattedHolds} holds`;
+}
+
 export function formatDay(day: string, today: string): string {
   if (day === today) return "Today";
   return new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" }).format(

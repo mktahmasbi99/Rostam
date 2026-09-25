@@ -1,4 +1,4 @@
-import type { Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseRecommendations, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, SetPayload } from "./types";
+import type { Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, SetPayload } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -33,6 +33,12 @@ export const api = {
     request<DayData>(`/api/days/${day}`, { signal }),
   calendar: (month: string) =>
     request<{ month: string; activeDates: string[] }>(`/api/calendar/${month}`),
+  exerciseHistory: (id: number, options: { beforeDate?: string; limit?: number } = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams();
+    if (options.beforeDate) params.set("beforeDate", options.beforeDate);
+    if (options.limit !== undefined) params.set("limit", String(options.limit));
+    return request<ExerciseHistoryPage>(`/api/exercises/${id}/history?${params}`, { signal });
+  },
   exercises: (status = "active", query = "", measurementType = "") => {
     const params = new URLSearchParams({ status, query });
     if (measurementType) params.set("measurementType", measurementType);
