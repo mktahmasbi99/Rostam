@@ -14,9 +14,40 @@ interface Props {
 }
 
 type View = "library" | "recommendations";
+type RecommendationMode = "exercise" | "muscle";
+
+interface RecommendationRun {
+  label: string;
+  items: RecommendationItem[];
+}
 
 const elapsed = (days: number | null, label: string) =>
   days === null ? "Never done" : `${label} ${days === 1 ? "1 day" : `${days} days`} ago`;
+
+function muscleLabel(slug: string | null | undefined, recommendations: ExerciseRecommendations): string {
+  if (!slug) return "Muscles not set";
+  return recommendations.muscleGroups.find((group) => group.slug === slug)?.name
+    ?? slug.replaceAll("_", " ");
+}
+
+function exerciseRecommendationRuns(recommendations: ExerciseRecommendations): RecommendationRun[] {
+  const ordered = [...recommendations.allExercises]
+    .filter((item) => item.daysSinceLastDone !== null)
+    .sort((left, right) => {
+      const ageDifference = (right.daysSinceLastDone ?? 0) - (left.daysSinceLastDone ?? 0);
+      return ageDifference || left.exercise.name.toLocaleLowerCase().localeCompare(right.exercise.name.toLocaleLowerCase());
+    });
+  return ordered.reduce<RecommendationRun[]>((runs, item) => {
+    const label = muscleLabel(item.exercise.primaryMuscle, recommendations);
+    const previous = runs.at(-1);
+    if (previous?.label === label) {
+      previous.items.push(item);
+    } else {
+      runs.push({ label, items: [item] });
+    }
+    return runs;
+  }, []);
+}
 
 export function ExercisePicker({ day, presentIds, onChoose, onClose }: Props) {
   const [view, setView] = useState<View>("library");
@@ -25,6 +56,7 @@ export function ExercisePicker({ day, presentIds, onChoose, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"" | MeasurementType>("");
   const [includePaused, setIncludePaused] = useState(false);
+  const [recommendationMode, setRecommendationMode] = useState<RecommendationMode>("exercise");
   const [neverOpen, setNeverOpen] = useState(false);
   const [openPauseId, setOpenPauseId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
@@ -96,9 +128,14 @@ export function ExercisePicker({ day, presentIds, onChoose, onClose }: Props) {
 
   if (view === "recommendations") {
     const hasResults = Boolean(recommendations?.allExercises.length);
+    const exerciseRuns = recommendations ? exerciseRecommendationRuns(recommendations) : [];
     return <Modal title="Recommendations" onClose={onClose} wide>
       <div className="recommendation-toolbar"><button className="secondary" onClick={() => setView("library")}>Back to exercise library</button><button className="primary" onClick={() => setCreating(true)}><Plus />New exercise</button></div>
-      <p className="recommendation-intro">Suggestions are ordered by the muscle groups you have trained least recently.</p>
+      <div className="segmented recommendation-mode" role="group" aria-label="Recommendation view">
+        <button type="button" className={recommendationMode === "exercise" ? "selected" : ""} aria-pressed={recommendationMode === "exercise"} onClick={() => setRecommendationMode("exercise")}>By exercise</button>
+        <button type="button" className={recommendationMode === "muscle" ? "selected" : ""} aria-pressed={recommendationMode === "muscle"} onClick={() => setRecommendationMode("muscle")}>By muscle</button>
+      </div>
+      <p className="recommendation-intro">{recommendationMode === "exercise" ? "Suggestions are ordered by when you last did each exercise." : "Suggestions are ordered by the muscle groups you have trained least recently."}</p>
       <label className="checkbox-row recommendation-paused"><input type="checkbox" checked={includePaused} onChange={(event) => setIncludePaused(event.target.checked)} />Show paused</label>
       {notice && <p className="notice" role="status">{notice}</p>}
       {error && <p className="error" role="alert">{error}</p>}
@@ -107,8 +144,12 @@ export function ExercisePicker({ day, presentIds, onChoose, onClose }: Props) {
         setOpenPauseId(null);
         if ((event.target as HTMLElement).closest(".exercise-result")) dismissedPauseMenu.current = true;
       }}>
-        {recommendations?.groups.map((group) => <section className="recommendation-group" key={group.muscle}><h3>{group.muscleName}<small>{elapsed(group.daysSinceLastTrained, "Last trained")}</small></h3>{group.exercises.map(recommendationResult)}</section>)}
-        {recommendations?.unclassified.length ? <section className="recommendation-group"><h3>Muscles not set</h3>{recommendations.unclassified.map(recommendationResult)}</section> : null}
+        {recommendationMode === "exercise"
+          ? exerciseRuns.map((run, index) => <section className="recommendation-group" key={`${run.label}-${index}`}><h3>{run.label}</h3>{run.items.map(recommendationResult)}</section>)
+          : <>
+            {recommendations?.groups.map((group) => <section className="recommendation-group" key={group.muscle}><h3>{group.muscleName}<small>{elapsed(group.daysSinceLastTrained, "Last trained")}</small></h3>{group.exercises.map(recommendationResult)}</section>)}
+            {recommendations?.unclassified.length ? <section className="recommendation-group"><h3>Muscles not set</h3>{recommendations.unclassified.map(recommendationResult)}</section> : null}
+          </>}
         {recommendations?.neverTried.length ? <section className="never-tried"><button className="never-tried-toggle" onClick={() => setNeverOpen(!neverOpen)} aria-expanded={neverOpen}>Never tried ({recommendations.neverTried.length}) <ChevronDown className={neverOpen ? "rotated" : ""} /></button>{neverOpen && recommendations.neverTried.map(recommendationResult)}</section> : null}
         {!error && recommendations && !hasResults && <p className="empty-copy">No recommendations available.</p>}
       </div>
@@ -118,7 +159,7 @@ export function ExercisePicker({ day, presentIds, onChoose, onClose }: Props) {
   return <Modal title="Add exercise" onClose={onClose} wide>
     <div className="picker-toolbar"><label className="search-box"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={query} onChange={(event) => setQuery(event.target.value)} autoFocus /></label><button className="primary" onClick={() => setCreating(true)}><Plus />New exercise</button></div>
     <div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Repetitions</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed repetitions</button></div>
-    <button className="secondary recommendations-button" onClick={() => setView("recommendations")}><Sparkles />Show recommendations</button>
+    <button className="secondary recommendations-button" onClick={() => { setRecommendationMode("exercise"); setView("recommendations"); }}><Sparkles />Show recommendations</button>
     {notice && <p className="notice" role="status">{notice}</p>}
     {error && <p className="error" role="alert">{error}</p>}
     <div className="exercise-results">
