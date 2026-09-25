@@ -153,6 +153,10 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .filter-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 12px 0; }
 .filter-row button { min-width: 0; padding: 0 8px; font-size: .86rem; font-weight: 750; }
 .filter-row button.selected { color: var(--accent-dark); background: var(--accent-soft); }
+.recommendations-button { width: 100%; min-height: 42px; margin-bottom: 4px; }
+.recommendation-toolbar { display: flex; justify-content: space-between; gap: 9px; }
+.recommendation-intro { margin: 14px 0 8px; color: var(--muted); font-size: .9rem; }
+.recommendation-paused { display: flex; align-items: center; gap: 7px; margin: 0 0 10px; color: var(--muted); font-size: .86rem; }
 .notice { background: var(--notice-surface); color: var(--notice-ink); padding: 10px 12px; border-radius: 12px; }
 .exercise-results { display: grid; }
 .exercise-result { justify-content: flex-start; text-align: left; background: transparent; border-radius: 0; border-bottom: 1px solid var(--line); padding: 10px 2px; }
