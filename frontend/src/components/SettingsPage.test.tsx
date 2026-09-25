@@ -37,12 +37,17 @@ describe("Backup schedule", () => {
     render(<SettingsPage config={config} pwaInstall={pwaInstall} />);
 
     const retention = await screen.findByLabelText("Daily retention");
+    const weeklyRetention = screen.getByLabelText("Weekly retention");
+    expect(weeklyRetention).toHaveValue(8);
     await user.clear(retention);
     await user.type(retention, "14");
+    await user.clear(weeklyRetention);
+    await user.type(weeklyRetention, "12");
     await user.click(screen.getByRole("button", { name: "Save backup schedule" }));
     expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
 
-    resolveSave({ dailyEnabled: true, dailyTime: "02:00", dailyRetention: 14, weeklyEnabled: true, weeklyWeekday: 0, weeklyTime: "03:00", weeklyRetention: 8, safetyRetention: 3 });
+    expect(api.updateBackupSettings).toHaveBeenCalledWith(expect.objectContaining({ dailyRetention: 14, weeklyRetention: 12 }));
+    resolveSave({ dailyEnabled: true, dailyTime: "02:00", dailyRetention: 14, weeklyEnabled: true, weeklyWeekday: 0, weeklyTime: "03:00", weeklyRetention: 12, safetyRetention: 3 });
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Backup schedule saved."));
     expect(screen.getByRole("button", { name: "Saved" })).toBeEnabled();
 
