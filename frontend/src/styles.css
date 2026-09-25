@@ -296,7 +296,7 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 
 @media (min-width: 720px) {
   .app-shell { padding: 0 0 0 210px; }
-  .brand { position: fixed; left: 0; top: 0; width: 210px; height: 82px; display: flex; align-items: center; gap: 10px; padding: 18px; font-size: 1.15rem; }
+  .brand { position: fixed; left: 0; top: 0; width: 210px; height: 82px; display: flex; align-items: center; justify-content: center; padding: 18px; }
   .brand-logo { width: 44px; height: 44px; }
   .bottom-nav { top: 82px; bottom: 0; right: auto; width: 210px; height: auto; display: flex; flex-direction: column; justify-content: flex-start; gap: 6px; padding: 12px; border-top: 0; border-right: 1px solid var(--line); }
   .bottom-nav button { min-height: 52px; flex-direction: row; justify-content: center; padding: 0 14px; }

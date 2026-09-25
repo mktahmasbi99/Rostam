@@ -59,7 +59,7 @@ export default function App() {
   };
 
   return <div className="app-shell">
-    <div className="brand"><button className="brand-home" aria-label="Go to Today" title="Go to Today" onClick={goToToday}><img className="app-logo brand-logo" src="/rostam-logo.png" alt="" /></button><strong>Rostam</strong></div>
+    <div className="brand"><button className="brand-home" aria-label="Go to Today" title="Go to Today" onClick={goToToday}><img className="app-logo brand-logo" src="/rostam-logo.png" alt="" /></button></div>
     <div className="content">
       {tab === "today" && <DayPage
         day={selectedDay}
