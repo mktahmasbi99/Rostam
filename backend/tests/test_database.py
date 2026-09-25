@@ -100,9 +100,10 @@ def test_recommendation_pause_uses_calendar_months(database, monkeypatch):
     pushups = next(item for item in database.list_exercises("active", "Push", None))
     paused = database.update_recommendation_pause(pushups["id"], "month")
     assert paused["recommendationPausedUntil"] == "2026-02-28"
-    assert database.update_recommendation_pause(pushups["id"], "resume")[
-        "recommendationPausedUntil"
-    ] is None
+    assert (
+        database.update_recommendation_pause(pushups["id"], "resume")["recommendationPausedUntil"]
+        is None
+    )
 
 
 def test_body_measurements_and_profile_validate_and_keep_optional_values(database, monkeypatch):

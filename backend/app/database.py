@@ -76,10 +76,18 @@ BACKUP_APP_ID = "monster-sets"
 BACKUP_FORMAT_VERSION = 1
 SCHEMA_VERSION = 10
 MUSCLE_GROUPS = (
-    ("abs", "Abs"), ("back", "Back"), ("biceps", "Biceps"), ("calves", "Calves"),
-    ("chest", "Chest"), ("forearms", "Forearms"), ("glutes", "Glutes"),
-    ("hamstrings", "Hamstrings"), ("hip_flexors", "Hip Flexors"),
-    ("quadriceps", "Quadriceps"), ("shoulders", "Shoulders"), ("triceps", "Triceps"),
+    ("abs", "Abs"),
+    ("back", "Back"),
+    ("biceps", "Biceps"),
+    ("calves", "Calves"),
+    ("chest", "Chest"),
+    ("forearms", "Forearms"),
+    ("glutes", "Glutes"),
+    ("hamstrings", "Hamstrings"),
+    ("hip_flexors", "Hip Flexors"),
+    ("quadriceps", "Quadriceps"),
+    ("shoulders", "Shoulders"),
+    ("triceps", "Triceps"),
 )
 MUSCLE_SLUGS = {slug for slug, _ in MUSCLE_GROUPS}
 MAX_DAILY_NOTE_LENGTH = 20_000
@@ -505,7 +513,17 @@ class MonsterSetsDatabase:
                             CHECK (allow_bodyweight IN (0, 1)),
                         exercise_note TEXT
                     );
-                    INSERT INTO exercises_v8 SELECT * FROM exercises;
+                    INSERT INTO exercises_v8(
+                        id, seed_key, name, normalized_name, measurement_type,
+                        default_resistance_kind, default_equipment, default_custom_equipment,
+                        default_weight_grams, image_key, archived_at, created_at, updated_at,
+                        base_name, equipment, custom_equipment, allow_bodyweight, exercise_note
+                    ) SELECT
+                        id, seed_key, name, normalized_name, measurement_type,
+                        default_resistance_kind, default_equipment, default_custom_equipment,
+                        default_weight_grams, image_key, archived_at, created_at, updated_at,
+                        base_name, equipment, custom_equipment, allow_bodyweight, exercise_note
+                    FROM exercises;
                     CREATE TABLE exercise_sets_v8 (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         exercise_id INTEGER NOT NULL,
@@ -580,29 +598,38 @@ class MonsterSetsDatabase:
             ):
                 connection.executescript(
                     """
-                    CREATE TABLE muscle_groups (
+                    CREATE TABLE IF NOT EXISTS muscle_groups (
                         slug TEXT PRIMARY KEY,
                         name TEXT NOT NULL,
                         display_order INTEGER NOT NULL UNIQUE
                     );
-                    CREATE TABLE exercise_muscles (
+                    CREATE TABLE IF NOT EXISTS exercise_muscles (
                         exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
                         muscle_slug TEXT NOT NULL REFERENCES muscle_groups(slug) ON DELETE RESTRICT,
                         role TEXT NOT NULL CHECK (role IN ('primary', 'secondary')),
                         PRIMARY KEY (exercise_id, muscle_slug)
                     );
-                    CREATE UNIQUE INDEX idx_exercise_one_primary
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_exercise_one_primary
                         ON exercise_muscles(exercise_id) WHERE role = 'primary';
-                    CREATE INDEX idx_exercise_muscles_lookup
+                    CREATE INDEX IF NOT EXISTS idx_exercise_muscles_lookup
                         ON exercise_muscles(muscle_slug, role, exercise_id);
-                    ALTER TABLE exercises ADD COLUMN recommendation_paused_until TEXT;
-                    ALTER TABLE exercises ADD COLUMN recommendation_paused_forever INTEGER
-                        NOT NULL DEFAULT 0 CHECK (recommendation_paused_forever IN (0, 1));
                     """
                 )
+                columns = {
+                    row["name"] for row in connection.execute("PRAGMA table_info(exercises)")
+                }
+                if "recommendation_paused_until" not in columns:
+                    connection.execute(
+                        "ALTER TABLE exercises ADD COLUMN recommendation_paused_until TEXT"
+                    )
+                if "recommendation_paused_forever" not in columns:
+                    connection.execute(
+                        "ALTER TABLE exercises ADD COLUMN recommendation_paused_forever INTEGER "
+                        "NOT NULL DEFAULT 0 CHECK (recommendation_paused_forever IN (0, 1))"
+                    )
                 for index, (slug, name) in enumerate(MUSCLE_GROUPS):
                     connection.execute(
-                        "INSERT INTO muscle_groups(slug, name, display_order) VALUES (?, ?, ?)",
+                        "INSERT OR IGNORE INTO muscle_groups(slug, name, display_order) VALUES (?, ?, ?)",
                         (slug, name, index),
                     )
                 seed_muscles = {
@@ -1245,7 +1272,11 @@ class MonsterSetsDatabase:
         sort: str,
     ) -> dict:
         day = self._parse_day(day_value)
-        if measurement_type and measurement_type not in {"repetitions", "duration", "timed_repetitions"}:
+        if measurement_type and measurement_type not in {
+            "repetitions",
+            "duration",
+            "timed_repetitions",
+        }:
             raise DomainError("Invalid measurement type.")
         if muscle_group and muscle_group not in MUSCLE_SLUGS:
             raise DomainError("Invalid muscle group.")
@@ -1289,12 +1320,16 @@ class MonsterSetsDatabase:
                 if paused and not (include_paused or normalized_query):
                     continue
                 last_done = row["last_done_date"]
-                items.append({
-                    "exercise": exercise,
-                    "lastDoneDate": last_done,
-                    "daysSinceLastDone": (day - date.fromisoformat(last_done)).days if last_done else None,
-                    "paused": paused,
-                })
+                items.append(
+                    {
+                        "exercise": exercise,
+                        "lastDoneDate": last_done,
+                        "daysSinceLastDone": (day - date.fromisoformat(last_done)).days
+                        if last_done
+                        else None,
+                        "paused": paused,
+                    }
+                )
             primary_dates = {
                 row["muscle_slug"]: row["last_date"]
                 for row in connection.execute(
@@ -1326,7 +1361,9 @@ class MonsterSetsDatabase:
                 "muscleName": names[slug],
                 "lastTrainedDate": primary_dates.get(slug),
                 "daysSinceLastTrained": (
-                    (day - date.fromisoformat(primary_dates[slug])).days if slug in primary_dates else None
+                    (day - date.fromisoformat(primary_dates[slug])).days
+                    if slug in primary_dates
+                    else None
                 ),
                 "exercises": group_items,
             }
@@ -1342,7 +1379,9 @@ class MonsterSetsDatabase:
                     group["muscleName"],
                 )
             )
-        all_exercises = [item for group in groups for item in group["exercises"]] + unclassified + never_tried
+        all_exercises = (
+            [item for group in groups for item in group["exercises"]] + unclassified + never_tried
+        )
         if sort == "exercise":
             all_exercises.sort(key=lambda item: item["exercise"]["name"].casefold())
         return {
@@ -1494,7 +1533,9 @@ class MonsterSetsDatabase:
                         payload.secondaryMuscles,
                     )
                 connection.commit()
-                return self._serialize_exercise(self._exercise_row(connection, exercise_id), connection)
+                return self._serialize_exercise(
+                    self._exercise_row(connection, exercise_id), connection
+                )
         except sqlite3.IntegrityError as exc:
             raise DomainError("An exercise with this name already exists.") from exc
 

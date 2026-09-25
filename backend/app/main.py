@@ -21,8 +21,8 @@ from .schemas import (
     ExerciseCreate,
     ExerciseNoteUpdate,
     ExerciseUpdate,
-    RecommendationPauseUpdate,
     ProfileUpdate,
+    RecommendationPauseUpdate,
     RestoreConfirmation,
     SetWrite,
 )
