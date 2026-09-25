@@ -233,6 +233,9 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .management-row:last-child { border: 0; }
 .settings-card h2 { margin-bottom: 7px; }
 .settings-card p { color: var(--muted); }
+.schedule-save-button.saved { background: var(--success); border-color: var(--success); color: white; }
+.schedule-success { color: var(--success) !important; font-weight: 750; }
+.schedule-error { color: var(--danger) !important; }
 .settings-card dl { margin: 0; }
 .settings-card dl div { display: flex; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--line); }
 .settings-card dt { color: var(--muted); }

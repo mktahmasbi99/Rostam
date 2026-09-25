@@ -11,6 +11,8 @@ vi.mock("../lib/api", () => ({
     deleteBackup: vi.fn(),
     restoreBackup: vi.fn(),
     restoreUploadedBackup: vi.fn(),
+    backupSettings: vi.fn(),
+    updateBackupSettings: vi.fn(),
   },
 }));
 
@@ -21,8 +23,42 @@ beforeEach(() => {
   vi.mocked(api.backups).mockResolvedValue([
     { id: "on-demand-20260916T120000000000Z.sqlite3", category: "on-demand", createdAt: "2026-09-16T12:00:00Z", sizeBytes: 1024 },
   ]);
+  vi.mocked(api.backupSettings).mockResolvedValue({ dailyEnabled: true, dailyTime: "02:00", dailyRetention: 7, weeklyEnabled: true, weeklyWeekday: 0, weeklyTime: "03:00", weeklyRetention: 8, safetyRetention: 3 });
+  vi.mocked(api.updateBackupSettings).mockResolvedValue({ dailyEnabled: true, dailyTime: "02:00", dailyRetention: 7, weeklyEnabled: true, weeklyWeekday: 0, weeklyTime: "03:00", weeklyRetention: 8, safetyRetention: 3 });
   vi.mocked(api.restoreBackup).mockResolvedValue({ source: "backup", safetyBackup: { id: "safety.sqlite3", category: "on-demand", createdAt: "2026-09-16T12:01:00Z", sizeBytes: 1024 } });
   vi.mocked(api.restoreUploadedBackup).mockResolvedValue({ source: "upload", safetyBackup: { id: "safety.sqlite3", category: "on-demand", createdAt: "2026-09-16T12:01:00Z", sizeBytes: 1024 } });
+});
+
+describe("Backup schedule", () => {
+  it("shows saving and saved feedback, then clears it when edited", async () => {
+    const user = userEvent.setup();
+    let resolveSave!: (settings: ReturnType<typeof api.updateBackupSettings> extends Promise<infer Result> ? Result : never) => void;
+    vi.mocked(api.updateBackupSettings).mockImplementation(() => new Promise((resolve) => { resolveSave = resolve; }));
+    render(<SettingsPage config={config} pwaInstall={pwaInstall} />);
+
+    const retention = await screen.findByLabelText("Daily retention");
+    await user.clear(retention);
+    await user.type(retention, "14");
+    await user.click(screen.getByRole("button", { name: "Save backup schedule" }));
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+
+    resolveSave({ dailyEnabled: true, dailyTime: "02:00", dailyRetention: 14, weeklyEnabled: true, weeklyWeekday: 0, weeklyTime: "03:00", weeklyRetention: 8, safetyRetention: 3 });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Backup schedule saved."));
+    expect(screen.getByRole("button", { name: "Saved" })).toBeEnabled();
+
+    await user.clear(retention);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("reports schedule save failures and allows retry", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.updateBackupSettings).mockRejectedValueOnce(new Error("Schedule unavailable"));
+    render(<SettingsPage config={config} pwaInstall={pwaInstall} />);
+    await screen.findByLabelText("Daily retention");
+    await user.click(screen.getByRole("button", { name: "Save backup schedule" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Schedule unavailable"));
+    expect(screen.getByRole("button", { name: "Save backup schedule" })).toBeEnabled();
+  });
 });
 
 describe("Settings restore", () => {
