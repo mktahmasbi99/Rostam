@@ -1,4 +1,4 @@
-import { Archive, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { Archive, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import type { Exercise, MeasurementType } from "../lib/types";
@@ -11,6 +11,7 @@ export function ExercisesPage() {
   const [archived, setArchived] = useState<Exercise[]>([]);
   const [editing, setEditing] = useState<Exercise | null>(null);
   const [creating, setCreating] = useState(false);
+  const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"" | MeasurementType>("");
   const [error, setError] = useState("");
 
@@ -18,15 +19,15 @@ export function ExercisesPage() {
     setError("");
     try {
       const [activeItems, archivedItems] = await Promise.all([
-        api.exercises("active", "", filter),
-        api.exercises("archived", "", filter),
+        api.exercises("active", query, filter),
+        api.exercises("archived", query, filter),
       ]);
       setActive(activeItems);
       setArchived(archivedItems);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not load exercises.");
     }
-  }, [filter]);
+  }, [filter, query]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -45,6 +46,7 @@ export function ExercisesPage() {
   return <main className="page exercises-page">
     <header className="section-title card-heading"><div><h1>Exercises</h1><p>Manage the exercise library, fixed equipment, and defaults.</p></div><button className="primary" onClick={() => setCreating(true)}><Plus />New</button></header>
     {error && <p className="error-panel" role="alert">{error}</p>}
+    <label className="search-box"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
     <div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Repetitions</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed repetitions</button></div>
     <section className="management-section"><h2>Active</h2><div className="management-list">{active.map((exercise) => <article key={exercise.id} className="management-row"><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><div><strong>{exercise.name}</strong><small>{exercise.measurementType === "repetitions" ? "Repetitions" : exercise.measurementType === "duration" ? "Duration" : "Timed repetitions"}</small></div><div className="row-actions"><button className="icon-button" aria-label={`Edit ${exercise.name}`} onClick={() => setEditing(exercise)}><Pencil /></button><button className="icon-button" aria-label={`Archive ${exercise.name}`} onClick={() => void archiveExercise(exercise)}><Archive /></button>{!exercise.hasHistory && <button className="icon-button danger" aria-label={`Delete ${exercise.name}`} onClick={() => void remove(exercise)}><Trash2 /></button>}</div></article>)}</div></section>
     <section className="management-section"><h2>Archived</h2>{archived.length === 0 ? <p className="empty-copy">No archived exercises.</p> : <div className="management-list">{archived.map((exercise) => <article key={exercise.id} className="management-row"><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><div><strong>{exercise.name}</strong><small>History preserved</small></div><button className="icon-button" aria-label={`Restore ${exercise.name}`} onClick={async () => { await api.restoreExercise(exercise.id); await load(); }}><RotateCcw /></button></article>)}</div>}</section>

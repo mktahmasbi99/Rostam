@@ -31,4 +31,16 @@ describe("ExercisesPage", () => {
     expect(api.exercises).toHaveBeenCalledWith("archived", "", "timed_repetitions");
     expect(screen.getByRole("button", { name: "Timed repetitions" })).toHaveClass("selected");
   });
+
+  it("searches both active and archived exercises", async () => {
+    const user = userEvent.setup();
+    render(<ExercisesPage />);
+
+    await user.type(screen.getByPlaceholderText("Search exercises"), "deadlift");
+
+    await waitFor(() => {
+      expect(api.exercises).toHaveBeenCalledWith("active", "deadlift", "");
+      expect(api.exercises).toHaveBeenCalledWith("archived", "deadlift", "");
+    });
+  });
 });
