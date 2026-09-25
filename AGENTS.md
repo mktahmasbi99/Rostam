@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-MonsterSets is a private daily exercise ledger with a FastAPI backend and React single-page frontend. Backend code lives in `backend/app/`: `main.py` defines HTTP routes, `schemas.py` defines request/response models, `database.py` owns SQLite persistence and domain rules, and `config.py` reads environment settings. Backend tests are in `backend/tests/`.
+Rostam is a private daily exercise ledger with a FastAPI backend and React single-page frontend. Backend code lives in `backend/app/`: `main.py` defines HTTP routes, `schemas.py` defines request/response models, `database.py` owns SQLite persistence and domain rules, and `config.py` reads environment settings. Backend tests are in `backend/tests/`.
 
 The frontend is in `frontend/src/`. Put page-level UI in `components/`, API calls and shared TypeScript types in `lib/`, and global styling in `styles.css`. Public PWA files live in `frontend/public/`; build and asset scripts are in `frontend/scripts/`. Deployment configuration is under `deploy/`.
 
@@ -34,4 +34,4 @@ Add backend tests as `test_*.py` and frontend tests as `*.test.ts` or `*.test.ts
 
 ## Commit & Pull Request Guidelines
 
-The existing history uses short, imperative summaries (for example, `Initial MonsterSets implementation`). Follow that style, keeping each commit focused. PRs should explain the user-visible change and implementation rationale, link relevant issues, list validation commands, and include screenshots for UI changes. Do not commit SQLite databases, backups, or local secrets; configure `TZ` and `ROSTAM_DB` through the environment.
+The existing history uses short, imperative summaries (for example, `Initial Rostam implementation`). Follow that style, keeping each commit focused. PRs should explain the user-visible change and implementation rationale, link relevant issues, list validation commands, and include screenshots for UI changes. Do not commit SQLite databases, backups, or local secrets; configure `TZ` and `ROSTAM_DB` through the environment.

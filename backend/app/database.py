@@ -72,9 +72,9 @@ SEED_EXERCISES = (
     ),
 )
 
-BACKUP_APP_ID = "monster-sets"
+BACKUP_APP_ID = "rostam"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 MUSCLE_GROUPS = (
     ("abs", "Abs"),
     ("back", "Back"),
@@ -165,7 +165,7 @@ def format_weight(grams: int | None) -> str | None:
     return format(value.normalize(), "f")
 
 
-class MonsterSetsDatabase:
+class RostamDatabase:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.path = settings.database_path
@@ -657,6 +657,14 @@ class MonsterSetsDatabase:
                         [(exercise["id"], slug) for slug in secondary],
                     )
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (10)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 11").fetchone()
+                is None
+            ):
+                connection.execute(
+                    "UPDATE backup_metadata SET app_id = ? WHERE id = 1", (BACKUP_APP_ID,)
+                )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (11)")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -765,7 +773,7 @@ class MonsterSetsDatabase:
             "date": row["entry_date"],
             "measurementType": row["measurement_type"],
             "weightKg": format_weight(row["weight_grams"]),
-            "waistCm": MonsterSetsDatabase._format_millimetres(row["waist_mm"]),
+            "waistCm": RostamDatabase._format_millimetres(row["waist_mm"]),
             "createdAt": row["created_at"],
             "updatedAt": row["updated_at"],
         }
@@ -2083,7 +2091,7 @@ class MonsterSetsDatabase:
             try:
                 self._validate_restore_source(staged, marked=marked)
                 current_settings = self.backup_settings()
-                staged_db = MonsterSetsDatabase(
+                staged_db = RostamDatabase(
                     Settings(staged, self.settings.timezone_name, self.settings.timezone)
                 )
                 staged_db._verify_live_database()

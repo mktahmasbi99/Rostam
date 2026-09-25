@@ -1,7 +1,7 @@
 services:
-  monster-sets:
+  rostam:
     image: ghcr.io/mktahmasbi99/rostam:latest
-    container_name: monster-sets
+    container_name: rostam
     restart: unless-stopped
     ports:
       - "8000:8000"

@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .config import load_settings
-from .database import DomainError, MonsterSetsDatabase
+from .database import DomainError, RostamDatabase
 from .schemas import (
     BackupSettingsUpdate,
     BodyMeasurementWrite,
@@ -28,7 +28,7 @@ from .schemas import (
 )
 
 settings = load_settings()
-database = MonsterSetsDatabase(settings)
+database = RostamDatabase(settings)
 
 
 async def backup_scheduler() -> None:

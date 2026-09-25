@@ -13,7 +13,7 @@ from app.config import Settings
 from app.database import (
     PHOTO_SUMMARY_COLUMNS,
     DomainError,
-    MonsterSetsDatabase,
+    RostamDatabase,
     parse_weight_grams,
 )
 
@@ -77,6 +77,36 @@ def test_initial_library_is_seeded_once(database):
     ]
     database.migrate()
     assert len(database.list_exercises("all", "", None)) == 8
+
+
+def test_database_identity_migrates_without_changing_ledger_data(database):
+    today = database.today().isoformat()
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+    database.add_set(pushups["id"], today, set_payload(repetitions=23))
+    with sqlite3.connect(database.path) as connection:
+        connection.execute("UPDATE backup_metadata SET app_id = 'historical-app' WHERE id = 1")
+        connection.execute("DELETE FROM schema_migrations WHERE version = 11")
+        connection.commit()
+
+    migrated = RostamDatabase(database.settings)
+
+    assert migrated.day(today)["sections"][0]["total"] == 23
+    with migrated.connect() as connection:
+        assert (
+            connection.execute("SELECT app_id FROM backup_metadata WHERE id = 1").fetchone()[0]
+            == "rostam"
+        )
+        assert connection.execute("SELECT 1 FROM schema_migrations WHERE version = 11").fetchone()
+
+
+def test_new_backups_use_the_rostam_identity(database):
+    backup = database.create_backup("on-demand")
+
+    with sqlite3.connect(database.backup_path(backup["id"])) as connection:
+        assert (
+            connection.execute("SELECT app_id FROM backup_metadata WHERE id = 1").fetchone()[0]
+            == "rostam"
+        )
 
 
 def test_seed_muscles_and_recommendations_are_optional_and_date_aware(database, monkeypatch):
@@ -583,7 +613,7 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
             )
         connection.commit()
 
-    migrated = MonsterSetsDatabase(
+    migrated = RostamDatabase(
         Settings(
             database_path=path,
             timezone_name="Europe/Warsaw",
@@ -628,7 +658,7 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 11))
+        ] == list(range(1, 12))
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM exercises WHERE exercise_note IS NOT NULL"
@@ -657,14 +687,14 @@ def test_schema_v2_migration_adds_notes_without_changing_history(database):
         connection.execute("ALTER TABLE exercises DROP COLUMN exercise_note")
         connection.commit()
 
-    migrated = MonsterSetsDatabase(database.settings)
+    migrated = RostamDatabase(database.settings)
 
     assert migrated.exercise(pushups["id"])["exerciseNote"] is None
     assert migrated.day(today)["sections"][0]["sets"][0]["id"] == saved_set["id"]
     with migrated.connect() as connection:
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 11))
+        ] == list(range(1, 12))
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
@@ -729,7 +759,7 @@ def test_restore_validates_staged_database_before_atomic_replacement(database, m
     def fail_staged(_):
         raise DomainError("simulated staged validation failure")
 
-    monkeypatch.setattr(MonsterSetsDatabase, "_verify_live_database", fail_staged)
+    monkeypatch.setattr(RostamDatabase, "_verify_live_database", fail_staged)
     with pytest.raises(DomainError, match="staged validation"):
         database.restore_backup(source["id"], "RESTORE")
 
@@ -740,7 +770,7 @@ def test_restore_validates_staged_database_before_atomic_replacement(database, m
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (11)", "schema is newer"),
+        ("INSERT INTO schema_migrations(version) VALUES (12)", "schema is newer"),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(
