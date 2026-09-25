@@ -237,6 +237,25 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .restore-dialog { display: grid; gap: 12px; }
 .danger-button { border-color: color-mix(in srgb, var(--danger) 72%, #641127); background: linear-gradient(135deg, var(--danger), #7c1d37); color: white; padding: 0 16px; font-weight: 800; box-shadow: 0 6px 14px color-mix(in srgb, var(--danger) 30%, transparent); }
 .empty-copy { color: var(--muted); font-size: .9rem; }
+.picker-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 12px 0; }
+.picker-filters label { display: grid; gap: 4px; color: var(--muted); font-size: .78rem; }
+.picker-filters .checkbox-row { display: flex; align-items: end; padding-bottom: 8px; }
+.muscle-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; margin-top: 7px; }
+.muscle-options .checkbox-row { min-height: 30px; font-size: .88rem; }
+.recommendation-group { margin-top: 18px; }
+.recommendation-group h3 { display: flex; justify-content: space-between; align-items: baseline; margin: 0 2px 7px; font-size: 1rem; }
+.recommendation-group h3 small { color: var(--muted); font-size: .75rem; font-weight: 500; }
+.exercise-result-row { display: flex; align-items: stretch; gap: 6px; border-bottom: 1px solid var(--line); }
+.exercise-result-row .exercise-result { flex: 1; border-radius: 0; }
+.pause-menu { position: relative; align-self: center; }
+.pause-menu summary { list-style: none; display: grid; place-items: center; width: 42px; height: 42px; cursor: pointer; color: var(--muted); }
+.pause-menu summary::-webkit-details-marker { display: none; }
+.pause-menu > div { position: absolute; z-index: 3; right: 0; top: 45px; display: grid; min-width: 155px; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+.pause-menu > div span { padding: 6px 8px; color: var(--muted); font-size: .75rem; }
+.pause-menu > div button { justify-content: start; min-height: 36px; padding: 0 9px; background: transparent; box-shadow: none; }
+.never-tried { margin-top: 18px; }
+.never-tried-toggle { width: 100%; justify-content: space-between; padding: 0 12px; border-color: var(--line); background: var(--surface-2); font-weight: 750; }
+.never-tried-toggle .rotated { transform: rotate(180deg); }
 .startup { min-height: 100vh; display: grid; place-content: center; text-align: center; padding: 24px; }
 .startup-logo { width: 112px; height: 112px; margin: 0 auto 18px; }
 .startup h1 { font-size: 2.5rem; margin-bottom: 8px; }

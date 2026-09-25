@@ -24,6 +24,8 @@ describe("ExerciseEditor", () => {
       customEquipment: null,
       allowBodyweight: false,
       imageKey: null,
+      primaryMuscle: null,
+      secondaryMuscles: [],
       exerciseNote: null,
       archivedAt: null,
       hasHistory: false,
@@ -45,6 +47,8 @@ describe("ExerciseEditor", () => {
       customEquipment: null,
       allowBodyweight: false,
       imageKey: null,
+      primaryMuscle: null,
+      secondaryMuscles: [],
     }));
     expect(screen.queryByLabelText("Exercise note")).not.toBeInTheDocument();
   });

@@ -21,6 +21,7 @@ from .schemas import (
     ExerciseCreate,
     ExerciseNoteUpdate,
     ExerciseUpdate,
+    RecommendationPauseUpdate,
     ProfileUpdate,
     RestoreConfirmation,
     SetWrite,
@@ -132,6 +133,21 @@ def list_exercises(
     return database.list_exercises(status, query, measurement_type)
 
 
+@app.get("/api/exercise-recommendations")
+def exercise_recommendations(
+    day: str,
+    query: str = "",
+    measurement_type: Annotated[str | None, Query(alias="measurementType")] = None,
+    muscle_group: Annotated[str | None, Query(alias="muscleGroup")] = None,
+    muscle_role: Annotated[str, Query(alias="muscleRole")] = "any",
+    include_paused: Annotated[bool, Query(alias="includePaused")] = False,
+    sort: str = "recommended",
+) -> dict:
+    return database.exercise_recommendations(
+        day, query, measurement_type, muscle_group, muscle_role, include_paused, sort
+    )
+
+
 @app.post("/api/exercises", status_code=201)
 def create_exercise(payload: ExerciseCreate) -> dict:
     return database.create_exercise(payload)
@@ -145,6 +161,11 @@ def get_exercise(exercise_id: int) -> dict:
 @app.patch("/api/exercises/{exercise_id}")
 def update_exercise(exercise_id: int, payload: ExerciseUpdate) -> dict:
     return database.update_exercise(exercise_id, payload)
+
+
+@app.put("/api/exercises/{exercise_id}/recommendation-pause")
+def update_recommendation_pause(exercise_id: int, payload: RecommendationPauseUpdate) -> dict:
+    return database.update_recommendation_pause(exercise_id, payload.period)
 
 
 @app.put("/api/exercises/{exercise_id}/note")

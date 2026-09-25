@@ -79,6 +79,32 @@ def test_initial_library_is_seeded_once(database):
     assert len(database.list_exercises("all", "", None)) == 8
 
 
+def test_seed_muscles_and_recommendations_are_optional_and_date_aware(database, monkeypatch):
+    monkeypatch.setattr(database, "today", lambda: date(2026, 9, 17))
+    exercises = {item["name"]: item for item in database.list_exercises("active", "", None)}
+    assert exercises["Push-ups"]["primaryMuscle"] == "chest"
+    assert exercises["Push-ups"]["secondaryMuscles"] == ["abs", "shoulders", "triceps"]
+    custom = database.create_exercise(exercise_payload(baseName="Custom movement"))
+    assert custom["primaryMuscle"] is None
+    database.add_set(exercises["Push-ups"]["id"], "2026-09-03", set_payload(repetitions=10))
+    recommendations = database.exercise_recommendations(
+        "2026-09-17", "", None, None, "any", False, "recommended"
+    )
+    chest = next(group for group in recommendations["groups"] if group["muscle"] == "chest")
+    assert chest["daysSinceLastTrained"] == 14
+    assert custom in [item["exercise"] for item in recommendations["neverTried"]]
+
+
+def test_recommendation_pause_uses_calendar_months(database, monkeypatch):
+    monkeypatch.setattr(database, "today", lambda: date(2026, 1, 31))
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+    paused = database.update_recommendation_pause(pushups["id"], "month")
+    assert paused["recommendationPausedUntil"] == "2026-02-28"
+    assert database.update_recommendation_pause(pushups["id"], "resume")[
+        "recommendationPausedUntil"
+    ] is None
+
+
 def test_body_measurements_and_profile_validate_and_keep_optional_values(database, monkeypatch):
     monkeypatch.setattr(database, "today", lambda: __import__("datetime").date(2026, 9, 17))
     assert database.profile() == {"heightCm": None, "dateOfBirth": None, "age": None}
@@ -572,7 +598,7 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 10))
+        ] == list(range(1, 11))
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM exercises WHERE exercise_note IS NOT NULL"
@@ -608,7 +634,7 @@ def test_schema_v2_migration_adds_notes_without_changing_history(database):
     with migrated.connect() as connection:
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 10))
+        ] == list(range(1, 11))
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
@@ -684,7 +710,7 @@ def test_restore_validates_staged_database_before_atomic_replacement(database, m
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (10)", "schema is newer"),
+        ("INSERT INTO schema_migrations(version) VALUES (11)", "schema is newer"),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(
@@ -716,7 +742,7 @@ def test_restore_schema_v7_backup_migrates_side_plank_history(database):
         database.add_set(exercise["id"], today, set_payload(time=time_value, repetitions=4))
     source = database.create_backup("on-demand")
     with sqlite3.connect(database.backup_path(source["id"])) as connection:
-        connection.execute("DELETE FROM schema_migrations WHERE version = 8")
+        connection.execute("DELETE FROM schema_migrations WHERE version IN (8, 9, 10)")
         connection.commit()
 
     database.restore_backup(source["id"], "RESTORE")

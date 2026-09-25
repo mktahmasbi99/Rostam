@@ -7,6 +7,12 @@ import type { Equipment, Exercise, MeasurementType } from "../lib/types";
 import { ExerciseImage } from "./ExerciseImage";
 
 const equipment = Object.entries(equipmentLabels) as [Equipment, string][];
+const muscleGroups = [
+  ["abs", "Abs"], ["back", "Back"], ["biceps", "Biceps"], ["calves", "Calves"],
+  ["chest", "Chest"], ["forearms", "Forearms"], ["glutes", "Glutes"],
+  ["hamstrings", "Hamstrings"], ["hip_flexors", "Hip Flexors"],
+  ["quadriceps", "Quadriceps"], ["shoulders", "Shoulders"], ["triceps", "Triceps"],
+] as const;
 
 interface Props {
   exercise?: Exercise;
@@ -22,6 +28,8 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
   const [customEquipment, setCustomEquipment] = useState(exercise?.customEquipment ?? "");
   const [allowBodyweight, setAllowBodyweight] = useState(exercise?.allowBodyweight ?? true);
   const [imageKey, setImageKey] = useState<string | null>(exercise?.imageKey ?? null);
+  const [primaryMuscle, setPrimaryMuscle] = useState(exercise?.primaryMuscle ?? "");
+  const [secondaryMuscles, setSecondaryMuscles] = useState<string[]>(exercise?.secondaryMuscles ?? []);
   const [imageSearch, setImageSearch] = useState("");
   const [showPictures, setShowPictures] = useState(false);
   const [error, setError] = useState("");
@@ -49,6 +57,8 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
         ? await api.updateExercise(exercise.id, {
             baseName,
             imageKey,
+            primaryMuscle: primaryMuscle || null,
+            secondaryMuscles,
           })
         : await api.createExercise({
             baseName,
@@ -57,6 +67,8 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
             customEquipment: fixedEquipment === "other" ? customEquipment : null,
             allowBodyweight,
             imageKey,
+            primaryMuscle: primaryMuscle || null,
+            secondaryMuscles,
           });
       onSaved(saved);
     } catch (caught) {
@@ -92,6 +104,18 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
       </div>}
       <label className="checkbox-row"><input type="checkbox" checked={allowBodyweight} onChange={(event) => setAllowBodyweight(event.target.checked)} disabled={Boolean(exercise) || !usesEquipment} />Allow bodyweight sets</label>
       {!usesEquipment && <small>Bodyweight is required when an exercise has no equipment.</small>}
+      <fieldset>
+        <legend>Muscle groups <small>Optional</small></legend>
+        <label>Primary muscle group<select value={primaryMuscle} onChange={(event) => {
+          const next = event.target.value;
+          setPrimaryMuscle(next);
+          setSecondaryMuscles((current) => current.filter((muscle) => muscle !== next));
+        }}><option value="">Not set</option>{muscleGroups.map(([slug, name]) => <option value={slug} key={slug}>{name}</option>)}</select></label>
+        <span className="field-label">Secondary muscle groups</span>
+        <div className="muscle-options">
+          {muscleGroups.filter(([slug]) => slug !== primaryMuscle).map(([slug, name]) => <label className="checkbox-row" key={slug}><input type="checkbox" checked={secondaryMuscles.includes(slug)} onChange={(event) => setSecondaryMuscles((current) => event.target.checked ? [...current, slug] : current.filter((muscle) => muscle !== slug))} />{name}</label>)}
+        </div>
+      </fieldset>
       <div>
         <span className="field-label">Picture</span>
         <button type="button" className="picture-choice" onClick={() => setShowPictures(!showPictures)}>

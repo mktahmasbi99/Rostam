@@ -37,6 +37,32 @@ export interface Exercise {
   exerciseNote: string | null;
   archivedAt: string | null;
   hasHistory: boolean;
+  primaryMuscle?: string | null;
+  secondaryMuscles?: string[];
+  recommendationPausedUntil?: string | null;
+  recommendationPausedForever?: boolean;
+}
+
+export interface MuscleGroup { slug: string; name: string; }
+export interface RecommendationItem {
+  exercise: Exercise;
+  lastDoneDate: string | null;
+  daysSinceLastDone: number | null;
+  paused: boolean;
+}
+export interface RecommendationGroup {
+  muscle: string;
+  muscleName: string;
+  lastTrainedDate: string | null;
+  daysSinceLastTrained: number | null;
+  exercises: RecommendationItem[];
+}
+export interface ExerciseRecommendations {
+  groups: RecommendationGroup[];
+  unclassified: RecommendationItem[];
+  neverTried: RecommendationItem[];
+  allExercises: RecommendationItem[];
+  muscleGroups: MuscleGroup[];
 }
 
 export interface ExerciseSet {
@@ -93,11 +119,15 @@ export interface ExerciseCreatePayload {
   customEquipment: string | null;
   allowBodyweight: boolean;
   imageKey: string | null;
+  primaryMuscle: string | null;
+  secondaryMuscles: string[];
 }
 
 export interface ExerciseUpdatePayload {
   baseName: string;
   imageKey: string | null;
+  primaryMuscle: string | null;
+  secondaryMuscles: string[];
 }
 
 export interface Backup {

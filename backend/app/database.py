@@ -74,7 +74,14 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "monster-sets"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
+MUSCLE_GROUPS = (
+    ("abs", "Abs"), ("back", "Back"), ("biceps", "Biceps"), ("calves", "Calves"),
+    ("chest", "Chest"), ("forearms", "Forearms"), ("glutes", "Glutes"),
+    ("hamstrings", "Hamstrings"), ("hip_flexors", "Hip Flexors"),
+    ("quadriceps", "Quadriceps"), ("shoulders", "Shoulders"), ("triceps", "Triceps"),
+)
+MUSCLE_SLUGS = {slug for slug, _ in MUSCLE_GROUPS}
 MAX_DAILY_NOTE_LENGTH = 20_000
 MAX_PHOTOS_PER_DAY = 10
 MAX_REPETITIONS = 1_000_000
@@ -567,6 +574,62 @@ class MonsterSetsDatabase:
             ):
                 connection.execute("INSERT OR IGNORE INTO backup_settings(id) VALUES (1)")
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (9)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 10").fetchone()
+                is None
+            ):
+                connection.executescript(
+                    """
+                    CREATE TABLE muscle_groups (
+                        slug TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        display_order INTEGER NOT NULL UNIQUE
+                    );
+                    CREATE TABLE exercise_muscles (
+                        exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+                        muscle_slug TEXT NOT NULL REFERENCES muscle_groups(slug) ON DELETE RESTRICT,
+                        role TEXT NOT NULL CHECK (role IN ('primary', 'secondary')),
+                        PRIMARY KEY (exercise_id, muscle_slug)
+                    );
+                    CREATE UNIQUE INDEX idx_exercise_one_primary
+                        ON exercise_muscles(exercise_id) WHERE role = 'primary';
+                    CREATE INDEX idx_exercise_muscles_lookup
+                        ON exercise_muscles(muscle_slug, role, exercise_id);
+                    ALTER TABLE exercises ADD COLUMN recommendation_paused_until TEXT;
+                    ALTER TABLE exercises ADD COLUMN recommendation_paused_forever INTEGER
+                        NOT NULL DEFAULT 0 CHECK (recommendation_paused_forever IN (0, 1));
+                    """
+                )
+                for index, (slug, name) in enumerate(MUSCLE_GROUPS):
+                    connection.execute(
+                        "INSERT INTO muscle_groups(slug, name, display_order) VALUES (?, ?, ?)",
+                        (slug, name, index),
+                    )
+                seed_muscles = {
+                    "band-pull-aparts": ("back", ("shoulders",)),
+                    "bicep-curls": ("biceps", ("forearms",)),
+                    "deadlifts": ("hamstrings", ("glutes", "back", "forearms")),
+                    "hollow-body-hold": ("abs", ("hip_flexors",)),
+                    "plank": ("abs", ("shoulders", "glutes")),
+                    "pull-ups": ("back", ("biceps", "forearms")),
+                    "push-ups": ("chest", ("triceps", "shoulders", "abs")),
+                    "squats": ("quadriceps", ("glutes", "hamstrings", "abs")),
+                }
+                for seed_key, (primary, secondary) in seed_muscles.items():
+                    exercise = connection.execute(
+                        "SELECT id FROM exercises WHERE seed_key = ?", (seed_key,)
+                    ).fetchone()
+                    if exercise is None:
+                        continue
+                    connection.execute(
+                        "INSERT OR IGNORE INTO exercise_muscles(exercise_id, muscle_slug, role) VALUES (?, ?, 'primary')",
+                        (exercise["id"], primary),
+                    )
+                    connection.executemany(
+                        "INSERT OR IGNORE INTO exercise_muscles(exercise_id, muscle_slug, role) VALUES (?, ?, 'secondary')",
+                        [(exercise["id"], slug) for slug in secondary],
+                    )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (10)")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -1051,11 +1114,57 @@ class MonsterSetsDatabase:
             custom,
         )
 
-    def _serialize_exercise(self, row: sqlite3.Row) -> dict:
+    def _exercise_muscles(
+        self, connection: sqlite3.Connection, exercise_id: int
+    ) -> tuple[str | None, list[str]]:
+        rows = connection.execute(
+            "SELECT muscle_slug, role FROM exercise_muscles "
+            "WHERE exercise_id = ? ORDER BY role, muscle_slug",
+            (exercise_id,),
+        ).fetchall()
+        primary = next((row["muscle_slug"] for row in rows if row["role"] == "primary"), None)
+        return primary, [row["muscle_slug"] for row in rows if row["role"] == "secondary"]
+
+    def _validate_muscles(
+        self, primary: str | None, secondary: list[str]
+    ) -> tuple[str | None, list[str]]:
+        primary = primary or None
+        if primary is not None and primary not in MUSCLE_SLUGS:
+            raise DomainError("Choose a valid primary muscle group.")
+        if any(muscle not in MUSCLE_SLUGS for muscle in secondary):
+            raise DomainError("Choose valid secondary muscle groups.")
+        if len(set(secondary)) != len(secondary):
+            raise DomainError("Secondary muscle groups must be unique.")
+        if primary in secondary:
+            raise DomainError("A primary muscle group cannot also be secondary.")
+        return primary, sorted(secondary)
+
+    def _replace_exercise_muscles(
+        self,
+        connection: sqlite3.Connection,
+        exercise_id: int,
+        primary: str | None,
+        secondary: list[str],
+    ) -> None:
+        primary, secondary = self._validate_muscles(primary, secondary)
+        connection.execute("DELETE FROM exercise_muscles WHERE exercise_id = ?", (exercise_id,))
+        if primary:
+            connection.execute(
+                "INSERT INTO exercise_muscles(exercise_id, muscle_slug, role) VALUES (?, ?, 'primary')",
+                (exercise_id, primary),
+            )
+        connection.executemany(
+            "INSERT INTO exercise_muscles(exercise_id, muscle_slug, role) "
+            "VALUES (?, ?, 'secondary')",
+            [(exercise_id, muscle) for muscle in secondary],
+        )
+
+    def _serialize_exercise(self, row: sqlite3.Row, connection: sqlite3.Connection) -> dict:
         try:
             has_history = bool(row["has_history"])
         except IndexError:
             has_history = False
+        primary, secondary = self._exercise_muscles(connection, row["id"])
         return {
             "id": row["id"],
             "name": row["name"],
@@ -1068,6 +1177,10 @@ class MonsterSetsDatabase:
             "exerciseNote": row["exercise_note"],
             "archivedAt": row["archived_at"],
             "hasHistory": has_history,
+            "primaryMuscle": primary,
+            "secondaryMuscles": secondary,
+            "recommendationPausedUntil": row["recommendation_paused_until"],
+            "recommendationPausedForever": bool(row["recommendation_paused_forever"]),
         }
 
     def _serialize_set(self, row: sqlite3.Row) -> dict:
@@ -1119,7 +1232,163 @@ class MonsterSetsDatabase:
                 """,
                 params,
             ).fetchall()
-        return [self._serialize_exercise(row) for row in rows]
+            return [self._serialize_exercise(row, connection) for row in rows]
+
+    def exercise_recommendations(
+        self,
+        day_value: str,
+        query: str,
+        measurement_type: str | None,
+        muscle_group: str | None,
+        muscle_role: str,
+        include_paused: bool,
+        sort: str,
+    ) -> dict:
+        day = self._parse_day(day_value)
+        if measurement_type and measurement_type not in {"repetitions", "duration", "timed_repetitions"}:
+            raise DomainError("Invalid measurement type.")
+        if muscle_group and muscle_group not in MUSCLE_SLUGS:
+            raise DomainError("Invalid muscle group.")
+        if muscle_role not in {"any", "primary", "secondary"}:
+            raise DomainError("Invalid muscle role.")
+        if sort not in {"recommended", "muscle", "exercise"}:
+            raise DomainError("Invalid recommendation sort.")
+        normalized_query = normalize_name(query)[1] if query.strip() else ""
+        today = self.today()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT e.*, MAX(s.entry_date) AS last_done_date,
+                    EXISTS(SELECT 1 FROM exercise_sets h WHERE h.exercise_id = e.id) AS has_history
+                FROM exercises e LEFT JOIN exercise_sets s
+                    ON s.exercise_id = e.id AND s.entry_date <= ?
+                WHERE e.archived_at IS NULL
+                GROUP BY e.id
+                """,
+                (day_value,),
+            ).fetchall()
+            items = []
+            for row in rows:
+                exercise = self._serialize_exercise(row, connection)
+                primary, secondary = exercise["primaryMuscle"], exercise["secondaryMuscles"]
+                if normalized_query and normalized_query not in row["normalized_name"]:
+                    continue
+                if measurement_type and exercise["measurementType"] != measurement_type:
+                    continue
+                matches_muscle = (
+                    not muscle_group
+                    or (muscle_role in {"any", "primary"} and primary == muscle_group)
+                    or (muscle_role in {"any", "secondary"} and muscle_group in secondary)
+                )
+                if not matches_muscle:
+                    continue
+                paused_until = exercise["recommendationPausedUntil"]
+                paused = exercise["recommendationPausedForever"] or (
+                    paused_until is not None and date.fromisoformat(paused_until) > today
+                )
+                if paused and not (include_paused or normalized_query):
+                    continue
+                last_done = row["last_done_date"]
+                items.append({
+                    "exercise": exercise,
+                    "lastDoneDate": last_done,
+                    "daysSinceLastDone": (day - date.fromisoformat(last_done)).days if last_done else None,
+                    "paused": paused,
+                })
+            primary_dates = {
+                row["muscle_slug"]: row["last_date"]
+                for row in connection.execute(
+                    """
+                    SELECT em.muscle_slug, MAX(s.entry_date) AS last_date
+                    FROM exercise_muscles em JOIN exercise_sets s ON s.exercise_id = em.exercise_id
+                    WHERE em.role = 'primary' AND s.entry_date <= ?
+                    GROUP BY em.muscle_slug
+                    """,
+                    (day_value,),
+                )
+            }
+        performed = [item for item in items if item["lastDoneDate"]]
+        never_tried = [item for item in items if not item["lastDoneDate"]]
+        by_primary: dict[str, list[dict]] = {}
+        unclassified: list[dict] = []
+        for item in performed:
+            primary = item["exercise"]["primaryMuscle"]
+            (unclassified if primary is None else by_primary.setdefault(primary, [])).append(item)
+        item_key = lambda item: (-item["daysSinceLastDone"], item["exercise"]["name"].casefold())
+        for group_items in by_primary.values():
+            group_items.sort(key=item_key)
+        unclassified.sort(key=item_key)
+        never_tried.sort(key=lambda item: item["exercise"]["name"].casefold())
+        names = dict(MUSCLE_GROUPS)
+        groups = [
+            {
+                "muscle": slug,
+                "muscleName": names[slug],
+                "lastTrainedDate": primary_dates.get(slug),
+                "daysSinceLastTrained": (
+                    (day - date.fromisoformat(primary_dates[slug])).days if slug in primary_dates else None
+                ),
+                "exercises": group_items,
+            }
+            for slug, group_items in by_primary.items()
+        ]
+        if sort == "muscle":
+            groups.sort(key=lambda group: group["muscleName"])
+        else:
+            groups.sort(
+                key=lambda group: (
+                    group["daysSinceLastTrained"] is None,
+                    -(group["daysSinceLastTrained"] or 0),
+                    group["muscleName"],
+                )
+            )
+        all_exercises = [item for group in groups for item in group["exercises"]] + unclassified + never_tried
+        if sort == "exercise":
+            all_exercises.sort(key=lambda item: item["exercise"]["name"].casefold())
+        return {
+            "groups": groups,
+            "unclassified": unclassified,
+            "neverTried": never_tried,
+            "allExercises": all_exercises,
+            "muscleGroups": [{"slug": slug, "name": name} for slug, name in MUSCLE_GROUPS],
+        }
+
+    @staticmethod
+    def _add_calendar_months(value: date, months: int) -> date:
+        month_index = value.month - 1 + months
+        year, month = value.year + month_index // 12, month_index % 12 + 1
+        next_month = date(year + (month == 12), 1 if month == 12 else month + 1, 1)
+        return date(year, month, min(value.day, (next_month - timedelta(days=1)).day))
+
+    def update_recommendation_pause(self, exercise_id: int, period: str) -> dict:
+        periods = {"week", "month", "six_months", "year", "forever", "resume"}
+        if period not in periods:
+            raise DomainError("Invalid recommendation pause period.")
+        today = self.today()
+        if period == "week":
+            until = today + timedelta(days=7)
+        elif period == "month":
+            until = self._add_calendar_months(today, 1)
+        elif period == "six_months":
+            until = self._add_calendar_months(today, 6)
+        elif period == "year":
+            until = self._add_calendar_months(today, 12)
+        else:
+            until = None
+        with self.connect() as connection:
+            self._exercise_row(connection, exercise_id)
+            connection.execute(
+                "UPDATE exercises SET recommendation_paused_until = ?, "
+                "recommendation_paused_forever = ?, updated_at = ? WHERE id = ?",
+                (
+                    until.isoformat() if until else None,
+                    int(period == "forever"),
+                    self._utc_now(),
+                    exercise_id,
+                ),
+            )
+            connection.commit()
+            return self._serialize_exercise(self._exercise_row(connection, exercise_id), connection)
 
     def exercise(self, exercise_id: int) -> dict:
         with self.connect() as connection:
@@ -1132,7 +1401,7 @@ class MonsterSetsDatabase:
                 """,
                 (exercise_id,),
             ).fetchone()
-            return self._serialize_exercise(row)
+            return self._serialize_exercise(row, connection)
 
     def create_exercise(self, payload) -> dict:
         base_name, _ = normalize_name(payload.baseName)
@@ -1172,9 +1441,15 @@ class MonsterSetsDatabase:
                         now,
                     ),
                 )
+                self._replace_exercise_muscles(
+                    connection,
+                    cursor.lastrowid,
+                    getattr(payload, "primaryMuscle", None),
+                    getattr(payload, "secondaryMuscles", []),
+                )
                 connection.commit()
                 row = self._exercise_row(connection, cursor.lastrowid)
-                return self._serialize_exercise(row)
+                return self._serialize_exercise(row, connection)
         except sqlite3.IntegrityError as exc:
             raise DomainError("An exercise with this name already exists.") from exc
 
@@ -1211,8 +1486,15 @@ class MonsterSetsDatabase:
                         exercise_id,
                     ),
                 )
+                if hasattr(payload, "primaryMuscle"):
+                    self._replace_exercise_muscles(
+                        connection,
+                        exercise_id,
+                        payload.primaryMuscle,
+                        payload.secondaryMuscles,
+                    )
                 connection.commit()
-                return self._serialize_exercise(self._exercise_row(connection, exercise_id))
+                return self._serialize_exercise(self._exercise_row(connection, exercise_id), connection)
         except sqlite3.IntegrityError as exc:
             raise DomainError("An exercise with this name already exists.") from exc
 
@@ -1233,7 +1515,7 @@ class MonsterSetsDatabase:
                 """,
                 (exercise_id,),
             ).fetchone()
-            return self._serialize_exercise(row)
+            return self._serialize_exercise(row, connection)
 
     def archive_exercise(self, exercise_id: int) -> dict:
         with self.connect() as connection:
@@ -1244,7 +1526,7 @@ class MonsterSetsDatabase:
                     (self._utc_now(), self._utc_now(), exercise_id),
                 )
                 connection.commit()
-            return self._serialize_exercise(self._exercise_row(connection, exercise_id))
+            return self._serialize_exercise(self._exercise_row(connection, exercise_id), connection)
 
     def restore_exercise(self, exercise_id: int) -> dict:
         with self.connect() as connection:
@@ -1254,7 +1536,7 @@ class MonsterSetsDatabase:
                 (self._utc_now(), exercise_id),
             )
             connection.commit()
-            return self._serialize_exercise(self._exercise_row(connection, exercise_id))
+            return self._serialize_exercise(self._exercise_row(connection, exercise_id), connection)
 
     def delete_exercise(self, exercise_id: int, confirmation: str) -> None:
         if confirmation != "DELETE":
@@ -1316,7 +1598,7 @@ class MonsterSetsDatabase:
                 )
                 sections.append(
                     {
-                        "exercise": self._serialize_exercise(exercise),
+                        "exercise": self._serialize_exercise(exercise, connection),
                         "displayOrder": exercise["display_order"],
                         "total": total,
                         "sets": sets,

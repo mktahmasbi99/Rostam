@@ -1,4 +1,4 @@
-import type { Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, SetPayload } from "./types";
+import type { Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseRecommendations, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, SetPayload } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -38,10 +38,19 @@ export const api = {
     if (measurementType) params.set("measurementType", measurementType);
     return request<Exercise[]>(`/api/exercises?${params}`);
   },
+  exerciseRecommendations: (day: string, options: { query?: string; measurementType?: string; muscleGroup?: string; muscleRole?: string; includePaused?: boolean; sort?: string } = {}) => {
+    const params = new URLSearchParams({ day });
+    Object.entries(options).forEach(([key, value]) => {
+      if (value !== undefined && value !== "" && value !== false) params.set(key, String(value));
+    });
+    return request<ExerciseRecommendations>(`/api/exercise-recommendations?${params}`);
+  },
   createExercise: (payload: ExerciseCreatePayload) =>
     request<Exercise>("/api/exercises", json("POST", payload)),
   updateExercise: (id: number, payload: ExerciseUpdatePayload) =>
     request<Exercise>(`/api/exercises/${id}`, json("PATCH", payload)),
+  updateRecommendationPause: (id: number, period: "week" | "month" | "six_months" | "year" | "forever" | "resume") =>
+    request<Exercise>(`/api/exercises/${id}/recommendation-pause`, json("PUT", { period })),
   updateExerciseNote: (id: number, body: string) =>
     request<Exercise>(`/api/exercises/${id}/note`, json("PUT", { body })),
   updateDailyNote: (day: string, body: string) => request<{ date: string; dailyNote: string | null }>(`/api/days/${day}/note`, json("PUT", { body })),

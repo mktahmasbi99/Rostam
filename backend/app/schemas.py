@@ -31,6 +31,8 @@ class ExerciseCreate(BaseModel):
     customEquipment: str | None = Field(default=None, max_length=80)
     allowBodyweight: bool = True
     imageKey: str | None = Field(default=None, max_length=100)
+    primaryMuscle: str | None = None
+    secondaryMuscles: list[str] = Field(default_factory=list, max_length=11)
 
 
 class ExerciseUpdate(BaseModel):
@@ -38,6 +40,14 @@ class ExerciseUpdate(BaseModel):
 
     baseName: str = Field(min_length=1, max_length=100)
     imageKey: str | None = Field(default=None, max_length=100)
+    primaryMuscle: str | None = None
+    secondaryMuscles: list[str] = Field(default_factory=list, max_length=11)
+
+
+class RecommendationPauseUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    period: Literal["week", "month", "six_months", "year", "forever", "resume"]
 
 
 class ExerciseNoteUpdate(BaseModel):

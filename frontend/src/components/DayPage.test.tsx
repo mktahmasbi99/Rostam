@@ -9,6 +9,7 @@ vi.mock("../lib/api", () => ({
   api: {
     day: vi.fn(),
     exercises: vi.fn(),
+    exerciseRecommendations: vi.fn(),
     config: vi.fn(),
     prefill: vi.fn(),
     updateExerciseNote: vi.fn(),
@@ -53,7 +54,10 @@ describe("DayPage exercise notes", () => {
   it("shows the note action on a pending exercise card", async () => {
     const user = userEvent.setup();
     vi.mocked(api.day).mockResolvedValue({ date: "2026-09-17", sections: [] });
-    vi.mocked(api.exercises).mockResolvedValue([exercise]);
+    vi.mocked(api.exerciseRecommendations).mockResolvedValue({
+      groups: [{ muscle: "chest", muscleName: "Chest", lastTrainedDate: null, daysSinceLastTrained: null, exercises: [{ exercise, lastDoneDate: null, daysSinceLastDone: null, paused: false }] }],
+      unclassified: [], neverTried: [], allExercises: [{ exercise, lastDoneDate: null, daysSinceLastDone: null, paused: false }], muscleGroups: [],
+    });
     render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
 
     await user.click((await screen.findAllByRole("button", { name: "Add exercise" }))[0]);
