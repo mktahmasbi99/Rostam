@@ -1627,7 +1627,9 @@ class RostamDatabase:
             ).fetchone()[0]
             rows = connection.execute(
                 """
-                SELECT e.*, d.display_order
+                SELECT e.*, d.display_order,
+                    EXISTS(SELECT 1 FROM exercise_sets s WHERE s.exercise_id = e.id)
+                    AS has_history
                 FROM day_exercises d JOIN exercises e ON e.id = d.exercise_id
                 WHERE d.entry_date = ? ORDER BY d.display_order
                 """,

@@ -346,6 +346,7 @@ def test_mixed_resistance_sets_total_and_stable_day_order(database):
     earlier = database.add_set(pushups["id"], today, set_payload(time="08:12"))
     day = database.day(today)
     assert [section["exercise"]["name"] for section in day["sections"]] == ["Push-ups", "Deadlifts"]
+    assert all(section["exercise"]["hasHistory"] for section in day["sections"])
     assert [item["id"] for item in day["sections"][0]["sets"]] == [earlier["id"], first["id"]]
     assert day["sections"][0]["total"] == 30
     assert day["sections"][1]["sets"][0]["weightKg"] == "10.5"
