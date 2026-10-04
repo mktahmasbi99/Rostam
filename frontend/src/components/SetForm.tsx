@@ -113,7 +113,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
     setError("");
     const payload: SetPayload = {
       time: timeEdited ? time : null,
-      repetitions: exercise.measurementType === "repetitions" ? Number(repetitions) : null,
+      repetitions: exercise.measurementType === "repetitions" || exercise.measurementType === "timed_repetitions" ? Number(repetitions) : null,
       durationMinutes: exercise.measurementType === "duration" ? Number(minutes || 0) : null,
       durationSeconds: exercise.measurementType === "duration" ? Number(seconds || 0) : null,
       holdMinutes: exercise.measurementType === "timed_repetitions" ? Number(holdMinutes || 0) : null,

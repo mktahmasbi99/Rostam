@@ -112,7 +112,59 @@ describe("SetForm", () => {
     expect(weight).toHaveClass("suggested-value");
   });
 
-  it("edits timed repetitions with a per-repetition hold", () => {
+  it.each([false, true])("saves timed repetitions with prefilled or manually entered values (edited: %s)", async (edited) => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    vi.mocked(api.config).mockResolvedValue({ today: "2026-09-16", timezone: "Europe/Warsaw", version: "1" });
+    vi.mocked(api.prefill).mockResolvedValue({
+      source: "previous",
+      time: null,
+      repetitions: 4,
+      durationMinutes: null,
+      durationSeconds: null,
+      holdMinutes: 0,
+      holdSeconds: 10,
+      resistanceKind: "bodyweight",
+      weightKg: null,
+    });
+    vi.mocked(api.addSet).mockResolvedValue({});
+    render(<SetForm
+      exercise={{ ...exercise, name: "Side Plank Leg Lift", measurementType: "timed_repetitions", equipment: null }}
+      day="2026-09-16"
+      onSaved={onSaved}
+      onCancel={vi.fn()}
+    />);
+
+    await screen.findByDisplayValue("4");
+    expect(screen.getByLabelText("Reps")).toHaveClass("suggested-value");
+    if (edited) {
+      await user.clear(screen.getByLabelText("Reps"));
+      await user.type(screen.getByLabelText("Reps"), "8");
+      await user.clear(screen.getByLabelText("Hold seconds"));
+      await user.type(screen.getByLabelText("Hold seconds"), "15");
+      expect(screen.getByLabelText("Reps")).not.toHaveClass("suggested-value");
+      expect(screen.getByLabelText("Hold seconds")).not.toHaveClass("suggested-value");
+    }
+    await user.click(screen.getByRole("button", { name: "Save set" }));
+
+    await waitFor(() => expect(api.addSet).toHaveBeenLastCalledWith("2026-09-16", exercise.id, {
+      time: null,
+      repetitions: edited ? 8 : 4,
+      durationMinutes: null,
+      durationSeconds: null,
+      holdMinutes: 0,
+      holdSeconds: edited ? 15 : 10,
+      resistanceKind: "bodyweight",
+      weightKg: null,
+    }));
+    expect(onSaved).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("edits timed repetitions with a per-repetition hold", async () => {
+    const user = userEvent.setup();
+    const onSaved = vi.fn();
+    vi.mocked(api.updateSet).mockResolvedValue({});
     render(<SetForm
       exercise={{ ...exercise, measurementType: "timed_repetitions", equipment: null }}
       day="2026-09-16"
@@ -133,12 +185,27 @@ describe("SetForm", () => {
         customEquipment: null,
         createdAt: "2026-09-16T10:00:00+00:00",
       }}
-      onSaved={vi.fn()}
+      onSaved={onSaved}
       onCancel={vi.fn()}
     />);
 
     expect(screen.getByLabelText("Reps")).toHaveValue(4);
     expect(screen.getByLabelText("Hold minutes")).toHaveValue(0);
     expect(screen.getByLabelText("Hold seconds")).toHaveValue(10);
+    await user.clear(screen.getByLabelText("Reps"));
+    await user.type(screen.getByLabelText("Reps"), "6");
+    await user.click(screen.getByRole("button", { name: "Save set" }));
+
+    await waitFor(() => expect(api.updateSet).toHaveBeenLastCalledWith(4, {
+      time: null,
+      repetitions: 6,
+      durationMinutes: null,
+      durationSeconds: null,
+      holdMinutes: 0,
+      holdSeconds: 10,
+      resistanceKind: "bodyweight",
+      weightKg: null,
+    }));
+    expect(onSaved).toHaveBeenCalledOnce();
   });
 });
