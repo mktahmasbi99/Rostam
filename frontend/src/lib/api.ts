@@ -1,4 +1,4 @@
-import type { Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, SetPayload } from "./types";
+import type { Activity, ActivityEntry, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, SetPayload } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -31,6 +31,14 @@ export const api = {
   deleteBodyMeasurement: (id: number) => request<void>(`/api/body-measurements/${id}`, { method: "DELETE" }),
   day: (day: string, signal?: AbortSignal) =>
     request<DayData>(`/api/days/${day}`, { signal }),
+  activities: () => request<Activity[]>("/api/activities"),
+  createActivity: (name: string) => request<Activity>("/api/activities", json("POST", { name })),
+  startActivity: (id: number, startedAt: string) => request<ActivityEntry>(`/api/activities/${id}/entries`, json("POST", { startedAt })),
+  finishActivity: (id: number, startedAt: string, endedAt: string, note: string) => request<ActivityEntry>(`/api/activity-entries/${id}`, json("PATCH", { startedAt, endedAt, note })),
+  updateActivity: (id: number, startedAt: string, endedAt: string, note: string) => request<ActivityEntry>(`/api/activity-entries/${id}`, json("PUT", { startedAt, endedAt, note })),
+  updateActivityNote: (id: number, note: string) => request<ActivityEntry>(`/api/activity-entries/${id}/note`, json("PUT", { note })),
+  deleteActivity: (id: number) => request<void>(`/api/activity-entries/${id}`, { method: "DELETE" }),
+  activityNotes: () => request<ActivityEntry[]>("/api/activity-notes"),
   calendar: (month: string) =>
     request<{ month: string; activeDates: string[] }>(`/api/calendar/${month}`),
   exerciseHistory: (id: number, options: { beforeDate?: string; limit?: number } = {}, signal?: AbortSignal) => {

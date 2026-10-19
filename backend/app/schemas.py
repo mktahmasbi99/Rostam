@@ -113,3 +113,37 @@ class SetWrite(BaseModel):
     holdSeconds: int | None = None
     resistanceKind: ResistanceKind
     weightKg: str | None = None
+
+
+class ActivityCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100)
+
+
+class ActivityStart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    startedAt: str
+
+
+class ActivityFinish(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    startedAt: str
+    endedAt: str
+    note: str = Field(default="", max_length=20000)
+
+
+class ActivityUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    startedAt: str
+    endedAt: str
+    note: str = Field(default="", max_length=20000)
+
+
+class ActivityNoteUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    note: str = Field(default="", max_length=20000)

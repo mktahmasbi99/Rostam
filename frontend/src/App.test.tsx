@@ -26,7 +26,7 @@ describe("Rostam shell", () => {
   it("starts on an empty observational day", async () => {
     render(<App />);
     expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
-    expect(await screen.findByText("No sets recorded")).toBeInTheDocument();
+    expect(await screen.findByText("No activity recorded")).toBeInTheDocument();
     expect(screen.queryByText(/goal/i)).not.toBeInTheDocument();
   });
 
@@ -70,7 +70,8 @@ describe("Rostam shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Previous day" }));
     await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-12", expect.any(AbortSignal)));
-    expect(screen.getByText("2026-09-12")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Yesterday" })).toBeInTheDocument();
+    expect(screen.queryByText("2026-09-12")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Next day" })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: "Next day" }));

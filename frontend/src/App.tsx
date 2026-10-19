@@ -64,6 +64,7 @@ export default function App() {
       {tab === "today" && <DayPage
         day={selectedDay}
         today={config.today}
+        timezone={config.timezone}
         onOpenCalendar={() => setCalendarOpen(true)}
         onPreviousDay={() => setSelectedDay(shiftDay(selectedDay, -1))}
         onNextDay={() => setSelectedDay(shiftDay(selectedDay, 1))}

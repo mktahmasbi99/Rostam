@@ -104,8 +104,16 @@ export interface ExerciseHistoryPage {
 export interface DayData {
   date: string;
   sections: DaySection[];
+  activities?: ActivityEntry[];
   dailyNote?: string | null;
   photoCount?: number;
+}
+
+export interface Activity { id: number; name: string; }
+export interface ActivityEntry {
+  id: number; activityId: number; activityName: string; date: string;
+  startedAt: string; endedAt: string | null; durationSeconds: number | null;
+  note: string; createdAt: string;
 }
 
 export interface DailyNote { date: string; body: string; createdAt: string; updatedAt: string; }

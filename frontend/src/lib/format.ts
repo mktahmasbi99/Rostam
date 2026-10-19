@@ -74,6 +74,9 @@ export function formatExerciseTotal(exercise: { measurementType: string }, amoun
 
 export function formatDay(day: string, today: string): string {
   if (day === today) return "Today";
+  const selectedDate = new Date(`${day}T00:00:00Z`);
+  selectedDate.setUTCDate(selectedDate.getUTCDate() + 1);
+  if (selectedDate.toISOString().slice(0, 10) === today) return "Yesterday";
   return new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "short" }).format(
     new Date(`${day}T12:00:00`),
   );

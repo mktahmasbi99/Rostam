@@ -74,7 +74,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "rostam"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 MUSCLE_GROUPS = (
     ("abs", "Abs"),
     ("back", "Back"),
@@ -665,6 +665,33 @@ class RostamDatabase:
                     "UPDATE backup_metadata SET app_id = ? WHERE id = 1", (BACKUP_APP_ID,)
                 )
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (11)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 12").fetchone()
+                is None
+            ):
+                connection.executescript(
+                    """
+                    CREATE TABLE activities (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        normalized_name TEXT NOT NULL UNIQUE,
+                        archived_at TEXT,
+                        created_at TEXT NOT NULL
+                    );
+                    CREATE TABLE activity_entries (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        activity_id INTEGER NOT NULL REFERENCES activities(id) ON DELETE RESTRICT,
+                        started_at TEXT NOT NULL,
+                        ended_at TEXT,
+                        note TEXT NOT NULL DEFAULT '',
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    CREATE INDEX idx_activity_entries_start ON activity_entries(started_at, id);
+                    CREATE INDEX idx_activity_entries_activity ON activity_entries(activity_id, started_at);
+                    """
+                )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (12)")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -1625,6 +1652,7 @@ class RostamDatabase:
             photo_count = connection.execute(
                 "SELECT COUNT(*) FROM daily_photos WHERE entry_date = ?", (day_value,)
             ).fetchone()[0]
+            activities = self._activity_entries_for_day(connection, day_value)
             rows = connection.execute(
                 """
                 SELECT e.*, d.display_order,
@@ -1658,9 +1686,225 @@ class RostamDatabase:
         return {
             "date": day_value,
             "sections": sections,
+            "activities": activities,
             "dailyNote": note["body"] if note else None,
             "photoCount": photo_count,
         }
+
+    def _activity_time(self, value: str) -> datetime:
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise DomainError("Activity time must be a valid date and time.") from exc
+        if parsed.tzinfo is None:
+            candidates: dict[datetime, datetime] = {}
+            for fold in (0, 1):
+                candidate = parsed.replace(tzinfo=self.settings.timezone, fold=fold)
+                round_trip = candidate.astimezone(UTC).astimezone(self.settings.timezone)
+                if round_trip.replace(tzinfo=None) == parsed:
+                    candidates[candidate.astimezone(UTC)] = candidate
+            if not candidates:
+                raise DomainError("Activity time does not exist in the configured timezone.")
+            if len(candidates) > 1:
+                raise DomainError("Activity time is ambiguous in the configured timezone.")
+            parsed = next(iter(candidates.values()))
+        return parsed.astimezone(UTC)
+
+    def _serialize_activity_entry(self, row: sqlite3.Row) -> dict:
+        start = datetime.fromisoformat(row["started_at"]).astimezone(self.settings.timezone)
+        end = (
+            datetime.fromisoformat(row["ended_at"]).astimezone(self.settings.timezone)
+            if row["ended_at"]
+            else None
+        )
+        return {
+            "id": row["id"],
+            "activityId": row["activity_id"],
+            "activityName": row["name"],
+            "date": start.date().isoformat(),
+            "startedAt": start.isoformat(timespec="seconds"),
+            "endedAt": end.isoformat(timespec="seconds") if end else None,
+            "durationSeconds": int((end - start).total_seconds()) if end else None,
+            "note": row["note"],
+            "createdAt": row["created_at"],
+        }
+
+    def _activity_entries_for_day(
+        self, connection: sqlite3.Connection, day_value: str
+    ) -> list[dict]:
+        selected = self._parse_day(day_value)
+        start = datetime.combine(selected, time.min, self.settings.timezone).astimezone(UTC)
+        end = datetime.combine(
+            selected + timedelta(days=1), time.min, self.settings.timezone
+        ).astimezone(UTC)
+        rows = connection.execute(
+            """SELECT x.*, a.name FROM activity_entries x JOIN activities a ON a.id=x.activity_id
+            WHERE x.started_at >= ? AND x.started_at < ? ORDER BY x.started_at, x.id""",
+            (start.isoformat(timespec="microseconds"), end.isoformat(timespec="microseconds")),
+        ).fetchall()
+        return [self._serialize_activity_entry(row) for row in rows]
+
+    def list_activities(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM activities WHERE archived_at IS NULL ORDER BY normalized_name"
+            ).fetchall()
+        return [{"id": row["id"], "name": row["name"]} for row in rows]
+
+    def create_activity(self, name: str) -> dict:
+        display, normalized = normalize_name(name)
+        now = self._utc_now()
+        try:
+            with self.connect() as connection:
+                cursor = connection.execute(
+                    "INSERT INTO activities(name, normalized_name, created_at) VALUES (?, ?, ?)",
+                    (display, normalized, now),
+                )
+                connection.commit()
+                return {"id": cursor.lastrowid, "name": display}
+        except sqlite3.IntegrityError as exc:
+            raise DomainError("An activity with this name already exists.") from exc
+
+    def start_activity_entry(self, activity_id: int, started_at: str) -> dict:
+        start = self._activity_time(started_at)
+        local_start = start.astimezone(self.settings.timezone)
+        if (
+            local_start.second
+            or local_start.microsecond
+            or (local_start.hour, local_start.minute) > (23, 58)
+        ):
+            raise DomainError("Start time must be a minute between 00:00 and 23:58.")
+        now = self._utc_now()
+        with self.connect() as connection:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM activities WHERE id=? AND archived_at IS NULL", (activity_id,)
+                ).fetchone()
+                is None
+            ):
+                raise DomainError("Activity not found.")
+            cursor = connection.execute(
+                "INSERT INTO activity_entries(activity_id, started_at, created_at, updated_at) VALUES (?, ?, ?, ?)",
+                (activity_id, start.isoformat(timespec="microseconds"), now, now),
+            )
+            row = connection.execute(
+                "SELECT x.*, a.name FROM activity_entries x JOIN activities a ON a.id=x.activity_id WHERE x.id=?",
+                (cursor.lastrowid,),
+            ).fetchone()
+            connection.commit()
+            return self._serialize_activity_entry(row)
+
+    def finish_activity_entry(
+        self, entry_id: int, started_at: str, ended_at: str, note: str
+    ) -> dict:
+        start, end = self._activity_time(started_at), self._activity_time(ended_at)
+        self._validate_activity_range(start, end)
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT x.*, a.name FROM activity_entries x JOIN activities a ON a.id=x.activity_id WHERE x.id=?",
+                (entry_id,),
+            ).fetchone()
+            if row is None:
+                raise DomainError("Activity entry not found.")
+            connection.execute(
+                "UPDATE activity_entries SET started_at=?, ended_at=?, note=?, updated_at=? WHERE id=?",
+                (
+                    start.isoformat(timespec="microseconds"),
+                    end.isoformat(timespec="microseconds"),
+                    note.strip(),
+                    self._utc_now(),
+                    entry_id,
+                ),
+            )
+            updated = connection.execute(
+                "SELECT x.*, a.name FROM activity_entries x JOIN activities a ON a.id=x.activity_id WHERE x.id=?",
+                (entry_id,),
+            ).fetchone()
+            connection.commit()
+            return self._serialize_activity_entry(updated)
+
+    def delete_activity_entry(self, entry_id: int) -> None:
+        with self.connect() as connection:
+            if (
+                connection.execute("DELETE FROM activity_entries WHERE id=?", (entry_id,)).rowcount
+                == 0
+            ):
+                raise DomainError("Activity entry not found.")
+            connection.commit()
+
+    def update_activity_entry(
+        self, entry_id: int, started_at: str, ended_at: str, note: str
+    ) -> dict:
+        start, end = self._activity_time(started_at), self._activity_time(ended_at)
+        self._validate_activity_range(start, end)
+        with self.connect() as connection:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM activity_entries WHERE id=?", (entry_id,)
+                ).fetchone()
+                is None
+            ):
+                raise DomainError("Activity entry not found.")
+            connection.execute(
+                "UPDATE activity_entries SET started_at=?, ended_at=?, note=?, updated_at=? WHERE id=?",
+                (
+                    start.isoformat(timespec="microseconds"),
+                    end.isoformat(timespec="microseconds"),
+                    note.strip(),
+                    self._utc_now(),
+                    entry_id,
+                ),
+            )
+            row = connection.execute(
+                "SELECT x.*, a.name FROM activity_entries x JOIN activities a ON a.id=x.activity_id WHERE x.id=?",
+                (entry_id,),
+            ).fetchone()
+            connection.commit()
+            return self._serialize_activity_entry(row)
+
+    def _validate_activity_range(self, start: datetime, end: datetime) -> None:
+        local_start = start.astimezone(self.settings.timezone)
+        local_end = end.astimezone(self.settings.timezone)
+        if (
+            local_start.second
+            or local_start.microsecond
+            or local_end.second
+            or local_end.microsecond
+        ):
+            raise DomainError("Activity times must be set to the minute.")
+        if (local_start.hour, local_start.minute) > (23, 58):
+            raise DomainError("Start time must be no later than 23:58.")
+        if local_start.date() != local_end.date():
+            raise DomainError("Activity start and end must be on the same day.")
+        if end - start < timedelta(minutes=1):
+            raise DomainError("End time must be at least one minute after start time.")
+
+    def update_activity_note(self, entry_id: int, note: str) -> dict:
+        with self.connect() as connection:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM activity_entries WHERE id=?", (entry_id,)
+                ).fetchone()
+                is None
+            ):
+                raise DomainError("Activity entry not found.")
+            connection.execute(
+                "UPDATE activity_entries SET note=?, updated_at=? WHERE id=?",
+                (note.strip(), self._utc_now(), entry_id),
+            )
+            row = connection.execute(
+                "SELECT x.*, a.name FROM activity_entries x JOIN activities a ON a.id=x.activity_id WHERE x.id=?",
+                (entry_id,),
+            ).fetchone()
+            connection.commit()
+            return self._serialize_activity_entry(row)
+
+    def activity_notes(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT x.*, a.name FROM activity_entries x JOIN activities a ON a.id=x.activity_id WHERE x.note != '' ORDER BY x.started_at DESC, x.id DESC"
+            ).fetchall()
+        return [self._serialize_activity_entry(row) for row in rows]
 
     def calendar(self, month: str) -> dict:
         if not re.fullmatch(r"\d{4}-\d{2}", month):
@@ -1670,6 +1914,8 @@ class RostamDatabase:
         except ValueError as exc:
             raise DomainError("Month must be valid.") from exc
         next_month = (first.replace(day=28) + timedelta(days=4)).replace(day=1)
+        local_start = datetime.combine(first, time.min, self.settings.timezone).astimezone(UTC)
+        local_end = datetime.combine(next_month, time.min, self.settings.timezone).astimezone(UTC)
         with self.connect() as connection:
             rows = connection.execute(
                 """
@@ -1678,7 +1924,22 @@ class RostamDatabase:
                 """,
                 (first.isoformat(), next_month.isoformat()),
             ).fetchall()
-        return {"month": month, "activeDates": [row["entry_date"] for row in rows]}
+            activity_rows = connection.execute(
+                "SELECT started_at FROM activity_entries WHERE started_at >= ? AND started_at < ?",
+                (
+                    local_start.isoformat(timespec="microseconds"),
+                    local_end.isoformat(timespec="microseconds"),
+                ),
+            ).fetchall()
+        active_dates = {row["entry_date"] for row in rows}
+        active_dates.update(
+            datetime.fromisoformat(row["started_at"])
+            .astimezone(self.settings.timezone)
+            .date()
+            .isoformat()
+            for row in activity_rows
+        )
+        return {"month": month, "activeDates": sorted(active_dates)}
 
     def exercise_history(self, exercise_id: int, before_date: str | None, limit: int) -> dict:
         if not 1 <= limit <= 50:

@@ -122,6 +122,106 @@ def test_exercise_note_api_preserves_plaintext_and_clears_whitespace(database, m
     assert cleared.json()["exerciseNote"] is None
 
 
+def test_timed_activity_entries_allow_repeats_and_keep_notes_in_order(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    client = TestClient(main.app)
+    activity = client.post("/api/activities", json={"name": "BJJ – No Gi"}).json()
+    first = client.post(
+        f"/api/activities/{activity['id']}/entries",
+        json={"startedAt": "2026-09-17T17:45:00+02:00"},
+    ).json()
+    second = client.post(
+        f"/api/activities/{activity['id']}/entries",
+        json={"startedAt": "2026-09-17T19:00:00+02:00"},
+    ).json()
+    assert (
+        client.post(
+            f"/api/activities/{activity['id']}/entries",
+            json={"startedAt": "2026-09-17T23:59:00+02:00"},
+        ).status_code
+        == 400
+    )
+
+    assert first["endedAt"] is None
+    note_saved = client.put(
+        f"/api/activity-entries/{second['id']}/note",
+        json={"note": "Warm up and guard passing"},
+    )
+    assert note_saved.status_code == 200
+    assert note_saved.json()["note"] == "Warm up and guard passing"
+    assert [entry["id"] for entry in client.get("/api/days/2026-09-17").json()["activities"]] == [
+        first["id"],
+        second["id"],
+    ]
+    assert client.get("/api/days/2026-09-17").json()["activities"][1]["note"] == (
+        "Warm up and guard passing"
+    )
+    assert (
+        client.patch(
+            f"/api/activity-entries/{first['id']}",
+            json={
+                "startedAt": "2026-09-17T17:50:00+02:00",
+                "endedAt": "2026-09-17T18:45:00+02:00",
+                "note": "Guard retention",
+            },
+        ).json()["durationSeconds"]
+        == 3300
+    )
+    assert (
+        client.patch(
+            f"/api/activity-entries/{second['id']}",
+            json={
+                "startedAt": "2026-09-17T19:00:00+02:00",
+                "endedAt": "2026-09-17T20:00:00+02:00",
+                "note": "Arm drags",
+            },
+        ).status_code
+        == 200
+    )
+    assert (
+        client.patch(
+            f"/api/activity-entries/{second['id']}",
+            json={
+                "startedAt": "2026-09-17T19:00:00+02:00",
+                "endedAt": "2026-09-17T18:59:00+02:00",
+                "note": "Invalid",
+            },
+        ).status_code
+        == 400
+    )
+    assert (
+        client.patch(
+            f"/api/activity-entries/{second['id']}",
+            json={
+                "startedAt": "2026-09-17T23:00:00+02:00",
+                "endedAt": "2026-09-18T00:01:00+02:00",
+                "note": "Overnight",
+            },
+        ).status_code
+        == 400
+    )
+
+    day = client.get("/api/days/2026-09-17").json()
+    assert [entry["id"] for entry in day["activities"]] == [first["id"], second["id"]]
+    assert [entry["note"] for entry in client.get("/api/activity-notes").json()] == [
+        "Arm drags",
+        "Guard retention",
+    ]
+    assert "2026-09-17" in client.get("/api/calendar/2026-09").json()["activeDates"]
+    edited = client.put(
+        f"/api/activity-entries/{second['id']}",
+        json={
+            "startedAt": "2026-09-17T19:05:00+02:00",
+            "endedAt": "2026-09-17T20:00:00+02:00",
+            "note": "Arm drags and snap downs",
+        },
+    )
+    assert edited.status_code == 200
+    assert edited.json()["durationSeconds"] == 3300
+    assert edited.json()["note"] == "Arm drags and snap downs"
+    assert client.delete(f"/api/activity-entries/{first['id']}").status_code == 204
+
+
 def test_restore_backup_endpoint(database, monkeypatch):
     monkeypatch.setattr(main, "database", database)
     source = database.create_backup("on-demand")

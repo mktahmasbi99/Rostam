@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { formatDay, formatExerciseTotal } from "../lib/format";
@@ -10,21 +10,25 @@ import { ExercisePicker } from "./ExercisePicker";
 import { SetForm } from "./SetForm";
 import { SetRow } from "./SetRow";
 import { ExerciseHistory } from "./ExerciseHistory";
+import { ActivityPicker } from "./ActivityPicker";
+import { ActivityEntryCard } from "./ActivityEntry";
 
 interface Props {
   day: string;
   today: string;
+  timezone?: string;
   onOpenCalendar: () => void;
   onPreviousDay: () => void;
   onNextDay: () => void;
   onChooseDay?: (day: string) => void;
 }
 
-export function DayPage({ day, today, onOpenCalendar, onPreviousDay, onNextDay, onChooseDay }: Props) {
+export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar, onPreviousDay, onNextDay, onChooseDay }: Props) {
   const [data, setData] = useState<DayData>({ date: day, sections: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [activityPickerOpen, setActivityPickerOpen] = useState(false);
   const [pendingExercise, setPendingExercise] = useState<Exercise | null>(null);
   const [addingTo, setAddingTo] = useState<number | null>(null);
   const [editingSet, setEditingSet] = useState<ExerciseSet | null>(null);
@@ -78,18 +82,20 @@ export function DayPage({ day, today, onOpenCalendar, onPreviousDay, onNextDay, 
     <main className="page day-page">
       <header className="day-header">
         <button className="day-navigation" aria-label="Previous day" title="Previous day" onClick={onPreviousDay}><ChevronLeft /></button>
-        <div><h1><button className="day-title" aria-label="Choose a day" onClick={onOpenCalendar}>{formatDay(day, today)}</button></h1><time>{day}</time></div>
+        <div><h1><button className="day-title" aria-label="Choose a day" onClick={onOpenCalendar}>{formatDay(day, today)}</button></h1></div>
         <button className="day-navigation" aria-label="Next day" title="Next day" disabled={day >= today} onClick={onNextDay}><ChevronRight /></button>
       </header>
 
       <div className="day-actions">
         {!loading && !error && <DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} />}
-        <button className="add-exercise" aria-label="Add exercise" title="Add exercise" onClick={() => setPickerOpen(true)}><Plus /></button>
+        <div className="day-add-actions"><button className="secondary" onClick={() => setActivityPickerOpen(true)}><Clock3 />Add activity</button><button className="add-exercise" aria-label="Add exercise" title="Add exercise" onClick={() => setPickerOpen(true)}><Plus /></button></div>
       </div>
 
       {error && <div className="error-panel" role="alert"><p>{error}</p><button onClick={() => void load()}>Retry</button></div>}
       {loading && <p className="loading">Loading sets…</p>}
-      {!loading && !error && data.sections.length === 0 && !pendingExercise && <div className="empty-state"><img className="app-logo empty-logo" src="/rostam-logo.png" alt="" /><h2>No sets recorded</h2><p>Use the plus button above when movement finds you today.</p></div>}
+      {!loading && !error && data.sections.length === 0 && !(data.activities?.length) && !pendingExercise && <div className="empty-state"><img className="app-logo empty-logo" src="/rostam-logo.png" alt="" /><h2>No activity recorded</h2><p>Add an exercise or start a timed activity.</p></div>}
+
+      {!!data.activities?.length && <section className="activity-card"><h2>Timed activities</h2><div className="activity-entry-list">{data.activities.map((entry) => <ActivityEntryCard key={entry.id} entry={entry} timezone={timezone} onChanged={() => void load()} />)}</div></section>}
 
       <div className="exercise-sections">
         {data.sections.map((section) => <section className="exercise-card" key={`${day}-${section.exercise.id}`}>
@@ -104,6 +110,7 @@ export function DayPage({ day, today, onOpenCalendar, onPreviousDay, onNextDay, 
         {pendingExercise && <section className="exercise-card pending-card"><header className="exercise-card-header"><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2>{pendingExercise.name}</h2><ExerciseHistory exercise={pendingExercise} day={day} onChooseDay={onChooseDay} /></div><span className="daily-total">New today</span></div></header><ExerciseNote exercise={pendingExercise} /><SetForm exercise={pendingExercise} day={day} onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></section>}
       </div>
       {pickerOpen && <ExercisePicker day={day} presentIds={[...presentIds, ...(pendingExercise ? [pendingExercise.id] : [])]} onClose={() => setPickerOpen(false)} onChoose={(exercise) => { setPickerOpen(false); setPendingExercise(exercise); setAddingTo(null); setEditingSet(null); }} />}
+      {activityPickerOpen && <ActivityPicker day={day} timezone={timezone} onClose={() => setActivityPickerOpen(false)} onStarted={() => { setActivityPickerOpen(false); void load(); }} />}
     </main>
   );
 }

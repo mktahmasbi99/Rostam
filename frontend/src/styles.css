@@ -44,7 +44,7 @@ h1, h2, h3 { color: var(--heading); }
 .brand-home:hover:not(:disabled), .brand-home:active:not(:disabled) { transform: none; box-shadow: none; }
 .page { padding: 24px 18px 40px; }
 .section-title h1, .day-header h1 { font-size: clamp(2rem, 8vw, 3.4rem); letter-spacing: -.055em; margin-bottom: 4px; }
-.section-title p, .day-header time { color: var(--muted); }
+.section-title p { color: var(--muted); }
 .stack { display: grid; gap: 18px; }
 
 button, .icon-button { min-height: 44px; min-width: 44px; border: 1px solid transparent; border-radius: 12px; background: var(--surface-2); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 5px rgba(21, 38, 53, .08); transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease; }
@@ -66,11 +66,48 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .day-title { display: inline; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; box-shadow: none; font: inherit; cursor: pointer; }
 .day-title:hover:not(:disabled), .day-title:active:not(:disabled) { transform: none; box-shadow: none; }
 .day-actions { display: flex; align-items: center; justify-content: space-between; min-height: 58px; margin: 0 2px 20px; }
+.day-add-actions { display: flex; align-items: center; gap: 10px; }
+.day-add-actions .secondary { min-height: 48px; }
 .add-exercise, .journal-actions button { width: 52px; min-width: 52px; height: 52px; min-height: 52px; padding: 0; border-radius: 50%; }
 .add-exercise { border: 0; background: linear-gradient(135deg, #ffd35d, #e7a421); color: #382504; box-shadow: 0 7px 16px rgba(117, 76, 8, .32); }
 .add-exercise svg { width: 27px; height: 27px; stroke-width: 3; }
 
 .exercise-sections { display: grid; gap: 18px; }
+.activity-card > h2 { margin: 0 0 10px; font-size: 1.1rem; }
+.activity-entry-list { display: grid; gap: 10px; }
+.activity-entry { position: relative; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 19px; box-shadow: var(--shadow); }
+.activity-entry-heading { display: flex; align-items: center; gap: 8px; }
+.activity-entry-heading strong { font-size: 1rem; }
+.activity-entry-heading .row-actions { margin-left: auto; }
+.activity-options { position: relative; }
+.activity-options-menu { position: absolute; z-index: 4; top: calc(100% + 6px); right: 0; display: grid; min-width: 160px; max-width: min(280px, calc(100vw - 40px)); padding: 6px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow); }
+.activity-options-menu .activity-delete-option { justify-content: flex-start; min-height: 40px; padding: 0 10px; background: transparent; box-shadow: none; color: var(--danger); text-align: left; }
+.activity-delete-option svg { width: 17px; height: 17px; flex: 0 0 auto; }
+.activity-stop-button { min-height: 42px; gap: 7px; padding: 0 12px; border-color: color-mix(in srgb, var(--danger) 58%, var(--line)); background: color-mix(in srgb, var(--danger) 16%, var(--surface)); color: var(--danger); font-weight: 800; }
+.activity-stop-button svg { width: 15px; height: 15px; fill: currentColor; stroke-width: 1.5; }
+.activity-stop-button:disabled { opacity: .5; }
+.activity-entry-time { color: var(--accent-dark); font-weight: 750; font-variant-numeric: tabular-nums; }
+.activity-entry-note { margin: 7px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.activity-create { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end; }
+.time-wheel-field { position: relative; display: grid; gap: 7px; }
+.time-wheel-field-label, .time-wheel-label { color: var(--label); font-size: .85rem; font-weight: 800; }
+.time-wheel-trigger { width: 100%; min-height: 48px; justify-content: flex-start; padding: 0 14px; border: 1px solid var(--line); background: var(--input); color: var(--ink); font-variant-numeric: tabular-nums; font-weight: 750; }
+.time-wheel-trigger svg { color: var(--accent-dark); }
+.time-wheel-popover { position: relative; z-index: 5; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface-2); box-shadow: var(--shadow); }
+.time-wheel-columns { display: flex; justify-content: center; align-items: end; gap: 12px; }
+.time-wheel-column { display: grid; justify-items: center; gap: 5px; }
+.time-wheel { position: relative; width: 82px; height: 180px; overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--input); touch-action: none; user-select: none; cursor: ns-resize; }
+.time-wheel:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.time-wheel-fade { position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(to bottom, var(--input) 0%, transparent 35%, transparent 65%, var(--input) 100%); opacity: .7; }
+.time-wheel::after { content: ""; position: absolute; top: 72px; left: 5px; right: 5px; height: 34px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent-soft); pointer-events: none; }
+.time-wheel-option { position: absolute; top: 72px; left: 0; width: 100%; min-height: 36px; height: 36px; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 700; }
+.time-wheel-option:hover:not(:disabled), .time-wheel-option:active:not(:disabled) { transform: none; box-shadow: none; }
+.time-wheel-option.selected { z-index: 2; color: var(--ink); font-size: 1.15rem; font-weight: 900; }
+.time-wheel-separator { padding-bottom: 72px; color: var(--accent-dark); font-size: 1.5rem; font-weight: 900; }
+.time-wheel-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.time-wheel-actions button { min-height: 40px; padding: 0 12px; }
+.notes-group { margin: 20px 0; }
+.notes-group > h2 { font-size: 1.15rem; }
 .exercise-card { background: var(--surface); border: 1px solid var(--line); border-radius: 25px; overflow: hidden; box-shadow: var(--shadow); }
 .pending-card { border: 2px dashed var(--accent); }
 .exercise-card-header { display: flex; align-items: center; gap: 14px; padding: 16px 18px 12px; }

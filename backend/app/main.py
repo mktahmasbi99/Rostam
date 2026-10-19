@@ -14,6 +14,11 @@ from fastapi.staticfiles import StaticFiles
 from .config import load_settings
 from .database import DomainError, RostamDatabase
 from .schemas import (
+    ActivityCreate,
+    ActivityFinish,
+    ActivityNoteUpdate,
+    ActivityStart,
+    ActivityUpdate,
     BackupSettingsUpdate,
     BodyMeasurementWrite,
     DailyNoteUpdate,
@@ -117,6 +122,50 @@ def delete_body_measurement(measurement_id: int) -> None:
 @app.get("/api/days/{day}")
 def get_day(day: str) -> dict:
     return database.day(day)
+
+
+@app.get("/api/activities")
+def list_activities() -> list[dict]:
+    return database.list_activities()
+
+
+@app.post("/api/activities", status_code=201)
+def create_activity(payload: ActivityCreate) -> dict:
+    return database.create_activity(payload.name)
+
+
+@app.get("/api/activity-notes")
+def activity_notes() -> list[dict]:
+    return database.activity_notes()
+
+
+@app.post("/api/activities/{activity_id}/entries", status_code=201)
+def start_activity_entry(activity_id: int, payload: ActivityStart) -> dict:
+    return database.start_activity_entry(activity_id, payload.startedAt)
+
+
+@app.patch("/api/activity-entries/{entry_id}")
+def finish_activity_entry(entry_id: int, payload: ActivityFinish) -> dict:
+    return database.finish_activity_entry(
+        entry_id, payload.startedAt, payload.endedAt, payload.note
+    )
+
+
+@app.put("/api/activity-entries/{entry_id}")
+def update_activity_entry(entry_id: int, payload: ActivityUpdate) -> dict:
+    return database.update_activity_entry(
+        entry_id, payload.startedAt, payload.endedAt, payload.note
+    )
+
+
+@app.put("/api/activity-entries/{entry_id}/note")
+def update_activity_note(entry_id: int, payload: ActivityNoteUpdate) -> dict:
+    return database.update_activity_note(entry_id, payload.note)
+
+
+@app.delete("/api/activity-entries/{entry_id}", status_code=204)
+def delete_activity_entry(entry_id: int) -> None:
+    database.delete_activity_entry(entry_id)
 
 
 @app.get("/api/calendar/{month}")

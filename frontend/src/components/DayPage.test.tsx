@@ -13,6 +13,7 @@ vi.mock("../lib/api", () => ({
     config: vi.fn(),
     prefill: vi.fn(),
     updateExerciseNote: vi.fn(),
+    deleteActivity: vi.fn(),
   },
 }));
 
@@ -41,6 +42,53 @@ function deferred<T>() {
 }
 
 describe("DayPage exercise notes", () => {
+  it("renders separate session cards with their own delete menus and running controls", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.day).mockResolvedValue({
+      date: "2026-09-17",
+      sections: [],
+      activities: [
+        { id: 1, activityId: 4, activityName: "BJJ – No Gi", date: "2026-09-17", startedAt: "2026-09-17T17:45:00+02:00", endedAt: null, durationSeconds: null, note: "", createdAt: "2026-09-17T15:45:00Z" },
+        { id: 2, activityId: 4, activityName: "BJJ – No Gi", date: "2026-09-17", startedAt: "2026-09-17T19:00:00+02:00", endedAt: "2026-09-17T20:00:00+02:00", durationSeconds: 3600, note: "Arm drags", createdAt: "2026-09-17T17:00:00Z" },
+      ],
+    });
+    vi.mocked(api.deleteActivity).mockResolvedValue(undefined);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
+
+    const cards = await screen.findAllByRole("article");
+    expect(cards).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Stop BJJ – No Gi" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit BJJ – No Gi" })).toBeInTheDocument();
+    const optionsButtons = screen.getAllByRole("button", { name: "BJJ – No Gi options" });
+    expect(optionsButtons).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Timed activity options" })).not.toBeInTheDocument();
+    await user.click(optionsButtons[0]);
+    const deleteAction = screen.getByRole("menuitem", { name: "Delete session" });
+    expect(deleteAction).toHaveClass("activity-delete-option");
+    await user.click(deleteAction);
+
+    expect(window.confirm).toHaveBeenCalledWith("Delete the BJJ – No Gi session from 2026-09-17? This cannot be undone.");
+    await waitFor(() => expect(api.deleteActivity).toHaveBeenCalledWith(1));
+  });
+
+  it("shows repeated timed activity entries with their notes on the selected day", async () => {
+    vi.mocked(api.day).mockResolvedValue({
+      date: "2026-09-17",
+      sections: [],
+      activities: [
+        { id: 1, activityId: 4, activityName: "BJJ – No Gi", date: "2026-09-17", startedAt: "2026-09-17T17:45:00+02:00", endedAt: "2026-09-17T18:45:00+02:00", durationSeconds: 3600, note: "Guard retention", createdAt: "2026-09-17T15:45:00Z" },
+        { id: 2, activityId: 4, activityName: "BJJ – No Gi", date: "2026-09-17", startedAt: "2026-09-17T19:00:00+02:00", endedAt: "2026-09-17T20:00:00+02:00", durationSeconds: 3600, note: "Arm drags", createdAt: "2026-09-17T17:00:00Z" },
+      ],
+    });
+    render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
+
+    expect(await screen.findAllByText("BJJ – No Gi")).toHaveLength(2);
+    expect(screen.getByText("Guard retention")).toBeInTheDocument();
+    expect(screen.getByText("Arm drags")).toBeInTheDocument();
+    expect(screen.getAllByText(/1h 0m/)).toHaveLength(2);
+  });
+
   it("shows the note action on persisted exercise cards", async () => {
     vi.mocked(api.day).mockResolvedValue({
       date: "2026-09-17",
@@ -105,7 +153,7 @@ describe("DayPage exercise notes", () => {
       second.resolve({ date: "2026-09-17", sections: [] });
       await Promise.resolve();
     });
-    expect(await screen.findByText("No sets recorded")).toBeInTheDocument();
+    expect(await screen.findByText("No activity recorded")).toBeInTheDocument();
 
     await act(async () => {
       first.reject(new Error("Older request failed"));
@@ -136,7 +184,7 @@ describe("DayPage exercise notes", () => {
       second.resolve({ date: "2026-09-17", sections: [] });
       await Promise.resolve();
     });
-    expect(await screen.findByText("No sets recorded")).toBeInTheDocument();
+    expect(await screen.findByText("No activity recorded")).toBeInTheDocument();
 
     await act(async () => {
       first.resolve({
