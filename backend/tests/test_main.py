@@ -130,10 +130,37 @@ def test_timed_activity_entries_allow_repeats_and_keep_notes_in_order(database, 
         f"/api/activities/{activity['id']}/entries",
         json={"startedAt": "2026-09-17T17:45:00+02:00"},
     ).json()
+    overlapping = client.post(
+        f"/api/activities/{activity['id']}/entries",
+        json={"startedAt": "2026-09-17T19:00:00+02:00"},
+    )
+    assert overlapping.status_code == 400
+    assert (
+        client.patch(
+            f"/api/activity-entries/{first['id']}",
+            json={
+                "startedAt": "2026-09-17T17:45:00+02:00",
+                "endedAt": "2026-09-17T18:45:00+02:00",
+                "note": "",
+            },
+        ).status_code
+        == 200
+    )
     second = client.post(
         f"/api/activities/{activity['id']}/entries",
         json={"startedAt": "2026-09-17T19:00:00+02:00"},
     ).json()
+    assert (
+        client.patch(
+            f"/api/activity-entries/{second['id']}",
+            json={
+                "startedAt": "2026-09-17T19:00:00+02:00",
+                "endedAt": "2026-09-17T20:00:00+02:00",
+                "note": "",
+            },
+        ).status_code
+        == 200
+    )
     assert (
         client.post(
             f"/api/activities/{activity['id']}/entries",

@@ -75,7 +75,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "rostam"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 MUSCLE_GROUPS = (
     ("abs", "Abs"),
     ("back", "Back"),
@@ -2014,9 +2014,7 @@ class RostamDatabase:
         for row in rows:
             other_start = datetime.fromisoformat(row["started_at"]).astimezone(UTC)
             other_end = (
-                datetime.fromisoformat(row["ended_at"]).astimezone(UTC)
-                if row["ended_at"]
-                else None
+                datetime.fromisoformat(row["ended_at"]).astimezone(UTC) if row["ended_at"] else None
             )
             if end is None:
                 if other_end is None:

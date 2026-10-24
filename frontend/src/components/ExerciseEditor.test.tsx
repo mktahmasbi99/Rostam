@@ -33,10 +33,9 @@ describe("ExerciseEditor", () => {
     render(<ExerciseEditor onSaved={onSaved} onCancel={vi.fn()} />);
 
     await user.type(screen.getByLabelText("Exercise name"), "Lateral raises");
-    await user.click(screen.getByRole("button", { name: "Equipment" }));
-    await user.selectOptions(screen.getByLabelText("Equipment"), "resistance_tube");
+    await user.selectOptions(screen.getByLabelText("Fixed equipment"), "resistance_tube");
     expect(screen.getByText("Lateral raises (Resistance tubes)")).toBeInTheDocument();
-    await user.click(screen.getByLabelText("Allow bodyweight sets"));
+    await user.click(screen.getByRole("switch", { name: "Bodyweight sets allowed" }));
     expect(screen.queryByLabelText(/Default kg/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Save exercise" }));
 
@@ -68,9 +67,9 @@ describe("ExerciseEditor", () => {
       hasHistory: true,
     }} onSaved={vi.fn()} onCancel={vi.fn()} />);
 
-    expect(screen.getByRole("button", { name: "Repetitions" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Equipment" })).toBeDisabled();
-    expect(screen.getByLabelText("Allow bodyweight sets")).toBeDisabled();
+    expect(screen.getByText("Reps")).toBeInTheDocument();
+    expect(screen.getByText("Resistance Bands")).toBeInTheDocument();
+    expect(screen.getByText("Allowed")).toBeInTheDocument();
     expect(screen.queryByLabelText(/Default kg/)).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Exercise note")).not.toBeInTheDocument();
   });

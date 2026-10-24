@@ -1,4 +1,4 @@
-import { Check, Download, HardDriveDownload, RotateCcw, Trash2, Upload } from "lucide-react";
+import { Download, HardDriveDownload, RotateCcw, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import type { Backup, BackupSettings, Config } from "../lib/types";

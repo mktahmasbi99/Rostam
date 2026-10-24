@@ -482,14 +482,18 @@ def test_deleting_final_set_removes_day_section(database):
     assert database.day(today)["sections"] == []
 
 
-def test_used_exercise_cannot_be_deleted(database):
+def test_used_exercise_can_be_deleted_after_typed_confirmation(database):
     today = database.today().isoformat()
     pushups = next(item for item in database.list_exercises("active", "Push", None))
     database.add_set(pushups["id"], today, set_payload())
-    with pytest.raises(DomainError, match="cannot be deleted"):
-        database.delete_exercise(pushups["id"], "DELETE")
-    archived = database.archive_exercise(pushups["id"])
-    assert archived["archivedAt"] is not None
+    with pytest.raises(DomainError, match="Type DELETE"):
+        database.delete_exercise(pushups["id"], "delete")
+
+    database.delete_exercise(pushups["id"], "DELETE")
+
+    with pytest.raises(DomainError, match="not found"):
+        database.exercise(pushups["id"])
+    assert database.day(today)["sections"] == []
 
 
 def test_unused_exercise_requires_typed_confirmation(database):
@@ -659,7 +663,7 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 13))
+        ] == list(range(1, 14))
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM exercises WHERE exercise_note IS NOT NULL"
@@ -695,7 +699,7 @@ def test_schema_v2_migration_adds_notes_without_changing_history(database):
     with migrated.connect() as connection:
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 13))
+        ] == list(range(1, 14))
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
@@ -771,7 +775,7 @@ def test_restore_validates_staged_database_before_atomic_replacement(database, m
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (13)", "schema is newer"),
+        ("INSERT INTO schema_migrations(version) VALUES (14)", "schema is newer"),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(

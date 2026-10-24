@@ -38,31 +38,35 @@ describe("Backup schedule", () => {
 
     const retention = await screen.findByLabelText("Daily retention");
     const weeklyRetention = screen.getByLabelText("Weekly retention");
-    expect(weeklyRetention).toHaveValue(8);
+    expect(weeklyRetention).toHaveValue("8");
     await user.clear(retention);
     await user.type(retention, "14");
     await user.clear(weeklyRetention);
     await user.type(weeklyRetention, "12");
-    await user.click(screen.getByRole("button", { name: "Save backup schedule" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
 
     expect(api.updateBackupSettings).toHaveBeenCalledWith(expect.objectContaining({ dailyRetention: 14, weeklyRetention: 12 }));
     resolveSave({ dailyEnabled: true, dailyTime: "02:00", dailyRetention: 14, weeklyEnabled: true, weeklyWeekday: 0, weeklyTime: "03:00", weeklyRetention: 12, safetyRetention: 3 });
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Backup schedule saved."));
-    expect(screen.getByRole("button", { name: "Saved" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 
     await user.clear(retention);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    await user.type(retention, "9");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
   it("reports schedule save failures and allows retry", async () => {
     const user = userEvent.setup();
     vi.mocked(api.updateBackupSettings).mockRejectedValueOnce(new Error("Schedule unavailable"));
     render(<SettingsPage config={config} pwaInstall={pwaInstall} />);
-    await screen.findByLabelText("Daily retention");
-    await user.click(screen.getByRole("button", { name: "Save backup schedule" }));
+    const retention = await screen.findByLabelText("Daily retention");
+    await user.clear(retention);
+    await user.type(retention, "9");
+    await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Schedule unavailable"));
-    expect(screen.getByRole("button", { name: "Save backup schedule" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 });
 
