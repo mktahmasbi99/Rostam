@@ -84,7 +84,7 @@ export function ExerciseHistory({ exercise, day, onChooseDay }: Props) {
   }
 
   return <>
-    {exercise.hasHistory && <button className="history-button" onClick={openHistory}><HistoryIcon />History</button>}
+    {exercise.hasHistory && <button className="history-button" aria-label={`History for ${exercise.name}`} title="History" onClick={openHistory}><HistoryIcon /></button>}
     {previous && <span className="previous-session">Last session · {dateLabel(previous.date)} · {formatExerciseTotal(exercise, previous.total, previous.sets)}{weightLabel(previous) ? ` · ${weightLabel(previous)}` : ""}</span>}
     {open && <Modal title={`${exercise.name} history`} onClose={() => setOpen(false)} wide>
       {error && <p className="error" role="alert">{error}</p>}

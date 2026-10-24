@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import threading
 import unicodedata
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, time, timedelta
@@ -692,6 +693,20 @@ class RostamDatabase:
                     """
                 )
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (12)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 13").fetchone()
+                is None
+            ):
+                connection.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS exercise_images (
+                        image_key TEXT PRIMARY KEY,
+                        jpeg BLOB NOT NULL,
+                        created_at TEXT NOT NULL
+                    )
+                    """
+                )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (13)")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -970,6 +985,26 @@ class RostamDatabase:
                 return full.getvalue(), thumb.getvalue(), width, height
         except (UnidentifiedImageError, OSError, ValueError) as exc:
             raise DomainError("Photos must be valid JPEG, PNG, HEIC, or WebP images.") from exc
+
+    def store_exercise_image(self, source: bytes) -> str:
+        jpeg, _, _, _ = self._process_photo(source)
+        image_key = f"custom:{uuid.uuid4().hex}"
+        with self.connect() as connection:
+            connection.execute(
+                "INSERT INTO exercise_images(image_key, jpeg, created_at) VALUES (?, ?, ?)",
+                (image_key, jpeg, self._utc_now()),
+            )
+            connection.commit()
+        return image_key
+
+    def exercise_image_data(self, image_key: str) -> bytes:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT jpeg FROM exercise_images WHERE image_key = ?", (image_key,)
+            ).fetchone()
+        if row is None:
+            raise DomainError("Exercise picture not found.")
+        return row["jpeg"]
 
     def add_daily_photos(self, day_value: str, uploads: list[bytes]) -> list[dict]:
         self._parse_day(day_value)
@@ -1620,14 +1655,15 @@ class RostamDatabase:
         with self._backup_lock:
             with self.connect() as connection:
                 self._exercise_row(connection, exercise_id)
-                if connection.execute(
-                    "SELECT 1 FROM exercise_sets WHERE exercise_id = ? LIMIT 1", (exercise_id,)
-                ).fetchone():
-                    raise DomainError(
-                        "Exercises with history cannot be deleted; archive it instead."
-                    )
             self.create_backup("pre-delete")
             with self.connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    "DELETE FROM exercise_sets WHERE exercise_id = ?", (exercise_id,)
+                )
+                connection.execute(
+                    "DELETE FROM day_exercises WHERE exercise_id = ?", (exercise_id,)
+                )
                 connection.execute("DELETE FROM exercises WHERE id = ?", (exercise_id,))
                 connection.commit()
 
@@ -1744,10 +1780,13 @@ class RostamDatabase:
         ).fetchall()
         return [self._serialize_activity_entry(row) for row in rows]
 
-    def list_activities(self) -> list[dict]:
+    def list_activities(self, status: str = "active") -> list[dict]:
+        if status not in {"active", "archived"}:
+            raise DomainError("Activity status must be active or archived.")
+        archived_filter = "IS NULL" if status == "active" else "IS NOT NULL"
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM activities WHERE archived_at IS NULL ORDER BY normalized_name"
+                f"SELECT * FROM activities WHERE archived_at {archived_filter} ORDER BY normalized_name"
             ).fetchall()
         return [{"id": row["id"], "name": row["name"]} for row in rows]
 
@@ -1765,6 +1804,76 @@ class RostamDatabase:
         except sqlite3.IntegrityError as exc:
             raise DomainError("An activity with this name already exists.") from exc
 
+    def update_activity_definition(self, activity_id: int, name: str) -> dict:
+        display, normalized = normalize_name(name)
+        try:
+            with self.connect() as connection:
+                row = connection.execute(
+                    "SELECT id FROM activities WHERE id = ?", (activity_id,)
+                ).fetchone()
+                if row is None:
+                    raise DomainError("Activity not found.")
+                connection.execute(
+                    "UPDATE activities SET name = ?, normalized_name = ? WHERE id = ?",
+                    (display, normalized, activity_id),
+                )
+                connection.commit()
+                return {"id": activity_id, "name": display}
+        except sqlite3.IntegrityError as exc:
+            raise DomainError("An activity with this name already exists.") from exc
+
+    def archive_activity(self, activity_id: int) -> dict:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT id, name, archived_at FROM activities WHERE id = ?", (activity_id,)
+            ).fetchone()
+            if row is None:
+                raise DomainError("Activity not found.")
+            if row["archived_at"] is None:
+                connection.execute(
+                    "UPDATE activities SET archived_at = ? WHERE id = ?",
+                    (self._utc_now(), activity_id),
+                )
+                connection.commit()
+            return {"id": activity_id, "name": row["name"]}
+
+    def restore_activity(self, activity_id: int) -> dict:
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT id, name FROM activities WHERE id = ?", (activity_id,)
+            ).fetchone()
+            if row is None:
+                raise DomainError("Activity not found.")
+            connection.execute(
+                "UPDATE activities SET archived_at = NULL WHERE id = ?", (activity_id,)
+            )
+            connection.commit()
+            return {"id": activity_id, "name": row["name"]}
+
+    def delete_activity(self, activity_id: int, confirmation: str) -> None:
+        if confirmation != "DELETE":
+            raise DomainError("Type DELETE to permanently delete this activity.")
+        with self._backup_lock:
+            with self.connect() as connection:
+                exists = connection.execute(
+                    "SELECT 1 FROM activities WHERE id = ?", (activity_id,)
+                ).fetchone()
+                if exists is None:
+                    raise DomainError("Activity not found.")
+            self.create_backup("pre-delete")
+            with self.connect() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    "DELETE FROM activity_entries WHERE activity_id = ?", (activity_id,)
+                )
+                deleted = connection.execute(
+                    "DELETE FROM activities WHERE id = ?", (activity_id,)
+                ).rowcount
+                if deleted == 0:
+                    connection.rollback()
+                    raise DomainError("Activity not found.")
+                connection.commit()
+
     def start_activity_entry(self, activity_id: int, started_at: str) -> dict:
         start = self._activity_time(started_at)
         local_start = start.astimezone(self.settings.timezone)
@@ -1776,13 +1885,15 @@ class RostamDatabase:
             raise DomainError("Start time must be a minute between 00:00 and 23:58.")
         now = self._utc_now()
         with self.connect() as connection:
-            if (
-                connection.execute(
-                    "SELECT 1 FROM activities WHERE id=? AND archived_at IS NULL", (activity_id,)
-                ).fetchone()
-                is None
-            ):
+            activity = connection.execute(
+                "SELECT id, name FROM activities WHERE id=? AND archived_at IS NULL",
+                (activity_id,),
+            ).fetchone()
+            if activity is None:
                 raise DomainError("Activity not found.")
+            self._ensure_activity_interval_available(
+                connection, activity_id, start, None, activity["name"]
+            )
             cursor = connection.execute(
                 "INSERT INTO activity_entries(activity_id, started_at, created_at, updated_at) VALUES (?, ?, ?, ?)",
                 (activity_id, start.isoformat(timespec="microseconds"), now, now),
@@ -1806,6 +1917,9 @@ class RostamDatabase:
             ).fetchone()
             if row is None:
                 raise DomainError("Activity entry not found.")
+            self._ensure_activity_interval_available(
+                connection, row["activity_id"], start, end, row["name"], entry_id
+            )
             connection.execute(
                 "UPDATE activity_entries SET started_at=?, ended_at=?, note=?, updated_at=? WHERE id=?",
                 (
@@ -1838,13 +1952,15 @@ class RostamDatabase:
         start, end = self._activity_time(started_at), self._activity_time(ended_at)
         self._validate_activity_range(start, end)
         with self.connect() as connection:
-            if (
-                connection.execute(
-                    "SELECT 1 FROM activity_entries WHERE id=?", (entry_id,)
-                ).fetchone()
-                is None
-            ):
+            row = connection.execute(
+                "SELECT x.*, a.name FROM activity_entries x JOIN activities a ON a.id=x.activity_id WHERE x.id=?",
+                (entry_id,),
+            ).fetchone()
+            if row is None:
                 raise DomainError("Activity entry not found.")
+            self._ensure_activity_interval_available(
+                connection, row["activity_id"], start, end, row["name"], entry_id
+            )
             connection.execute(
                 "UPDATE activity_entries SET started_at=?, ended_at=?, note=?, updated_at=? WHERE id=?",
                 (
@@ -1878,6 +1994,47 @@ class RostamDatabase:
             raise DomainError("Activity start and end must be on the same day.")
         if end - start < timedelta(minutes=1):
             raise DomainError("End time must be at least one minute after start time.")
+
+    def _ensure_activity_interval_available(
+        self,
+        connection: sqlite3.Connection,
+        activity_id: int,
+        start: datetime,
+        end: datetime | None,
+        activity_name: str,
+        exclude_entry_id: int | None = None,
+    ) -> None:
+        query = "SELECT id, started_at, ended_at FROM activity_entries WHERE activity_id = ?"
+        parameters: tuple[int, ...] = (activity_id,)
+        if exclude_entry_id is not None:
+            query += " AND id != ?"
+            parameters += (exclude_entry_id,)
+        rows = connection.execute(query, parameters).fetchall()
+        now = datetime.fromisoformat(self._utc_now()).astimezone(UTC)
+        for row in rows:
+            other_start = datetime.fromisoformat(row["started_at"]).astimezone(UTC)
+            other_end = (
+                datetime.fromisoformat(row["ended_at"]).astimezone(UTC)
+                if row["ended_at"]
+                else None
+            )
+            if end is None:
+                if other_end is None:
+                    raise DomainError(
+                        f"A {activity_name} session is already running. Stop it before starting another."
+                    )
+                candidate_end = max(now, start + timedelta(minutes=1))
+                if start < other_end and other_start < candidate_end:
+                    raise DomainError(
+                        f"That start time overlaps another {activity_name} session. Choose a different time."
+                    )
+                continue
+
+            effective_end = other_end or now
+            if start < effective_end and other_start < end:
+                raise DomainError(
+                    f"That time range overlaps another {activity_name} session. Choose a different time."
+                )
 
     def update_activity_note(self, entry_id: int, note: str) -> dict:
         with self.connect() as connection:

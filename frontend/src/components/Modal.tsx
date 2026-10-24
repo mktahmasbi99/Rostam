@@ -36,7 +36,7 @@ export function Modal({ title, children, onClose, wide = false }: Props) {
           <h2>{title}</h2>
           <button className="icon-button" onClick={onClose} aria-label={`Close ${title}`}><X /></button>
         </div>
-        {children}
+        <div className="modal-content">{children}</div>
       </div>
     </div>
   );

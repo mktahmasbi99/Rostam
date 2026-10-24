@@ -31,8 +31,12 @@ export const api = {
   deleteBodyMeasurement: (id: number) => request<void>(`/api/body-measurements/${id}`, { method: "DELETE" }),
   day: (day: string, signal?: AbortSignal) =>
     request<DayData>(`/api/days/${day}`, { signal }),
-  activities: () => request<Activity[]>("/api/activities"),
+  activities: (status: "active" | "archived" = "active") => request<Activity[]>(`/api/activities?status=${status}`),
   createActivity: (name: string) => request<Activity>("/api/activities", json("POST", { name })),
+  updateActivityDefinition: (id: number, name: string) => request<Activity>(`/api/activities/${id}`, json("PATCH", { name })),
+  archiveActivity: (id: number) => request<Activity>(`/api/activities/${id}/archive`, { method: "POST" }),
+  restoreActivity: (id: number) => request<Activity>(`/api/activities/${id}/restore`, { method: "POST" }),
+  deleteActivityDefinition: (id: number, confirmation: string) => request<void>(`/api/activities/${id}`, json("DELETE", { confirmation })),
   startActivity: (id: number, startedAt: string) => request<ActivityEntry>(`/api/activities/${id}/entries`, json("POST", { startedAt })),
   finishActivity: (id: number, startedAt: string, endedAt: string, note: string) => request<ActivityEntry>(`/api/activity-entries/${id}`, json("PATCH", { startedAt, endedAt, note })),
   updateActivity: (id: number, startedAt: string, endedAt: string, note: string) => request<ActivityEntry>(`/api/activity-entries/${id}`, json("PUT", { startedAt, endedAt, note })),
@@ -63,6 +67,11 @@ export const api = {
     request<Exercise>("/api/exercises", json("POST", payload)),
   updateExercise: (id: number, payload: ExerciseUpdatePayload) =>
     request<Exercise>(`/api/exercises/${id}`, json("PATCH", payload)),
+  uploadExerciseImage: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ imageKey: string }>("/api/exercise-images", { method: "POST", body: form });
+  },
   updateRecommendationPause: (id: number, period: "week" | "month" | "six_months" | "year" | "forever" | "resume") =>
     request<Exercise>(`/api/exercises/${id}/recommendation-pause`, json("PUT", { period })),
   updateExerciseNote: (id: number, body: string) =>

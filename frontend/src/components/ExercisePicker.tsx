@@ -159,7 +159,7 @@ export function ExercisePicker({ day, presentIds, onChoose, onClose }: Props) {
   return <Modal title="Add exercise" onClose={onClose} wide>
     <div className="picker-toolbar"><label className="search-box"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={query} onChange={(event) => setQuery(event.target.value)} autoFocus /></label><button className="primary" onClick={() => setCreating(true)}><Plus />New exercise</button></div>
     <div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Repetitions</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed repetitions</button></div>
-    <button className="secondary recommendations-button" onClick={() => { setRecommendationMode("exercise"); setView("recommendations"); }}><Sparkles />Show recommendations</button>
+    <button className="secondary recommendations-button icon-only-action" aria-label="Show recommendations" title="Show recommendations" onClick={() => { setRecommendationMode("exercise"); setView("recommendations"); }}><Sparkles /></button>
     {notice && <p className="notice" role="status">{notice}</p>}
     {error && <p className="error" role="alert">{error}</p>}
     <div className="exercise-results">

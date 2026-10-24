@@ -1,8 +1,9 @@
 import { Check, MoreVertical, NotebookPen, Pencil, Square, Trash2, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { activityTime, activityTimeOnly, minuteOfDay, timeFromMinuteOfDay } from "../lib/activityTime";
 import type { ActivityEntry as Entry } from "../lib/types";
+import { useOutsideClick } from "../lib/useOutsideClick";
 import { Modal } from "./Modal";
 import { TimeWheelField } from "./TimeWheelField";
 
@@ -24,18 +25,38 @@ const durationLabel = (seconds: number) => {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 };
 
-export function ActivityEntryCard({ entry, onChanged, timezone }: { entry: Entry; onChanged: () => void; timezone: string }) {
+export function ActivityEntryCard({ entry, activities = [], onChanged, timezone }: { entry: Entry; activities?: Entry[]; onChanged: () => void; timezone: string }) {
   const [now, setNow] = useState(0);
   const [finishing, setFinishing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editingNote, setEditingNote] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const optionsRef = useRef<HTMLDivElement>(null);
+  const closeOptions = useCallback(() => setMenuOpen(false), []);
+  useOutsideClick(optionsRef, menuOpen, closeOptions);
   const [end, setEnd] = useState("");
   const [start, setStart] = useState(activityTimeOnly(entry.startedAt));
   const [note, setNote] = useState(entry.note);
   const [error, setError] = useState("");
   const started = new Date(entry.startedAt).getTime();
   const active = entry.endedAt === null;
+  const currentLocal = localNow(timezone);
+  const blockedIntervals = activities
+    .filter((other) => other.id !== entry.id && other.activityId === entry.activityId)
+    .map((other) => {
+      const startMinute = minuteOfDay(activityTimeOnly(other.startedAt));
+      const endMinute = other.endedAt
+        ? minuteOfDay(activityTimeOnly(other.endedAt))
+        : other.date === currentLocal.slice(0, 10)
+          ? Math.max(startMinute + 1, minuteOfDay(currentLocal.slice(11, 16)))
+          : 24 * 60;
+      return { startMinute, endMinute };
+    })
+    .filter((interval) => interval.endMinute > interval.startMinute);
+  const startMinute = minuteOfDay(start);
+  const blockedEndIntervals = blockedIntervals
+    .filter((interval) => startMinute < interval.startMinute && startMinute < interval.endMinute)
+    .map((interval) => ({ startMinute: interval.startMinute + 1, endMinute: 24 * 60 }));
   useEffect(() => {
     if (!active) return;
     setNow(Date.now());
@@ -83,14 +104,14 @@ export function ActivityEntryCard({ entry, onChanged, timezone }: { entry: Entry
   return <article className="activity-entry">
     <div className="activity-entry-heading"><strong>{entry.activityName}</strong><div className="row-actions">
       <button className="icon-button" aria-label={`${entry.note ? "Edit" : "Add"} note for ${entry.activityName}`} title={entry.note ? "Edit session note" : "Add session note"} onClick={() => { setNote(entry.note); setEditingNote(true); }}><NotebookPen /></button>
-      {active ? <button className="activity-stop-button" aria-label={`Stop ${entry.activityName}`} disabled={!canStop} onClick={() => { const startTime = activityTimeOnly(entry.startedAt); setStart(startTime); setEnd(suggestedEnd(entry.startedAt, timezone)); setFinishing(true); }}><Square />Stop</button> : <button className="icon-button" aria-label={`Edit ${entry.activityName}`} onClick={() => { setStart(activityTimeOnly(entry.startedAt)); setEnd(activityTimeOnly(entry.endedAt!)); setNote(entry.note); setEditing(true); }}><Pencil /></button>}
-      <div className="activity-options"><button className="icon-button" aria-label={`${entry.activityName} options`} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><MoreVertical /></button>{menuOpen && <div className="activity-options-menu" role="menu"><button className="activity-delete-option" role="menuitem" onClick={() => void deleteEntry()}><Trash2 />Delete session</button></div>}</div>
+      {active ? <button className="activity-stop-button" aria-label={`Stop ${entry.activityName}`} title="Stop session" disabled={!canStop} onClick={() => { const startTime = activityTimeOnly(entry.startedAt); setStart(startTime); setEnd(suggestedEnd(entry.startedAt, timezone)); setFinishing(true); }}><Square /></button> : <button className="icon-button" aria-label={`Edit ${entry.activityName}`} onClick={() => { setStart(activityTimeOnly(entry.startedAt)); setEnd(activityTimeOnly(entry.endedAt!)); setNote(entry.note); setEditing(true); }}><Pencil /></button>}
+      <div className="activity-options" ref={optionsRef}><button className="icon-button" aria-label={`${entry.activityName} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><MoreVertical /></button>{menuOpen && <div className="activity-options-menu" role="menu"><button className="activity-delete-option" aria-label="Delete session" title="Delete session" role="menuitem" onClick={() => void deleteEntry()}><Trash2 /></button></div>}</div>
     </div></div>
     <div className="activity-entry-time">{entry.startedAt.slice(11, 16)}{entry.endedAt ? `–${entry.endedAt.slice(11, 16)} · ${durationLabel(entry.durationSeconds ?? 0)}` : ` · ${canStop ? durationLabel(Math.floor((now - started) / 1000)) : `Starts at ${entry.startedAt.slice(11, 16)}`}`}</div>
     {entry.note && <p className="activity-entry-note">{entry.note}</p>}
     {error && !finishing && !editing && !editingNote && <p className="error" role="alert">{error}</p>}
     {editingNote && <Modal title={`${entry.note ? "Edit" : "Add"} note · ${entry.activityName}`} onClose={() => setEditingNote(false)}><div className="stack"><label>Session note<textarea autoFocus rows={5} maxLength={20000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Techniques, moves, or an important takeaway" /></label>{error && <p className="error" role="alert">{error}</p>}<div className="form-actions"><button className="secondary" onClick={() => setEditingNote(false)}>Cancel</button><button className="primary" onClick={() => void saveNote()}><Check />Save note</button></div></div></Modal>}
-    {finishing && <Modal title={`Finish ${entry.activityName}`} onClose={() => setFinishing(false)}><div className="stack"><TimeWheelField label="Start time" value={start} onChange={updateStartTime} max={1438} /><TimeWheelField label="End time" value={end} onChange={setEnd} min={minuteOfDay(start) + 1} />{error && <p className="error" role="alert">{error}</p>}<div className="form-actions"><button className="secondary" onClick={() => setFinishing(false)}><X />Cancel</button><button className="primary" disabled={minuteOfDay(end) <= minuteOfDay(start)} onClick={() => void saveFinish()}><Check />Save session</button></div></div></Modal>}
-    {editing && <Modal title={`Edit ${entry.activityName}`} onClose={() => setEditing(false)}><div className="stack"><TimeWheelField label="Start time" value={start} onChange={updateStartTime} max={1438} /><TimeWheelField label="End time" value={end} onChange={setEnd} min={minuteOfDay(start) + 1} />{error && <p className="error" role="alert">{error}</p>}<div className="form-actions"><button className="secondary" onClick={() => setEditing(false)}>Cancel</button><button className="primary" disabled={minuteOfDay(end) <= minuteOfDay(start)} onClick={() => void saveEdit()}><Check />Save changes</button></div></div></Modal>}
+    {finishing && <Modal title={`Finish ${entry.activityName}`} onClose={() => setFinishing(false)}><div className="stack"><TimeWheelField label="Start time" value={start} onChange={updateStartTime} max={1438} blockedIntervals={blockedIntervals} /><TimeWheelField label="End time" value={end} onChange={setEnd} min={minuteOfDay(start) + 1} blockedIntervals={blockedEndIntervals} />{error && <p className="error" role="alert">{error}</p>}<div className="form-actions"><button className="secondary" onClick={() => setFinishing(false)}><X />Cancel</button><button className="primary" disabled={minuteOfDay(end) <= minuteOfDay(start)} onClick={() => void saveFinish()}><Check />Save session</button></div></div></Modal>}
+    {editing && <Modal title={`Edit ${entry.activityName}`} onClose={() => setEditing(false)}><div className="stack"><TimeWheelField label="Start time" value={start} onChange={updateStartTime} max={1438} blockedIntervals={blockedIntervals} /><TimeWheelField label="End time" value={end} onChange={setEnd} min={minuteOfDay(start) + 1} blockedIntervals={blockedEndIntervals} />{error && <p className="error" role="alert">{error}</p>}<div className="form-actions"><button className="secondary" onClick={() => setEditing(false)}>Cancel</button><button className="primary" disabled={minuteOfDay(end) <= minuteOfDay(start)} onClick={() => void saveEdit()}><Check />Save changes</button></div></div></Modal>}
   </article>;
 }

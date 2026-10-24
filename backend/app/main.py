@@ -15,6 +15,7 @@ from .config import load_settings
 from .database import DomainError, RostamDatabase
 from .schemas import (
     ActivityCreate,
+    ActivityDelete,
     ActivityFinish,
     ActivityNoteUpdate,
     ActivityStart,
@@ -125,13 +126,33 @@ def get_day(day: str) -> dict:
 
 
 @app.get("/api/activities")
-def list_activities() -> list[dict]:
-    return database.list_activities()
+def list_activities(status: str = "active") -> list[dict]:
+    return database.list_activities(status)
 
 
 @app.post("/api/activities", status_code=201)
 def create_activity(payload: ActivityCreate) -> dict:
     return database.create_activity(payload.name)
+
+
+@app.patch("/api/activities/{activity_id}")
+def update_activity_definition(activity_id: int, payload: ActivityCreate) -> dict:
+    return database.update_activity_definition(activity_id, payload.name)
+
+
+@app.post("/api/activities/{activity_id}/archive")
+def archive_activity(activity_id: int) -> dict:
+    return database.archive_activity(activity_id)
+
+
+@app.post("/api/activities/{activity_id}/restore")
+def restore_activity(activity_id: int) -> dict:
+    return database.restore_activity(activity_id)
+
+
+@app.delete("/api/activities/{activity_id}", status_code=204)
+def delete_activity(activity_id: int, payload: ActivityDelete) -> None:
+    database.delete_activity(activity_id, payload.confirmation)
 
 
 @app.get("/api/activity-notes")
@@ -273,6 +294,24 @@ def get_photo(photo_id: int) -> Response:
 @app.get("/api/photos/{photo_id}/thumbnail")
 def get_photo_thumbnail(photo_id: int) -> Response:
     return Response(database.photo_data(photo_id, thumbnail=True), media_type="image/jpeg")
+
+
+@app.post("/api/exercise-images", status_code=201)
+async def upload_exercise_image(file: UploadFile = File()):  # noqa: B008
+    try:
+        source = await file.read(50 * 1024 * 1024 + 1)
+        if len(source) > 50 * 1024 * 1024:
+            raise DomainError("Exercise pictures must be 50 MB or smaller.")
+        return {"imageKey": database.store_exercise_image(source)}
+    finally:
+        await file.close()
+
+
+@app.get("/api/exercise-images/{image_key}")
+def get_exercise_image(image_key: str) -> Response:
+    if not image_key.startswith("custom:"):
+        raise DomainError("Exercise picture not found.")
+    return Response(database.exercise_image_data(image_key), media_type="image/jpeg")
 
 
 @app.delete("/api/photos/{photo_id}", status_code=204)

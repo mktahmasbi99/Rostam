@@ -1,7 +1,8 @@
-import { Archive, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Archive, MoreVertical, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Exercise, MeasurementType } from "../lib/types";
+import { useOutsideClick } from "../lib/useOutsideClick";
 import { ExerciseEditor } from "./ExerciseEditor";
 import { ExerciseImage } from "./ExerciseImage";
 import { Modal } from "./Modal";
@@ -14,6 +15,10 @@ export function ExercisesPage() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"" | MeasurementType>("");
   const [error, setError] = useState("");
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const closeMenu = useCallback(() => setOpenMenuId(null), []);
+  useOutsideClick(menuRef, openMenuId !== null, closeMenu);
 
   const load = useCallback(async () => {
     setError("");
@@ -37,10 +42,24 @@ export function ExercisesPage() {
   }
 
   async function remove(exercise: Exercise) {
-    const confirmation = window.prompt(`Type DELETE to permanently remove ${exercise.name}.`);
+    const confirmation = window.prompt(
+      `Permanently delete ${exercise.name}? This will delete all workout history for this exercise.\n\nArchiving is safer and keeps its history.\n\nType DELETE to continue.`,
+    );
     if (confirmation === null) return;
     try { await api.deleteExercise(exercise.id, confirmation); await load(); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Could not delete exercise."); }
+    finally { setOpenMenuId(null); }
+  }
+
+  function actionsMenu(exercise: Exercise, archivedExercise = false) {
+    const isOpen = openMenuId === exercise.id;
+    return <div className="exercise-actions-menu" ref={isOpen ? menuRef : null}>
+      <button className="icon-button" aria-label={`More actions for ${exercise.name}`} aria-haspopup="menu" aria-expanded={isOpen} onClick={() => setOpenMenuId(isOpen ? null : exercise.id)}><MoreVertical /></button>
+      {isOpen && <div className="exercise-actions-popover" role="menu">
+        {archivedExercise ? <button className="icon-button" aria-label={`Restore ${exercise.name}`} title="Restore" role="menuitem" onClick={async () => { await api.restoreExercise(exercise.id); setOpenMenuId(null); await load(); }}><RotateCcw /></button> : <button className="icon-button" aria-label={`Archive ${exercise.name}`} title="Archive" role="menuitem" onClick={() => { setOpenMenuId(null); void archiveExercise(exercise); }}><Archive /></button>}
+        <button className="icon-button danger" aria-label={`Delete ${exercise.name} permanently`} title="Delete permanently" role="menuitem" onClick={() => void remove(exercise)}><Trash2 /></button>
+      </div>}
+    </div>;
   }
 
   return <main className="page exercises-page">
@@ -48,8 +67,8 @@ export function ExercisesPage() {
     {error && <p className="error-panel" role="alert">{error}</p>}
     <label className="search-box"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
     <div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Repetitions</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed repetitions</button></div>
-    <section className="management-section"><h2>Active</h2><div className="management-list">{active.map((exercise) => <article key={exercise.id} className="management-row"><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><div><strong>{exercise.name}</strong><small>{exercise.measurementType === "repetitions" ? "Repetitions" : exercise.measurementType === "duration" ? "Duration" : "Timed repetitions"}</small></div><div className="row-actions"><button className="icon-button" aria-label={`Edit ${exercise.name}`} onClick={() => setEditing(exercise)}><Pencil /></button><button className="icon-button" aria-label={`Archive ${exercise.name}`} onClick={() => void archiveExercise(exercise)}><Archive /></button>{!exercise.hasHistory && <button className="icon-button danger" aria-label={`Delete ${exercise.name}`} onClick={() => void remove(exercise)}><Trash2 /></button>}</div></article>)}</div></section>
-    <section className="management-section"><h2>Archived</h2>{archived.length === 0 ? <p className="empty-copy">No archived exercises.</p> : <div className="management-list">{archived.map((exercise) => <article key={exercise.id} className="management-row"><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><div><strong>{exercise.name}</strong><small>History preserved</small></div><button className="icon-button" aria-label={`Restore ${exercise.name}`} onClick={async () => { await api.restoreExercise(exercise.id); await load(); }}><RotateCcw /></button></article>)}</div>}</section>
+    <section className="management-section"><h2>Active</h2><div className="management-list">{active.map((exercise) => <article key={exercise.id} className="management-row"><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><div><strong>{exercise.name}</strong><small>{exercise.measurementType === "repetitions" ? "Repetitions" : exercise.measurementType === "duration" ? "Duration" : "Timed repetitions"}</small></div><div className="row-actions"><button className="icon-button" aria-label={`Edit ${exercise.name}`} onClick={() => setEditing(exercise)}><Pencil /></button>{actionsMenu(exercise)}</div></article>)}</div></section>
+    <section className="management-section"><h2>Archived</h2>{archived.length === 0 ? <p className="empty-copy">No archived exercises.</p> : <div className="management-list">{archived.map((exercise) => <article key={exercise.id} className="management-row"><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><div><strong>{exercise.name}</strong><small>History preserved</small></div>{actionsMenu(exercise, true)}</article>)}</div>}</section>
     {editing && <Modal title={`Edit ${editing.name}`} onClose={() => setEditing(null)} wide><ExerciseEditor exercise={editing} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} /></Modal>}
     {creating && <Modal title="New exercise" onClose={() => setCreating(false)} wide><ExerciseEditor onCancel={() => setCreating(false)} onSaved={() => { setCreating(false); void load(); }} /></Modal>}
   </main>;

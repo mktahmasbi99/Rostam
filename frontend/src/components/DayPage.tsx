@@ -95,7 +95,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       {loading && <p className="loading">Loading sets…</p>}
       {!loading && !error && data.sections.length === 0 && !(data.activities?.length) && !pendingExercise && <div className="empty-state"><img className="app-logo empty-logo" src="/rostam-logo.png" alt="" /><h2>No activity recorded</h2><p>Add an exercise or start a timed activity.</p></div>}
 
-      {!!data.activities?.length && <section className="activity-card"><h2>Timed activities</h2><div className="activity-entry-list">{data.activities.map((entry) => <ActivityEntryCard key={entry.id} entry={entry} timezone={timezone} onChanged={() => void load()} />)}</div></section>}
+      {!!data.activities?.length && <section className="activity-card"><h2>Timed activities</h2><div className="activity-entry-list">{data.activities.map((entry) => <ActivityEntryCard key={entry.id} entry={entry} activities={data.activities ?? []} timezone={timezone} onChanged={() => void load()} />)}</div></section>}
 
       <div className="exercise-sections">
         {data.sections.map((section) => <section className="exercise-card" key={`${day}-${section.exercise.id}`}>
@@ -104,7 +104,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
           <div className="set-list">
             {section.sets.map((set, index) => editingSet?.id === set.id ? <SetForm key={set.id} exercise={section.exercise} day={day} existing={set} onSaved={() => void saved()} onCancel={() => setEditingSet(null)} /> : <SetRow key={set.id} set={set} index={index} onEdit={() => { setAddingTo(null); setEditingSet(set); }} onDelete={() => void removeSet(section.exercise, set)} />)}
           </div>
-          {addingTo === section.exercise.id ? <SetForm exercise={section.exercise} day={day} onSaved={() => void saved()} onCancel={() => setAddingTo(null)} /> : <button className="add-set" onClick={() => { setEditingSet(null); setAddingTo(section.exercise.id); }}><Plus />Add set</button>}
+          {addingTo === section.exercise.id ? <SetForm exercise={section.exercise} day={day} onSaved={() => void saved()} onCancel={() => setAddingTo(null)} /> : <button className="add-set" aria-label="Add set" title="Add set" onClick={() => { setEditingSet(null); setAddingTo(section.exercise.id); }}><Plus /></button>}
         </section>)}
 
         {pendingExercise && <section className="exercise-card pending-card"><header className="exercise-card-header"><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2>{pendingExercise.name}</h2><ExerciseHistory exercise={pendingExercise} day={day} onChooseDay={onChooseDay} /></div><span className="daily-total">New today</span></div></header><ExerciseNote exercise={pendingExercise} /><SetForm exercise={pendingExercise} day={day} onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></section>}

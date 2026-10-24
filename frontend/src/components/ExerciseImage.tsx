@@ -6,9 +6,12 @@ interface Props {
 
 export function ExerciseImage({ imageKey, name, size = "small" }: Props) {
   if (!imageKey) return <div className={`exercise-image image-fallback ${size}`}>{name.slice(0, 1).toUpperCase()}</div>;
+  const src = imageKey.startsWith("custom:")
+    ? `/api/exercise-images/${encodeURIComponent(imageKey)}`
+    : `/exercise-assets/${imageKey}/frame-1.png`;
   return (
     <div className={`exercise-image ${size}`}>
-      <img src={`/exercise-assets/${imageKey}/frame-1.png`} alt="" loading="lazy" />
+      <img src={src} alt="" loading="lazy" />
     </div>
   );
 }
