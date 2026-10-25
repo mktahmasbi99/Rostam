@@ -8,12 +8,13 @@ interface Props {
 
 export function ExerciseImage({ imageKey, name, size = "small" }: Props) {
   if (!imageKey) return <div className={`exercise-image image-fallback ${size}`}>{name.slice(0, 1).toUpperCase()}</div>;
-  const src = imageKey.startsWith("custom:")
+  const custom = imageKey.startsWith("custom:");
+  const src = custom
     ? `/api/exercise-images/${encodeURIComponent(imageKey)}`
     : `/exercise-assets/${imageKey}/frame-1.${versions[imageKey as keyof typeof versions] ?? "missing"}.png`;
   return (
     <div className={`exercise-image ${size}`}>
-      <img src={src} alt="" loading="lazy" />
+      <img className={custom ? "custom-exercise-art" : "bundled-exercise-art"} src={src} alt="" loading="lazy" />
     </div>
   );
 }
