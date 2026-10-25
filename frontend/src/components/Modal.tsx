@@ -24,7 +24,7 @@ export function Modal({ title, children, onClose, wide = false, fullScreen = fal
       label={title}
       onClose={onClose}
     >
-      <div data-update-dirty={dirtyLabel ? "modal-draft" : undefined} data-update-dirty-label={dirtyLabel}>
+      <div className="modal-layout" data-update-dirty={dirtyLabel ? "modal-draft" : undefined} data-update-dirty-label={dirtyLabel}>
         <div className="modal-header">
           {closePositionLeft && <button className="icon-button modal-close-framed" onClick={onClose} aria-label={`Close ${title}`}><X /></button>}
           {!titleHidden && <h2>{title}</h2>}

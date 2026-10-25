@@ -3,7 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 import { api } from "../lib/api";
 import { artwork } from "../artwork";
 import { formatDay, formatExerciseTotal } from "../lib/format";
-import type { DayData, Exercise, ExerciseSet } from "../lib/types";
+import type { DayData, Exercise, ExerciseSet, Rotation } from "../lib/types";
 import { ExerciseImage } from "./ExerciseImage";
 import { SetRow } from "./SetRow";
 import { ActivityEntryCard } from "./ActivityEntry";
@@ -15,6 +15,7 @@ const ExercisePicker = lazy(() => import("./ExercisePicker").then((module) => ({
 const SetForm = lazy(() => import("./SetForm").then((module) => ({ default: module.SetForm })));
 const ExerciseHistory = lazy(() => import("./ExerciseHistory").then((module) => ({ default: module.ExerciseHistory })));
 const ActivityPicker = lazy(() => import("./ActivityPicker").then((module) => ({ default: module.ActivityPicker })));
+const Modal = lazy(() => import("./Modal").then((module) => ({ default: module.Modal })));
 
 interface Props {
   day: string;
@@ -34,6 +35,10 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activityPickerOpen, setActivityPickerOpen] = useState(false);
   const [pendingExercise, setPendingExercise] = useState<Exercise | null>(null);
+  const [rotationPrompt, setRotationPrompt] = useState<{ exercise: Exercise; rotation: Rotation } | null>(null);
+  const [rotationPromptBusy, setRotationPromptBusy] = useState(false);
+  const [rotationPromptError, setRotationPromptError] = useState("");
+  const [exerciseChoiceError, setExerciseChoiceError] = useState("");
   const [addingTo, setAddingTo] = useState<number | null>(null);
   const [editingSet, setEditingSet] = useState<ExerciseSet | null>(null);
   const latestLoad = useRef(0);
@@ -58,6 +63,9 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
   useEffect(() => {
     const controller = new AbortController();
     setPendingExercise(null);
+    setRotationPrompt(null);
+    setRotationPromptError("");
+    setExerciseChoiceError("");
     setAddingTo(null);
     setEditingSet(null);
     void load(controller.signal);
@@ -69,6 +77,45 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
     setAddingTo(null);
     setEditingSet(null);
     await load();
+  }
+
+  async function chooseExercise(exercise: Exercise) {
+    setExerciseChoiceError("");
+    setRotationPromptError("");
+    setAddingTo(null);
+    setEditingSet(null);
+    try {
+      if (day === today) {
+        const rotations = await api.rotations();
+        const activeRotation = rotations.find((rotation) => rotation.active);
+        if (activeRotation && !activeRotation.members.some((member) => member.exercise.id === exercise.id)) {
+          setPickerOpen(false);
+          setRotationPrompt({ exercise, rotation: activeRotation });
+          return;
+        }
+      }
+      setPickerOpen(false);
+      setPendingExercise(exercise);
+    } catch (caught) {
+      setPickerOpen(false);
+      setExerciseChoiceError(caught instanceof Error ? caught.message : "Could not check the active rotation.");
+    }
+  }
+
+  async function addExerciseToRotation() {
+    if (!rotationPrompt || rotationPromptBusy) return;
+    setRotationPromptBusy(true);
+    setRotationPromptError("");
+    try {
+      const exerciseIds = rotationPrompt.rotation.members.map((member) => member.exercise.id);
+      await api.setRotationMembers(rotationPrompt.rotation.id, [...exerciseIds, rotationPrompt.exercise.id]);
+      setPendingExercise(rotationPrompt.exercise);
+      setRotationPrompt(null);
+    } catch (caught) {
+      setRotationPromptError(caught instanceof Error ? caught.message : "Could not update the active rotation.");
+    } finally {
+      setRotationPromptBusy(false);
+    }
   }
 
   async function removeSet(exercise: Exercise, set: ExerciseSet) {
@@ -111,9 +158,11 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
           {addingTo === section.exercise.id ? <Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} onSaved={() => void saved()} onCancel={() => setAddingTo(null)} /></Suspense> : <button className="add-set" aria-label="Add set" title="Add set" onClick={() => { setEditingSet(null); setAddingTo(section.exercise.id); }}><Plus /></button>}
         </section>)}
 
-        {pendingExercise && <section className="exercise-card pending-card"><header className="exercise-card-header"><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2>{pendingExercise.name}</h2><Suspense fallback={null}><ExerciseHistory exercise={pendingExercise} day={day} onChooseDay={onChooseDay} /></Suspense></div><span className="daily-total">New today</span></div></header><Suspense fallback={null}><ExerciseNote exercise={pendingExercise} /></Suspense><Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={pendingExercise} day={day} firstSet onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></Suspense></section>}
+        {pendingExercise && <section className="exercise-card pending-card"><header className="exercise-card-header"><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2>{pendingExercise.name}</h2><Suspense fallback={null}><ExerciseHistory exercise={pendingExercise} day={day} onChooseDay={onChooseDay} /></Suspense></div><span className="daily-total">New today</span></div></header><Suspense fallback={null}><ExerciseNote exercise={pendingExercise} /></Suspense><Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={pendingExercise} day={day} onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></Suspense></section>}
       </div>}
-      {pickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading exercise picker…</div>}><ExercisePicker day={day} today={today} presentIds={[...presentIds, ...(pendingExercise ? [pendingExercise.id] : [])]} onClose={() => setPickerOpen(false)} onChoose={(exercise) => { setPickerOpen(false); setPendingExercise(exercise); setAddingTo(null); setEditingSet(null); }} /></Suspense>}
+      {exerciseChoiceError && <p className="error-panel exercise-choice-error" role="alert">Could not add this exercise: {exerciseChoiceError}</p>}
+      {rotationPrompt && <Suspense fallback={null}><Modal title="Add this exercise to your active rotation?" onClose={() => { if (!rotationPromptBusy) setRotationPrompt(null); }}><div className="rotation-choice-dialog"><p>{rotationPrompt.exercise.name}</p>{rotationPromptError && <p className="error" role="alert">{rotationPromptError}</p>}<div className="draft-actions"><button type="button" disabled={rotationPromptBusy} onClick={() => { setPendingExercise(rotationPrompt.exercise); setRotationPrompt(null); }}>Just record it</button><button type="button" className="primary" disabled={rotationPromptBusy} onClick={() => void addExerciseToRotation()}>{rotationPromptBusy ? "Adding…" : "Add to rotation"}</button></div></div></Modal></Suspense>}
+      {pickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading exercise picker…</div>}><ExercisePicker day={day} today={today} presentIds={[...presentIds, ...(pendingExercise ? [pendingExercise.id] : [])]} onClose={() => setPickerOpen(false)} onChoose={(exercise) => void chooseExercise(exercise)} /></Suspense>}
       {activityPickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading activity picker…</div>}><ActivityPicker day={day} timezone={timezone} onClose={() => setActivityPickerOpen(false)} onStarted={() => { setActivityPickerOpen(false); void load(); }} /></Suspense>}
     </main>
   );

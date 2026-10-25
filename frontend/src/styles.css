@@ -136,11 +136,13 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .exercise-card-header { display: flex; align-items: center; gap: 14px; padding: 16px 18px 12px; }
 .exercise-card-header h2 { font-size: 1.35rem; margin: 0 0 3px; letter-spacing: -.025em; }
 .exercise-card-main { min-width: 0; flex: 1; }
-.exercise-card-title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.exercise-card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.exercise-card-title-row h2 { min-width: 0; }
 .daily-total { color: var(--accent-dark); font-size: .92rem; }
+.exercise-history-summary { min-width: 0; margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
 .history-button { width: 38px; min-width: 38px; min-height: 34px; padding: 0; color: var(--accent-dark); background: transparent; box-shadow: none; }
 .history-button svg { width: 16px; height: 16px; }
-.previous-session { display: block; margin-top: 3px; color: var(--muted); font-size: .82rem; }
+.previous-session { display: block; min-width: 0; color: var(--muted); font-size: .78rem; white-space: nowrap; }
 .exercise-image { flex: 0 0 auto; width: 52px; height: 52px; border-radius: 15px; background: var(--surface-2); overflow: hidden; display: grid; place-items: center; }
 .exercise-image.large { width: 68px; height: 68px; border-radius: 19px; }
 .exercise-image img { width: 100%; height: 100%; object-fit: contain; }
@@ -195,6 +197,9 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .segmented button { min-height: 42px; background: transparent; font-weight: 750; }
 .segmented button.selected { background: var(--input); color: var(--accent-dark); box-shadow: 0 2px 8px rgba(38, 47, 57, .16); }
 .draft-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 0; }
+.rotation-choice-dialog { display: grid; gap: 16px; }
+.rotation-choice-dialog > p:first-child { margin: 0; color: var(--muted); font-size: .95rem; }
+.rotation-choice-dialog .draft-actions > button { flex: 1; min-height: 48px; }
 .draft-actions .icon-button[aria-label="Cancel set"] { border: 1px solid var(--line); background: var(--surface); }
 .save-set { min-width: 48px; background: var(--save-surface); color: var(--save-ink); padding: 0 12px; font-weight: 800; }
 .save-error { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--danger); font-size: .84rem; }
@@ -215,6 +220,7 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
 .modal-sheet { width: min(100%, 620px); max-height: calc(100dvh - env(safe-area-inset-top)); display: flex; flex-direction: column; overflow: hidden; background: var(--surface); border-radius: 28px 28px 0 0; padding: 18px; box-shadow: 0 -12px 50px rgba(4, 18, 32, .35); }
 .modal-backdrop.modal-fullscreen-backdrop { align-items: stretch; padding: 0; }
 .modal-sheet.modal-fullscreen { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom)); }
+.modal-layout { min-width: 0; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
 .modal-header { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .modal-header-actions { display: flex; align-items: center; gap: 8px; }
 .modal-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: env(safe-area-inset-bottom); }
