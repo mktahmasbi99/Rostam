@@ -11,6 +11,7 @@ vi.mock("../lib/api", () => ({
     archiveExercise: vi.fn(),
     deleteExercise: vi.fn(),
     restoreExercise: vi.fn(),
+    updateExercise: vi.fn(),
   },
 }));
 
@@ -69,5 +70,41 @@ describe("ExercisesPage", () => {
     render(<ExercisesPage />);
     await user.click(await screen.findByRole("button", { name: "Edit Band pull-aparts" }));
     expect(await screen.findByRole("textbox", { name: "Exercise name" })).toHaveValue("Band pull-aparts");
+  });
+
+  it("shows cancel, save, archive, and delete controls in the edit header", async () => {
+    vi.mocked(api.exercises).mockImplementation(async (status) => status === "active" ? [bandPullApart] : []);
+    vi.mocked(api.updateExercise).mockResolvedValue(bandPullApart);
+    const user = userEvent.setup();
+    render(<ExercisesPage />);
+    await user.click(await screen.findByRole("button", { name: "Edit Band pull-aparts" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Edit Band pull-aparts" });
+    expect(within(dialog).getByRole("button", { name: "Close Edit Band pull-aparts" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Save exercise" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "More actions for Band pull-aparts" }));
+    expect(within(dialog).getByRole("menuitem", { name: "Archive Band pull-aparts" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("menuitem", { name: "Delete Band pull-aparts permanently" })).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Save exercise" }));
+    await waitFor(() => expect(api.updateExercise).toHaveBeenCalledWith(1, expect.objectContaining({ baseName: "Band pull-aparts" })));
+  });
+
+  it("archives an exercise from the edit header actions", async () => {
+    vi.mocked(api.exercises).mockImplementation(async (status) => status === "active" ? [bandPullApart] : []);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    render(<ExercisesPage />);
+    await user.click(await screen.findByRole("button", { name: "Edit Band pull-aparts" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit Band pull-aparts" });
+    await user.click(within(dialog).getByRole("button", { name: "More actions for Band pull-aparts" }));
+    await user.click(within(dialog).getByRole("menuitem", { name: "Archive Band pull-aparts" }));
+
+    await waitFor(() => expect(api.archiveExercise).toHaveBeenCalledWith(1));
+    expect(confirm).toHaveBeenCalledWith("Archive Band pull-aparts? Its history will remain available.");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Edit Band pull-aparts" })).not.toBeInTheDocument());
+    confirm.mockRestore();
   });
 });

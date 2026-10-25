@@ -78,6 +78,7 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
   }
 
   async function save() {
+    if (saving) return;
     setSaving(true);
       setError("");
       try {
@@ -107,7 +108,8 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
   }
 
   return (
-    <form className="stack editor" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+    <form id={exercise ? "exercise-editor-form" : undefined} className="stack editor" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+      {exercise && <h2 className="exercise-editor-title">Edit {exercise.name}</h2>}
       <label>Exercise name<input value={baseName} onChange={(event) => setBaseName(event.target.value)} required maxLength={100} /></label>
       {title && <p className="name-preview"><span>Displayed as</span><strong>{title}</strong></p>}
       {exercise ? <div className="immutable-summary">
@@ -156,7 +158,7 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
         </div>
       </div>}
       {error && <p className="error" role="alert">{error}</p>}
-      <div className="form-actions"><button type="button" className="secondary" onClick={onCancel}>Cancel</button><button type="submit" className="primary icon-only-action" aria-label={saving ? "Saving exercise" : "Save exercise"} title={saving ? "Saving exercise" : "Save exercise"} disabled={saving || uploadingPicture || !baseName.trim() || (!selectedEquipment && !allowBodyweight)}><Check /></button></div>
+      {!exercise && <div className="form-actions"><button type="button" className="secondary" onClick={onCancel}>Cancel</button><button type="submit" className="primary icon-only-action" aria-label={saving ? "Saving exercise" : "Save exercise"} title={saving ? "Saving exercise" : "Save exercise"} disabled={saving || uploadingPicture || !baseName.trim() || (!selectedEquipment && !allowBodyweight)}><Check /></button></div>}
     </form>
   );
 }

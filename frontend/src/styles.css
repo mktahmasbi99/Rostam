@@ -375,6 +375,8 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .modal-close-framed { border-color: var(--line) !important; }
 .rotation-save-button { width: 44px; min-width: 44px; height: 44px; border: 1px solid #438d5a; border-radius: 12px; color: #8fe0a4; background: rgba(31, 101, 57, .35); display: inline-flex; align-items: center; justify-content: center; }
 .rotation-save-button svg { width: 22px; height: 22px; stroke-width: 3; }
+.exercise-edit-header-actions { display: flex; align-items: center; gap: 8px; }
+.exercise-editor-title { margin: 0 0 4px; font-size: 1.35rem; }
 .rotation-name-field { display: grid; gap: 5px; margin-bottom: 16px; }
 .rotation-name-field > span { display: flex; align-items: center; gap: 8px; }
 .exercise-library-row { gap: 10px; }
