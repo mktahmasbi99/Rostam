@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../lib/api";
@@ -69,7 +69,9 @@ describe("RotationsPage", () => {
     const user = userEvent.setup();
     render(<RotationsPage />);
     await user.click(await screen.findByRole("button", { name: "Open Morning" }));
-    expect(await screen.findByRole("dialog", { name: "Morning" })).toBeInTheDocument();
+    const rotationDialog = await screen.findByRole("dialog", { name: "Morning" });
+    expect(rotationDialog).toBeInTheDocument();
+    expect(within(rotationDialog).getByText("2 exercises")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove Squats · 1" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Edit Morning" }));
     expect(await screen.findByRole("button", { name: "Remove Squats · 1" })).toBeInTheDocument();
@@ -100,6 +102,8 @@ describe("RotationsPage", () => {
     render(<RotationsPage />);
     await user.click(await screen.findByRole("button", { name: "Open Morning" }));
     await user.click(screen.getByRole("button", { name: "Edit Morning" }));
+    const rotationDialog = screen.getByRole("dialog", { name: "Morning" });
+    expect(within(rotationDialog).getByText("1 exercise")).toBeInTheDocument();
     expect(screen.getAllByText("Quadriceps").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Add exercise to Morning" }));
     expect(await screen.findByRole("dialog", { name: "Add to Morning" })).toBeInTheDocument();
@@ -112,6 +116,7 @@ describe("RotationsPage", () => {
     expect(screen.getByRole("button", { name: "Create New Exercise" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add Squats to Morning" }));
     expect(await screen.findByRole("button", { name: "Remove Squats · 2" })).toBeInTheDocument();
+    expect(within(rotationDialog).getByText("2 exercises")).toBeInTheDocument();
   });
 
   it("discards staged member changes when the close button is used", async () => {

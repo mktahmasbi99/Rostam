@@ -168,6 +168,7 @@ export function RotationsPage() {
     ? memberIds.map((id, index) => ({ exercise: exercises.find((exercise) => exercise.id === id) ?? selectedRotation.members.find((member) => member.exercise.id === id)?.exercise, position: index })).filter((member): member is { exercise: Exercise; position: number } => Boolean(member.exercise))
     : selectedRotation?.members ?? [];
   const labels = occurrenceLabels(memberIds);
+  const memberCountLabel = `${memberIds.length} ${memberIds.length === 1 ? "exercise" : "exercises"}`;
   const selectedFirst = selectedRotation ? firstIds[selectedRotation.id] ?? "" : "";
 
   return <main className="page rotations-page">
@@ -198,9 +199,9 @@ export function RotationsPage() {
         setEditing(false);
       } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not save rotation."); }
     })()}><Check /></button> : <div className="rotation-detail-header-actions">{!selectedIsArchived && <button className="icon-button" aria-label={`Edit ${selectedRotation.name}`} title="Edit rotation" onClick={() => openDetails(selectedRotation, true)}><Pencil /></button>}{rotationMenu(selectedRotation, selectedIsArchived)}</div>}>
-      {!editing && <h2 className="rotation-detail-title">{selectedRotation.name}</h2>}
+      {!editing && <h2 className="rotation-detail-title">{selectedRotation.name}<span className="rotation-count-badge">{memberCountLabel}</span></h2>}
       {editing && !selectedIsArchived && <>
-        <label className="rotation-name-field">Rotation name<input value={editingName} maxLength={100} onChange={(event) => setEditingName(event.target.value)} /></label>
+        <label className="rotation-name-field"><span>Rotation name<span className="rotation-count-badge">{memberCountLabel}</span></span><input value={editingName} maxLength={100} onChange={(event) => setEditingName(event.target.value)} /></label>
         {memberIds.length === 0 && <div className="rotation-recommendations">
           <h3><Sparkles /> Build from recent exercises</h3>
           <div className="rotation-lookback"><label>Look back (days)<input type="number" min="1" step="1" aria-label={`Look back days for ${selectedRotation.name}`} value={lookbacks[selectedRotation.id] ?? "7"} onChange={(event) => setLookbacks((current) => ({ ...current, [selectedRotation.id]: event.target.value }))} /></label>
