@@ -11,8 +11,25 @@ import { RotationsPage } from "./components/RotationsPage";
 import { usePwaInstall } from "./hooks/usePwaInstall";
 import { api } from "./lib/api";
 import type { Config } from "./lib/types";
+import { artwork } from "./artwork";
 
 type Tab = "today" | "notes" | "photos" | "measurements" | "exercises" | "rotations" | "settings";
+
+function Backdrop() {
+  return <picture className="site-backdrop">
+    <source media="(max-width: 768px)" type="image/webp" srcSet={artwork.background768.webp} />
+    <source media="(max-width: 768px)" type="image/jpeg" srcSet={artwork.background768.jpeg} />
+    <source type="image/webp" srcSet={artwork.background1214.webp} />
+    <img src={artwork.background1214.jpeg} alt="" />
+  </picture>;
+}
+
+function Logo({ className, sizes }: { className: string; sizes: string }) {
+  return <picture>
+    <source type="image/webp" srcSet={artwork.logo.webp} sizes={sizes} />
+    <img className={className} src={artwork.logo.src} srcSet={artwork.logo.png} sizes={sizes} alt="" />
+  </picture>;
+}
 
 function shiftDay(day: string, amount: number): string {
   const value = new Date(`${day}T12:00:00Z`);
@@ -51,7 +68,7 @@ export default function App() {
     return () => { window.removeEventListener("focus", refresh); window.removeEventListener("online", refresh); document.removeEventListener("visibilitychange", refresh); window.clearInterval(timer); };
   }, [loadConfig]);
 
-  if (!config) return <div className="startup"><img className="app-logo startup-logo" src="/rostam-logo.png" alt="" /><h1>Rostam</h1>{error ? <><p className="error">{error}</p><button onClick={() => void loadConfig()}>Retry</button></> : <p>Loading your ledger…</p>}</div>;
+  if (!config) return <><Backdrop /><div className="startup"><Logo className="app-logo startup-logo" sizes="112px" /><h1>Rostam</h1>{error ? <><p className="error">{error}</p><button onClick={() => void loadConfig()}>Retry</button></> : <p>Loading your ledger…</p>}</div></>;
 
   const goToToday = () => {
     setSelectedDay(config.today);
@@ -59,8 +76,8 @@ export default function App() {
     setCalendarOpen(false);
   };
 
-  return <div className="app-shell">
-    <div className="brand"><button className="brand-home" aria-label="Go to Today" title="Go to Today" onClick={goToToday}><img className="app-logo brand-logo" src="/rostam-logo.png" alt="" /></button></div>
+  return <><Backdrop /><div className="app-shell">
+    <div className="brand"><button className="brand-home" aria-label="Go to Today" title="Go to Today" onClick={goToToday}><Logo className="app-logo brand-logo" sizes="44px" /></button></div>
     <div className="content">
       {tab === "today" && <DayPage
         day={selectedDay}
@@ -88,5 +105,5 @@ export default function App() {
       <button aria-label="Measurements" title="Measurements" className={tab === "measurements" ? "active" : ""} onClick={() => { setTab("measurements"); setCalendarOpen(false); }}><Ruler /></button>
       <button aria-label="Settings" title="Settings" className={tab === "settings" ? "active" : ""} onClick={() => { setTab("settings"); setCalendarOpen(false); }}><Settings /></button>
     </nav>
-  </div>;
+  </div></>;
 }

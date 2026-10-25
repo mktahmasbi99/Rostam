@@ -2,7 +2,7 @@ import { generateSW } from "workbox-build";
 
 await generateSW({
   globDirectory: "dist",
-  globPatterns: ["**/*.{html,js,css,svg,png,webmanifest}"],
+  globPatterns: ["**/*.{html,js,css,svg,png,jpg,jpeg,webp,webmanifest}"],
   globIgnores: ["sw.js"],
   swDest: "dist/sw.js",
   navigateFallback: "/index.html",
