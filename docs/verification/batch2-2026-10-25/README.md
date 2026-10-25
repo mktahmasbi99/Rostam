@@ -12,6 +12,7 @@
 
 ## R3 follow-up — 25 October 2026
 
+- Implementation and evidence checkpoint: commit `61693e7`.
 - The R3 delivery behavior is implemented: the worker precaches the essential shell only, runtime-caches public illustrations and deferred JS/CSS with entry and age bounds, excludes API and private upload routes, and fails the build on Workbox warnings. WebP is served intentionally with a JPEG fallback.
 - Reduced generated background WebP quality from 82 to 75 to address the measured cold-transfer overage. For the 1214px desktop background this changes the local production asset from **306,578 bytes to 230,228 bytes**, saving **76,350 bytes (24.9%)**. The 768px WebP is **121,117 bytes**. The updated build precaches **10 files / 392,120 uncompressed bytes**, below the 1 MiB limit.
 - The updated production Playwright fixture measured **344,747 bytes** for page-observed cold-install responses including response headers, below the 500,000-byte budget. This is a local fixture measurement, not a new measurement of the deployed NAS build; service-worker import/precache traffic may not be included in page request events.
