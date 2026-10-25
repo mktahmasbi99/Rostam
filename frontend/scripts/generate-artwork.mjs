@@ -8,7 +8,7 @@ await mkdir("public/icons", { recursive: true });
 for (const width of [768, 1214]) {
   const image = sharp("artwork/rostam-background.png").resize({ width, withoutEnlargement: true });
   await Promise.all([
-    image.clone().webp({ quality: 82 }).toFile(`${output}/background-${width}.webp`),
+    image.clone().webp({ quality: 75 }).toFile(`${output}/background-${width}.webp`),
     image.clone().jpeg({ quality: 85, mozjpeg: true }).toFile(`${output}/background-${width}.jpg`),
   ]);
 }
