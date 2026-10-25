@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import date, datetime, timedelta
 from io import BytesIO
@@ -163,7 +164,36 @@ def test_body_measurements_and_profile_validate_and_keep_optional_values(databas
     with pytest.raises(DomainError, match="future"):
         database.update_profile(profile_payload(dateOfBirth="2026-09-18"))
     database.delete_body_measurement(created["id"])
-    assert database.list_body_measurements() == [waist]
+    assert database.body_measurement_page(None, None, 50)["items"] == [waist]
+
+
+def test_archive_pages_use_stable_cursors_and_measurement_trends_cover_full_history(database):
+    first = database.create_body_measurement(
+        measurement_payload(date="2026-09-14", weightKg="80", waistCm=None)
+    )
+    same_day = database.create_body_measurement(
+        measurement_payload(date="2026-09-14", weightKg=None, waistCm="90")
+    )
+    newest = database.create_body_measurement(
+        measurement_payload(date="2026-09-15", weightKg="79", waistCm=None)
+    )
+    page = database.body_measurement_page(None, None, 2)
+    assert page["items"] == [newest, same_day]
+    older = database.body_measurement_page(page["nextBeforeDate"], page["nextBeforeId"], 2)
+    assert older["items"] == [first]
+    assert older["nextBeforeDate"] is None
+    trends = database.body_measurement_trends()
+    assert trends["latest"]["weight"]["value"] == "79"
+    assert trends["latest"]["waist"]["value"] == "90"
+    assert len(trends["trends"]["weight"]) == 2
+
+    for day in ("2026-09-13", "2026-09-14", "2026-09-15"):
+        database.update_daily_note(day, f"Note {day}")
+    daily = database.list_daily_notes(limit=2)
+    assert [note["date"] for note in daily["items"]] == ["2026-09-15", "2026-09-14"]
+    assert [
+        note["date"] for note in database.list_daily_notes(daily["nextBeforeDate"], 2)["items"]
+    ] == ["2026-09-13"]
 
 
 @pytest.mark.parametrize("value", ["20260916", "2026-W38-2", "2026-13-01"])
@@ -253,9 +283,113 @@ def test_photo_summaries_exclude_blobs_and_photo_endpoints_return_them(database)
     photos = database.add_daily_photos(database.today().isoformat(), [image_upload()])
 
     assert database.list_daily_photos(database.today().isoformat()) == photos
-    assert database.list_photos()[0]["photos"] == photos
+    assert database.list_photos()["items"][0]["photos"] == photos
     assert database.photo_data(photos[0]["id"], thumbnail=False).startswith(b"\xff\xd8")
     assert database.photo_data(photos[0]["id"], thumbnail=True).startswith(b"\xff\xd8")
+
+
+def test_photo_pages_keep_each_date_group_intact(database):
+    older = database.add_daily_photos("2026-09-14", [image_upload(), image_upload()])
+    newer = database.add_daily_photos("2026-09-15", [image_upload()])
+    first = database.list_photos(limit=1)
+    assert first["items"][0]["date"] == "2026-09-15"
+    assert first["items"][0]["photos"] == newer
+    older_page = database.list_photos(first["nextBeforeDate"], limit=1)
+    assert older_page["items"][0]["photos"] == older
+    assert older_page["nextBeforeDate"] is None
+
+
+def test_archive_cursors_walk_a_three_year_synthetic_history_without_duplicates(database):
+    start = date(2023, 1, 1)
+    days = [(start + timedelta(days=offset)).isoformat() for offset in range(1100)]
+    now = "2026-01-01T00:00:00+00:00"
+    with database.connect() as connection:
+        connection.executemany(
+            "INSERT INTO daily_notes(entry_date, body, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            [(day, f"Note {day}", now, now) for day in days],
+        )
+        connection.executemany(
+            "INSERT INTO daily_photos(entry_date, display_order, jpeg, thumbnail_jpeg, width, height, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(day, order, b"jpg", b"thumb", 1, 1, now) for day in days for order in (1, 2)],
+        )
+        connection.executemany(
+            "INSERT INTO body_measurements(entry_date, measurement_type, weight_grams, waist_mm, created_at, updated_at) "
+            "VALUES (?, 'weight', ?, NULL, ?, ?)",
+            [(day, 80000 + index, now, now) for index, day in enumerate(days)],
+        )
+        connection.execute(
+            "INSERT INTO activities(name, normalized_name, created_at) VALUES ('Archive test', 'archive-test', ?)",
+            (now,),
+        )
+        activity_id = connection.execute("SELECT last_insert_rowid()").fetchone()[0]
+        connection.executemany(
+            "INSERT INTO activity_entries(activity_id, started_at, ended_at, note, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    activity_id,
+                    f"{day}T10:00:00.000000+00:00",
+                    f"{day}T11:00:00.000000+00:00",
+                    f"Activity {day}",
+                    now,
+                    now,
+                )
+                for day in days
+            ],
+        )
+        connection.commit()
+
+    daily_dates: list[str] = []
+    cursor = None
+    while True:
+        page = database.list_daily_notes(cursor, 30)
+        daily_dates.extend(note["date"] for note in page["items"])
+        cursor = page["nextBeforeDate"]
+        if cursor is None:
+            break
+    assert daily_dates == list(reversed(days))
+
+    photo_dates: list[str] = []
+    photo_page_bytes: list[int] = []
+    cursor = None
+    while True:
+        page = database.list_photos(cursor, 20)
+        photo_dates.extend(group["date"] for group in page["items"])
+        assert all(len(group["photos"]) == 2 for group in page["items"])
+        photo_page_bytes.append(len(json.dumps(page, separators=(",", ":"))))
+        cursor = page["nextBeforeDate"]
+        if cursor is None:
+            break
+    assert photo_dates == list(reversed(days))
+    assert max(photo_page_bytes) < 20 * 1024
+    assert sum(photo_page_bytes) > max(photo_page_bytes) * 10
+
+    measurement_dates: list[str] = []
+    before_date = before_id = None
+    while True:
+        page = database.body_measurement_page(before_date, before_id, 50)
+        measurement_dates.extend(item["date"] for item in page["items"])
+        before_date, before_id = page["nextBeforeDate"], page["nextBeforeId"]
+        if before_date is None:
+            break
+    assert measurement_dates == list(reversed(days))
+    trends = database.body_measurement_trends()
+    assert len(trends["trends"]["weight"]) <= 100
+    assert trends["latest"]["weight"]["date"] == days[-1]
+
+    activity_items: list[dict] = []
+    before_started_at = before_id = None
+    while True:
+        page = database.activity_notes(before_started_at, before_id, 30)
+        activity_items.extend(page["items"])
+        before_started_at = page["nextBeforeStartedAt"]
+        before_id = page["nextBeforeId"]
+        if before_started_at is None:
+            break
+    assert len(activity_items) == len(days)
+    assert len({item["id"] for item in activity_items}) == len(days)
+    assert [item["date"] for item in activity_items] == list(reversed(days))
 
 
 def test_names_are_case_and_whitespace_insensitive(database):

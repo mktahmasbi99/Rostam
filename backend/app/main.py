@@ -141,8 +141,17 @@ def update_profile(payload: ProfileUpdate) -> dict:
 
 
 @app.get("/api/body-measurements")
-def list_body_measurements() -> list[dict]:
-    return database.list_body_measurements()
+def list_body_measurements(
+    before_date: Annotated[str | None, Query(alias="beforeDate")] = None,
+    before_id: Annotated[int | None, Query(alias="beforeId")] = None,
+    limit: int = 50,
+) -> dict:
+    return database.body_measurement_page(before_date, before_id, limit)
+
+
+@app.get("/api/body-measurements/trends")
+def body_measurement_trends() -> dict:
+    return database.body_measurement_trends()
 
 
 @app.post("/api/body-measurements", status_code=201)
@@ -196,8 +205,12 @@ def delete_activity(activity_id: int, payload: ActivityDelete) -> None:
 
 
 @app.get("/api/activity-notes")
-def activity_notes() -> list[dict]:
-    return database.activity_notes()
+def activity_notes(
+    before_started_at: Annotated[str | None, Query(alias="beforeStartedAt")] = None,
+    before_id: Annotated[int | None, Query(alias="beforeId")] = None,
+    limit: int = 30,
+) -> dict:
+    return database.activity_notes(before_started_at, before_id, limit)
 
 
 @app.post("/api/activities/{activity_id}/entries", status_code=201)
@@ -308,8 +321,10 @@ def delete_daily_note(day: str) -> None:
 
 
 @app.get("/api/notes")
-def list_daily_notes() -> list[dict]:
-    return database.list_daily_notes()
+def list_daily_notes(
+    before_date: Annotated[str | None, Query(alias="beforeDate")] = None, limit: int = 30
+) -> dict:
+    return database.list_daily_notes(before_date, limit)
 
 
 @app.post("/api/days/{day}/photos", status_code=201)
@@ -327,8 +342,10 @@ def list_daily_photos(day: str) -> list[dict]:
 
 
 @app.get("/api/photos")
-def list_photos() -> list[dict]:
-    return database.list_photos()
+def list_photos(
+    before_date: Annotated[str | None, Query(alias="beforeDate")] = None, limit: int = 20
+) -> dict:
+    return database.list_photos(before_date, limit)
 
 
 @app.get("/api/photos/{photo_id}")

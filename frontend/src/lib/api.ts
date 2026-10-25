@@ -1,4 +1,4 @@
-import type { Activity, ActivityEntry, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, Rotation, RotationRecommendation, SetPayload } from "./types";
+import type { Activity, ActivityEntry, ActivityNotePage, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPage, BodyMeasurementPayload, Config, DailyNotePage, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, MeasurementTrends, PhotoPage, Profile, ProfilePayload, RestoreResult, Rotation, RotationRecommendation, SetPayload } from "./types";
 import { trackWrite } from "./restartSafety";
 import { reportServerReachability, reportUncertainWrite, requireReachableServer, ServerConnectionError } from "./connectivity";
 
@@ -57,7 +57,12 @@ export const api = {
   config: () => request<Config>("/api/config"),
   profile: () => request<Profile>("/api/profile"),
   updateProfile: (payload: ProfilePayload) => request<Profile>("/api/profile", json("PUT", payload)),
-  bodyMeasurements: () => request<BodyMeasurement[]>("/api/body-measurements"),
+  bodyMeasurements: (options: { beforeDate?: string; beforeId?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(options).forEach(([key, value]) => { if (value !== undefined) params.set(key, String(value)); });
+    return request<BodyMeasurementPage>(`/api/body-measurements?${params}`);
+  },
+  bodyMeasurementTrends: () => request<MeasurementTrends>("/api/body-measurements/trends"),
   createBodyMeasurement: (payload: BodyMeasurementPayload) => request<BodyMeasurement>("/api/body-measurements", json("POST", payload)),
   updateBodyMeasurement: (id: number, payload: BodyMeasurementPayload) => request<BodyMeasurement>(`/api/body-measurements/${id}`, json("PATCH", payload)),
   deleteBodyMeasurement: (id: number) => request<void>(`/api/body-measurements/${id}`, { method: "DELETE" }),
@@ -74,7 +79,11 @@ export const api = {
   updateActivity: (id: number, startedAt: string, endedAt: string, note: string) => request<ActivityEntry>(`/api/activity-entries/${id}`, json("PUT", { startedAt, endedAt, note })),
   updateActivityNote: (id: number, note: string) => request<ActivityEntry>(`/api/activity-entries/${id}/note`, json("PUT", { note })),
   deleteActivity: (id: number) => request<void>(`/api/activity-entries/${id}`, { method: "DELETE" }),
-  activityNotes: () => request<ActivityEntry[]>("/api/activity-notes"),
+  activityNotes: (options: { beforeStartedAt?: string; beforeId?: number; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(options).forEach(([key, value]) => { if (value !== undefined) params.set(key, String(value)); });
+    return request<ActivityNotePage>(`/api/activity-notes?${params}`);
+  },
   calendar: (month: string, signal?: AbortSignal) =>
     request<{ month: string; activeDates: string[] }>(`/api/calendar/${month}`, { signal }),
   exerciseHistory: (id: number, options: { beforeDate?: string; limit?: number } = {}, signal?: AbortSignal) => {
@@ -110,9 +119,18 @@ export const api = {
     request<Exercise>(`/api/exercises/${id}/note`, json("PUT", { body })),
   updateDailyNote: (day: string, body: string) => request<{ date: string; dailyNote: string | null }>(`/api/days/${day}/note`, json("PUT", { body })),
   deleteDailyNote: (day: string) => request<void>(`/api/days/${day}/note`, { method: "DELETE" }),
-  dailyNotes: () => request<DailyNote[]>("/api/notes"),
+  dailyNotes: (options: { beforeDate?: string; limit?: number } = {}) => {
+    const params = new URLSearchParams();
+    Object.entries(options).forEach(([key, value]) => { if (value !== undefined) params.set(key, String(value)); });
+    return request<DailyNotePage>(`/api/notes?${params}`);
+  },
   dayPhotos: (day: string, signal?: AbortSignal) => request<DailyPhoto[]>(`/api/days/${day}/photos`, { signal }),
-  photos: (signal?: AbortSignal) => request<PhotoGroup[]>("/api/photos", { signal }),
+  photos: (options: { beforeDate?: string; limit?: number; signal?: AbortSignal } = {}) => {
+    const params = new URLSearchParams();
+    if (options.beforeDate) params.set("beforeDate", options.beforeDate);
+    if (options.limit !== undefined) params.set("limit", String(options.limit));
+    return request<PhotoPage>(`/api/photos?${params}`, { signal: options.signal });
+  },
   uploadPhotos: (day: string, files: File[]) => { const form = new FormData(); files.forEach((file) => form.append("files", file)); return request<DailyPhoto[]>(`/api/days/${day}/photos`, { method: "POST", body: form }); },
   deletePhoto: (id: number) => request<void>(`/api/photos/${id}`, { method: "DELETE" }),
   archiveExercise: (id: number) =>

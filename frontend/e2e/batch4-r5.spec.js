@@ -14,7 +14,8 @@ test("measurement cards and edit form fit narrow screens and enlarged text", asy
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/config") return route.fulfill({ json: { today: "2026-10-25", timezone: "Europe/Warsaw", version: "1.0.0" } });
     if (path === "/api/profile") return route.fulfill({ json: { heightCm: null, dateOfBirth: null, age: null } });
-    if (path === "/api/body-measurements") return route.fulfill({ json: measurements });
+    if (path === "/api/body-measurements") return route.fulfill({ json: { items: measurements, nextBeforeDate: null, nextBeforeId: null } });
+    if (path === "/api/body-measurements/trends") return route.fulfill({ json: { latest: { weight: { date: measurements[0].date, value: measurements[0].weightKg }, waist: { date: measurements[0].date, value: measurements[0].waistCm } }, trends: { weight: [{ date: measurements[0].date, value: measurements[0].weightKg }], waist: [{ date: measurements[0].date, value: measurements[0].waistCm }] } } });
     return route.fulfill({ json: [] });
   });
 

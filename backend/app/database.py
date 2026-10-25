@@ -913,12 +913,77 @@ class RostamDatabase:
             "updatedAt": row["updated_at"],
         }
 
-    def list_body_measurements(self) -> list[dict]:
+    @staticmethod
+    def _bounded_limit(limit: int, maximum: int) -> int:
+        if limit < 1 or limit > maximum:
+            raise DomainError(f"Limit must be between 1 and {maximum}.")
+        return limit
+
+    def body_measurement_page(
+        self, before_date: str | None, before_id: int | None, limit: int
+    ) -> dict:
+        limit = self._bounded_limit(limit, 100)
+        if (before_date is None) != (before_id is None):
+            raise DomainError("Both measurement cursor values are required.")
+        if before_date is not None:
+            self._parse_day(before_date)
+        where = "WHERE (entry_date < ? OR (entry_date = ? AND id < ?))" if before_date else ""
+        params = (before_date, before_date, before_id, limit + 1) if before_date else (limit + 1,)
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM body_measurements ORDER BY entry_date DESC"
+                f"SELECT * FROM body_measurements {where} ORDER BY entry_date DESC, id DESC LIMIT ?",
+                params,
             ).fetchall()
-        return [self._measurement_summary(row) for row in rows]
+        has_more = len(rows) > limit
+        items = rows[:limit]
+        last = items[-1] if has_more and items else None
+        return {
+            "items": [self._measurement_summary(row) for row in items],
+            "nextBeforeDate": last["entry_date"] if last else None,
+            "nextBeforeId": last["id"] if last else None,
+        }
+
+    def body_measurement_trends(self) -> dict:
+        """Return latest values and at most 100 chronological trend buckets per metric."""
+        with self.connect() as connection:
+            latest = {}
+            trends = {}
+            for metric, column in (
+                ("weight", "weight_grams"),
+                ("waist", "waist_mm"),
+            ):
+                rows = connection.execute(
+                    f"""WITH ranked AS (
+                        SELECT entry_date, {column} AS value,
+                            NTILE(100) OVER (ORDER BY entry_date, id) AS bucket
+                        FROM body_measurements WHERE {column} IS NOT NULL
+                    ) SELECT MIN(entry_date) AS date, AVG(value) AS value
+                    FROM ranked GROUP BY bucket ORDER BY MIN(entry_date)"""
+                ).fetchall()
+                current = connection.execute(
+                    f"SELECT entry_date, {column} AS value FROM body_measurements "
+                    f"WHERE {column} IS NOT NULL ORDER BY entry_date DESC, id DESC LIMIT 1"
+                ).fetchone()
+                latest[metric] = (
+                    {
+                        "date": current["entry_date"],
+                        "value": format_weight(current["value"])
+                        if metric == "weight"
+                        else self._format_millimetres(current["value"]),
+                    }
+                    if current
+                    else None
+                )
+                trends[metric] = [
+                    {
+                        "date": row["date"],
+                        "value": format_weight(round(row["value"]))
+                        if metric == "weight"
+                        else self._format_millimetres(round(row["value"])),
+                    }
+                    for row in rows
+                ]
+        return {"latest": latest, "trends": trends}
 
     def create_body_measurement(self, payload) -> dict:
         self._parse_day(payload.date)
@@ -1033,20 +1098,27 @@ class RostamDatabase:
             connection.execute("DELETE FROM daily_notes WHERE entry_date = ?", (day_value,))
             connection.commit()
 
-    def list_daily_notes(self) -> list[dict]:
+    def list_daily_notes(self, before_date: str | None = None, limit: int = 30) -> dict:
+        limit = self._bounded_limit(limit, 100)
+        if before_date is not None:
+            self._parse_day(before_date)
+        where = "WHERE entry_date < ?" if before_date else ""
+        params = (before_date, limit + 1) if before_date else (limit + 1,)
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT * FROM daily_notes ORDER BY entry_date DESC"
+                f"SELECT * FROM daily_notes {where} ORDER BY entry_date DESC LIMIT ?", params
             ).fetchall()
-        return [
+        has_more = len(rows) > limit
+        items = [
             {
                 "date": row["entry_date"],
                 "body": row["body"],
                 "createdAt": row["created_at"],
                 "updatedAt": row["updated_at"],
             }
-            for row in rows
+            for row in rows[:limit]
         ]
+        return {"items": items, "nextBeforeDate": items[-1]["date"] if has_more else None}
 
     def _process_photo(self, source: bytes) -> tuple[bytes, bytes, int, int]:
         if not source:
@@ -1136,16 +1208,35 @@ class RostamDatabase:
             ).fetchall()
         return [self._photo_summary(row) for row in rows]
 
-    def list_photos(self) -> list[dict]:
+    def list_photos(self, before_date: str | None = None, limit: int = 20) -> dict:
+        limit = self._bounded_limit(limit, 100)
+        if before_date is not None:
+            self._parse_day(before_date)
+        where = "WHERE entry_date < ?" if before_date else ""
+        params = (before_date, limit + 1) if before_date else (limit + 1,)
         with self.connect() as connection:
-            rows = connection.execute(
-                f"SELECT {PHOTO_SUMMARY_SELECT} FROM daily_photos "
-                "ORDER BY entry_date DESC, display_order"
+            dates = connection.execute(
+                f"SELECT DISTINCT entry_date FROM daily_photos {where} "
+                "ORDER BY entry_date DESC LIMIT ?",
+                params,
             ).fetchall()
+            has_more = len(dates) > limit
+            selected_dates = [row["entry_date"] for row in dates[:limit]]
+            rows = (
+                connection.execute(
+                    f"SELECT {PHOTO_SUMMARY_SELECT} FROM daily_photos "
+                    f"WHERE entry_date IN ({','.join('?' for _ in selected_dates)}) "
+                    "ORDER BY entry_date DESC, display_order",
+                    selected_dates,
+                ).fetchall()
+                if selected_dates
+                else []
+            )
         grouped: dict[str, list[dict]] = {}
         for row in rows:
             grouped.setdefault(row["entry_date"], []).append(self._photo_summary(row))
-        return [{"date": day, "photos": photos} for day, photos in grouped.items()]
+        items = [{"date": day, "photos": photos} for day, photos in grouped.items()]
+        return {"items": items, "nextBeforeDate": items[-1]["date"] if has_more else None}
 
     def photo_data(self, photo_id: int, *, thumbnail: bool) -> bytes:
         column = "thumbnail_jpeg" if thumbnail else "jpeg"
@@ -2149,12 +2240,34 @@ class RostamDatabase:
             connection.commit()
             return self._serialize_activity_entry(row)
 
-    def activity_notes(self) -> list[dict]:
+    def activity_notes(
+        self, before_started_at: str | None = None, before_id: int | None = None, limit: int = 30
+    ) -> dict:
+        limit = self._bounded_limit(limit, 100)
+        if (before_started_at is None) != (before_id is None):
+            raise DomainError("Both activity note cursor values are required.")
+        where = (
+            "AND (x.started_at < ? OR (x.started_at = ? AND x.id < ?))" if before_started_at else ""
+        )
+        params = (
+            (before_started_at, before_started_at, before_id, limit + 1)
+            if before_started_at
+            else (limit + 1,)
+        )
         with self.connect() as connection:
             rows = connection.execute(
-                "SELECT x.*, a.name FROM activity_entries x JOIN activities a ON a.id=x.activity_id WHERE x.note != '' ORDER BY x.started_at DESC, x.id DESC"
+                f"SELECT x.*, a.name FROM activity_entries x JOIN activities a ON a.id=x.activity_id "
+                f"WHERE x.note != '' {where} ORDER BY x.started_at DESC, x.id DESC LIMIT ?",
+                params,
             ).fetchall()
-        return [self._serialize_activity_entry(row) for row in rows]
+        has_more = len(rows) > limit
+        items = [self._serialize_activity_entry(row) for row in rows[:limit]]
+        last = rows[limit - 1] if has_more and items else None
+        return {
+            "items": items,
+            "nextBeforeStartedAt": last["started_at"] if last else None,
+            "nextBeforeId": last["id"] if last else None,
+        }
 
     def calendar(self, month: str) -> dict:
         if not re.fullmatch(r"\d{4}-\d{2}", month):

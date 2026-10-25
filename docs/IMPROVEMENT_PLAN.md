@@ -75,9 +75,9 @@ Status: R5, R6, and R10 verified locally; not merged. Commits: `d7c4caf` (R5), `
 
 ## Batch 5 — bounded archive loading
 
-- [ ] **R9a — Photos.** Return recent date groups first, add “Load older photos,” and lazy-load thumbnails. Keep a day's group intact where practical; do not retrieve full-size photos until requested.
-- [ ] **R9b — Notes.** Paginate daily notes and activity notes with independent cursors/loading/error states and “Load older” controls. Use a stable date/time-plus-ID cursor where multiple entries share a timestamp.
-- [ ] **R9c — Measurements.** Paginate the History list while keeping latest values and trend calculations based on the intended full data/date range via a separate bounded summary/trend response. Loading older rows must not silently change the meaning of a chart or latest value.
+- [x] **R9a — Photos.** Return recent date groups first, add “Load older photos,” and lazy-load thumbnails. Keep a day's group intact where practical; do not retrieve full-size photos until requested.
+- [x] **R9b — Notes.** Paginate daily notes and activity notes with independent cursors/loading/error states and “Load older” controls. Use a stable date/time-plus-ID cursor where multiple entries share a timestamp.
+- [x] **R9c — Measurements.** Paginate the History list while keeping latest values and trend calculations based on the intended full data/date range via a separate bounded summary/trend response. Loading older rows must not silently change the meaning of a chart or latest value.
 
 Existing per-exercise session history already requests 10 session dates at a time, with a cursor and a separate one-session previous-workout preview. Preserve that behavior; this task is not a rewrite of exercise history or pagination of today's exercise cards.
 
@@ -85,7 +85,7 @@ Start with explicit “Load older” controls rather than infinite scrolling. Pr
 
 Acceptance: synthetic multi-year archives; bounded initial API payloads and image requests; correct chronological ordering; no dropped/duplicated entries between pages; error/retry for later pages; reset after edits/deletes/filter changes; today-note editing unaffected by pagination; measurement latest/trends remain correct before and after loading older history. There is no universal record count at which pagination becomes necessary: compare bytes, request counts, render time, and responsiveness under the target network/device conditions.
 
-Status: Planned. Commit: —. PR: —. Evidence: —. Merged: No.
+Status: Verified locally; not merged. Commit: `19696ec182b0c2b83ce53c10ae6ef1de640b967b`. PR: —. Evidence: [Batch 5 verification report](verification/batch5-2026-10-25/README.md). Backend tests walk a three-year synthetic archive of 1,100 dates across daily notes, photos, measurements, and activity notes; pages remain ordered and complete without duplicates, photos stay grouped by date, and measurement trends remain bounded to 100 chronological buckets per metric across the full range. Focused frontend and Playwright coverage verifies on-demand older-page loading and lazy photo thumbnails. Full required checks and 16 Playwright scenarios passed. Production deployment, installed-device behavior, and target-network payload/render measurements remain pending. Merged: No.
 
 ## Batch 6 — bounded image uploads and processing
 
