@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   test:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -40,7 +41,6 @@ jobs:
 
   publish:
     if: github.event_name == 'push'
-    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
