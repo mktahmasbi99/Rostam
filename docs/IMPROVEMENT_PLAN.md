@@ -89,11 +89,13 @@ Status: Verified locally; not merged. Commit: `19696ec182b0c2b83ce53c10ae6ef1de6
 
 ## Batch 6 — bounded image uploads and processing
 
-- [ ] **R11 — Upload safeguards and image variants.** Check selected count early, cap per-file and aggregate streamed reads, enforce authoritative per-day limits transactionally, handle invalid/decompression-heavy images, and run blocking image processing outside the async event loop with bounded concurrency. Add a small exercise-image display variant while retaining any image detail needed by the editor. Preserve EXIF orientation, supported phone image formats, and backup self-containment.
+- [x] **R11 — Upload safeguards and image variants.** Check selected count early, cap per-file and aggregate streamed reads, enforce authoritative per-day limits transactionally, handle invalid/decompression-heavy images, and run blocking image processing outside the async event loop with bounded concurrency. Add a small exercise-image display variant while retaining any image detail needed by the editor. Preserve EXIF orientation, supported phone image formats, and backup self-containment.
 
 Acceptance: excessive count/size, invalid image, existing nearly-full day, concurrent uploads, interrupted upload, supported formats/orientation, and a health/read request during processing. Do not silently change upload limits without documenting the chosen limits. Verify display variants and backup/restore behavior. Optional client-side conversion remains a separate decision unless server-side work proves insufficient.
 
-Status: Planned. Commit: —. PR: —. Evidence: —. Merged: No.
+Chosen limits: up to 10 photos per day and per daily upload; 50 MiB per source image; 100 MiB aggregate source bytes per daily upload; 80 megapixels decoded per image. Daily display images remain capped at a 2560px edge and 5 MiB stored JPEG with a 480px thumbnail. Custom exercise art is stored as a 512px-edge JPEG variant; the current UI displays it at 52–68 CSS pixels and has no higher-resolution editor view. The existing day cap was preserved; the new aggregate and decoded-pixel limits are explicit additions.
+
+Status: Verified locally; not merged. Commit: —. PR: —. Evidence: [Batch 6 verification report](verification/batch6-2026-10-25/README.md). Automated coverage exercises count and streamed-byte caps, no partial writes after invalid or interrupted uploads, existing nearly-full days, concurrent uploads under the transactional limit, supported JPEG/PNG/WebP/HEIF inputs, EXIF orientation, decompression-heavy images, health requests during image processing, 512px exercise-image variants, and backup/restore retention. Full required repository checks passed. Production deployment and installed-device upload behavior remain pending. Merged: No.
 
 ## Final acceptance and release
 

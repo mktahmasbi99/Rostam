@@ -8,10 +8,26 @@ vi.mock("../lib/api", () => ({
   api: {
     createExercise: vi.fn(),
     updateExercise: vi.fn(),
+    uploadExerciseImage: vi.fn(),
   },
 }));
 
 describe("ExerciseEditor", () => {
+  it("rejects an oversized exercise image before uploading it", async () => {
+    const user = userEvent.setup();
+    render(<ExerciseEditor onSaved={vi.fn()} onCancel={vi.fn()} />);
+    await user.click(screen.getByText("No picture"));
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(input).not.toBeNull();
+    const file = new File(["x"], "large.png", { type: "image/png" });
+    Object.defineProperty(file, "size", { value: 50 * 1024 * 1024 + 1 });
+
+    await user.upload(input!, file);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("50 MiB or smaller");
+    expect(api.uploadExerciseImage).not.toHaveBeenCalled();
+  });
+
   it("previews a generated title and sends immutable creation features", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn();

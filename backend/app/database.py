@@ -99,9 +99,13 @@ MAX_HEIGHT_CM = Decimal(300)
 MAX_WAIST_CM = Decimal(500)
 # Source files may be large camera originals. The stored JPEG is capped separately.
 MAX_PHOTO_BYTES = 50 * 1024 * 1024
+MAX_PHOTO_UPLOAD_TOTAL_BYTES = 100 * 1024 * 1024
 MAX_STORED_PHOTO_BYTES = 5 * 1024 * 1024
 MAX_PHOTO_EDGE = 2560
+MAX_EXERCISE_IMAGE_EDGE = 512
+MAX_DECODED_IMAGE_PIXELS = 80_000_000
 THUMBNAIL_EDGE = 480
+IMAGE_PROCESSING_SLOTS = threading.BoundedSemaphore(2)
 PHOTO_SUMMARY_COLUMNS = (
     "id",
     "entry_date",
@@ -1120,39 +1124,51 @@ class RostamDatabase:
         ]
         return {"items": items, "nextBeforeDate": items[-1]["date"] if has_more else None}
 
-    def _process_photo(self, source: bytes) -> tuple[bytes, bytes, int, int]:
+    def _process_photo(
+        self, source: bytes, *, max_edge: int = MAX_PHOTO_EDGE
+    ) -> tuple[bytes, bytes, int, int]:
         if not source:
             raise DomainError("Choose an image to upload.")
         if len(source) > MAX_PHOTO_BYTES:
-            raise DomainError("Each source photo must be 50 MB or smaller.")
-        try:
-            with Image.open(BytesIO(source)) as opened:
-                if opened.format not in {"JPEG", "PNG", "HEIF", "WEBP"}:
-                    raise DomainError("Photos must be JPEG, PNG, HEIC, or WebP images.")
-                image = ImageOps.exif_transpose(opened)
-                if image.mode in {"RGBA", "LA"} or "transparency" in image.info:
-                    background = Image.new("RGB", image.size, "#fffaf0")
-                    alpha = image.convert("RGBA")
-                    background.paste(alpha, mask=alpha.getchannel("A"))
-                    image = background
-                else:
-                    image = image.convert("RGB")
-                image.thumbnail((MAX_PHOTO_EDGE, MAX_PHOTO_EDGE), Image.Resampling.LANCZOS)
-                width, height = image.size
-                full = BytesIO()
-                image.save(full, format="JPEG", quality=82, optimize=True)
-                if full.tell() > MAX_STORED_PHOTO_BYTES:
-                    raise DomainError("This photo is still too large after compression.")
-                thumbnail = image.copy()
-                thumbnail.thumbnail((THUMBNAIL_EDGE, THUMBNAIL_EDGE), Image.Resampling.LANCZOS)
-                thumb = BytesIO()
-                thumbnail.save(thumb, format="JPEG", quality=82, optimize=True)
-                return full.getvalue(), thumb.getvalue(), width, height
-        except (UnidentifiedImageError, OSError, ValueError) as exc:
-            raise DomainError("Photos must be valid JPEG, PNG, HEIC, or WebP images.") from exc
+            raise DomainError("Each source photo must be 50 MiB or smaller.")
+        with IMAGE_PROCESSING_SLOTS:
+            try:
+                with Image.open(BytesIO(source)) as opened:
+                    if opened.format not in {"JPEG", "PNG", "HEIF", "WEBP"}:
+                        raise DomainError("Photos must be JPEG, PNG, HEIC, or WebP images.")
+                    if opened.width * opened.height > MAX_DECODED_IMAGE_PIXELS:
+                        raise DomainError("Images must be 80 megapixels or smaller.")
+                    image = ImageOps.exif_transpose(opened)
+                    if image.mode in {"RGBA", "LA"} or "transparency" in image.info:
+                        background = Image.new("RGB", image.size, "#fffaf0")
+                        alpha = image.convert("RGBA")
+                        background.paste(alpha, mask=alpha.getchannel("A"))
+                        image = background
+                    else:
+                        image = image.convert("RGB")
+                    image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+                    width, height = image.size
+                    full = BytesIO()
+                    image.save(full, format="JPEG", quality=82, optimize=True)
+                    if full.tell() > MAX_STORED_PHOTO_BYTES:
+                        raise DomainError("This photo is still too large after compression.")
+                    thumbnail = image.copy()
+                    thumbnail.thumbnail((THUMBNAIL_EDGE, THUMBNAIL_EDGE), Image.Resampling.LANCZOS)
+                    thumb = BytesIO()
+                    thumbnail.save(thumb, format="JPEG", quality=82, optimize=True)
+                    return full.getvalue(), thumb.getvalue(), width, height
+            except DomainError:
+                raise
+            except (
+                Image.DecompressionBombError,
+                UnidentifiedImageError,
+                OSError,
+                ValueError,
+            ) as exc:
+                raise DomainError("Photos must be valid JPEG, PNG, HEIC, or WebP images.") from exc
 
     def store_exercise_image(self, source: bytes) -> str:
-        jpeg, _, _, _ = self._process_photo(source)
+        jpeg, _, _, _ = self._process_photo(source, max_edge=MAX_EXERCISE_IMAGE_EDGE)
         image_key = f"custom:{uuid.uuid4().hex}"
         with self.connect() as connection:
             connection.execute(

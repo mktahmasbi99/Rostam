@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from PIL import Image
+from pillow_heif import from_pillow
 
 from app.config import Settings
 from app.database import (
@@ -286,6 +288,103 @@ def test_photo_summaries_exclude_blobs_and_photo_endpoints_return_them(database)
     assert database.list_photos()["items"][0]["photos"] == photos
     assert database.photo_data(photos[0]["id"], thumbnail=False).startswith(b"\xff\xd8")
     assert database.photo_data(photos[0]["id"], thumbnail=True).startswith(b"\xff\xd8")
+
+
+def test_exercise_image_is_stored_as_a_small_display_variant(database):
+    output = BytesIO()
+    Image.new("RGB", (1200, 600), "#995c12").save(output, format="JPEG")
+
+    image_key = database.store_exercise_image(output.getvalue())
+
+    with Image.open(BytesIO(database.exercise_image_data(image_key))) as stored:
+        assert stored.format == "JPEG"
+        assert stored.size == (512, 256)
+
+
+def test_exercise_image_variant_survives_backup_and_restore(database):
+    output = BytesIO()
+    Image.new("RGB", (1200, 600), "#995c12").save(output, format="JPEG")
+    image_key = database.store_exercise_image(output.getvalue())
+    expected = database.exercise_image_data(image_key)
+    backup = database.create_backup("on-demand")
+
+    database.restore_backup(backup["id"], "RESTORE")
+
+    assert database.exercise_image_data(image_key) == expected
+
+
+def test_photo_processing_rejects_decompression_heavy_images(database, monkeypatch):
+    import app.database as database_module
+
+    monkeypatch.setattr(database_module, "MAX_DECODED_IMAGE_PIXELS", 10)
+    output = BytesIO()
+    Image.new("RGB", (4, 4), "#995c12").save(output, format="PNG")
+
+    with pytest.raises(DomainError, match="80 megapixels"):
+        database.add_daily_photos(database.today().isoformat(), [output.getvalue()])
+
+
+def test_photo_processing_preserves_exif_orientation(database):
+    output = BytesIO()
+    exif = Image.Exif()
+    exif[274] = 6
+    Image.new("RGB", (1200, 600), "#995c12").save(output, format="JPEG", exif=exif)
+
+    _, _, width, height = database._process_photo(output.getvalue())
+
+    assert (width, height) == (600, 1200)
+
+
+@pytest.mark.parametrize("image_format", ["JPEG", "PNG", "WEBP", "HEIF"])
+def test_photo_processing_accepts_supported_image_formats(database, image_format):
+    output = BytesIO()
+    image = Image.new("RGB", (24, 16), "#995c12")
+    if image_format == "HEIF":
+        from_pillow(image).save(output, format="HEIF")
+    else:
+        image.save(output, format=image_format)
+
+    jpeg, thumbnail, width, height = database._process_photo(output.getvalue())
+
+    assert jpeg.startswith(b"\xff\xd8")
+    assert thumbnail.startswith(b"\xff\xd8")
+    assert (width, height) == (24, 16)
+
+
+def test_daily_photo_limit_is_authoritative_and_transactional(database):
+    day = database.today().isoformat()
+    photos = database.add_daily_photos(day, [image_upload() for _ in range(9)])
+
+    with pytest.raises(DomainError, match="at most 10 photos"):
+        database.add_daily_photos(day, [image_upload(), image_upload()])
+
+    assert len(database.list_daily_photos(day)) == len(photos) == 9
+
+
+def test_invalid_photo_in_batch_does_not_partially_save(database):
+    day = database.today().isoformat()
+
+    with pytest.raises(DomainError, match="valid JPEG"):
+        database.add_daily_photos(day, [image_upload(), b"not an image"])
+
+    assert database.list_daily_photos(day) == []
+
+
+def test_concurrent_daily_photo_uploads_cannot_exceed_limit(database):
+    day = database.today().isoformat()
+
+    def upload_six():
+        try:
+            database.add_daily_photos(day, [image_upload() for _ in range(6)])
+            return "saved"
+        except DomainError:
+            return "rejected"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        outcomes = list(executor.map(lambda _: upload_six(), range(2)))
+
+    assert sorted(outcomes) == ["rejected", "saved"]
+    assert len(database.list_daily_photos(day)) == 6
 
 
 def test_photo_pages_keep_each_date_group_intact(database):

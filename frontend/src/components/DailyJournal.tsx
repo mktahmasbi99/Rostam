@@ -32,7 +32,30 @@ export function DailyJournal({ day, today, note, photoCount, onChanged, openOnMo
     return () => controller.abort();
   }, [day, mode, photoRetry]);
   async function saveNote() { setSaving(true); setError(""); try { await api.updateDailyNote(day, draft); setMode(null); onChanged(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not save note."); } finally { setSaving(false); } }
-  async function upload(files: FileList | null) { if (!files?.length) return; setSaving(true); setError(""); try { setPhotos(await api.uploadPhotos(day, [...files])); onChanged(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not upload photos."); } finally { setSaving(false); if (input.current) input.current.value = ""; } }
+  async function upload(files: FileList | null) {
+    if (!files?.length) return;
+    const selected = [...files];
+    const remaining = Math.max(0, 10 - photoCount);
+    if (selected.length > remaining) {
+      setError(`Choose no more than ${remaining} more photo${remaining === 1 ? "" : "s"} for this day.`);
+      if (input.current) input.current.value = "";
+      return;
+    }
+    if (selected.some((file) => file.size > 50 * 1024 * 1024)) {
+      setError("Each source photo must be 50 MiB or smaller.");
+      if (input.current) input.current.value = "";
+      return;
+    }
+    if (selected.reduce((total, file) => total + file.size, 0) > 100 * 1024 * 1024) {
+      setError("Photos in one upload must total 100 MiB or less.");
+      if (input.current) input.current.value = "";
+      return;
+    }
+    setSaving(true); setError("");
+    try { setPhotos(await api.uploadPhotos(day, selected)); onChanged(); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Could not upload photos."); }
+    finally { setSaving(false); if (input.current) input.current.value = ""; }
+  }
   async function remove(photo: DailyPhoto) { if (!window.confirm("Delete this photo? This cannot be undone.")) return; try { await api.deletePhoto(photo.id); setPhotos((current) => current.filter((item) => item.id !== photo.id)); onChanged(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not delete photo."); } }
   async function deleteNote() { if (!window.confirm("Delete this daily note?")) return; setSaving(true); setError(""); try { await api.deleteDailyNote(day); close(); onChanged(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not delete note."); } finally { setSaving(false); } }
   return <>{!hideActions && <div className="journal-actions"><button aria-label="Open daily note" title="Open daily note" className={note ? "journal-active" : ""} onClick={() => setMode("note")}><NotebookPen /></button><button aria-label="Open daily photos" title="Open daily photos" className={photoCount ? "journal-active" : ""} onClick={() => setMode("photos")}><ImagePlus /></button></div>}{mode === "note" && <Modal title="Daily note" onClose={close}><form className="journal-editor" data-update-dirty="daily-note" data-update-dirty-label="Daily note" onSubmit={(event) => { event.preventDefault(); void saveNote(); }}><label>Note<textarea autoFocus rows={10} maxLength={20000} value={draft} disabled={!editable || saving} onChange={(event) => setDraft(event.target.value)} /></label><small>{draft.length.toLocaleString()} / 20,000</small>{error && <p className="error" role="alert">{error}</p>}<div className="draft-actions">{note && editable && <button type="button" className="icon-button danger" aria-label="Delete note" title="Delete note" disabled={saving} onClick={() => void deleteNote()}><Trash2 /></button>}<button type="button" onClick={close}>Cancel</button>{editable && <button className="primary" disabled={saving}>{saving ? "Saving…" : "Save note"}</button>}</div></form></Modal>}{mode === "photos" && <Modal title="Daily photos" onClose={close} dirtyLabel="Photo upload"><div className="photo-dialog">{editable && <><input ref={input} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" multiple onChange={(event) => void upload(event.target.files)} /><button className="primary icon-only-action" aria-label={saving ? "Uploading photos" : "Add photos"} title={saving ? "Uploading photos" : "Add photos"} disabled={saving || photoCount >= 10} onClick={() => input.current?.click()}><ImagePlus /></button><p>{photos.length} of 10 photos</p></>}
