@@ -1,5 +1,5 @@
 import { Dumbbell, Images, ListChecks, NotebookPen, RotateCw, Ruler, Settings } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { DayPage } from "./components/DayPage";
 import { DeferredBoundary } from "./components/DeferredBoundary";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -16,6 +16,7 @@ import { api } from "./lib/api";
 import type { Config } from "./lib/types";
 import { artwork } from "./artwork";
 import { getServerReachability, getWriteOutcomeUncertain, reportServerReachability, subscribeServerReachability } from "./lib/connectivity";
+import { applyThemePreference, readThemePreference, saveThemePreference, systemThemeQuery, type ThemePreference } from "./lib/theme";
 
 type Tab = "today" | "notes" | "photos" | "measurements" | "exercises" | "rotations" | "settings";
 
@@ -47,10 +48,20 @@ export default function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [selectedDay, setSelectedDay] = useState("");
   const [error, setError] = useState("");
+  const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
   const reachability = useSyncExternalStore(subscribeServerReachability, getServerReachability, getServerReachability);
   const uncertainWrite = useSyncExternalStore(subscribeServerReachability, getWriteOutcomeUncertain, getWriteOutcomeUncertain);
   const pwaInstall = usePwaInstall();
   const dialogControlsDisabled = reachability !== "reachable" || uncertainWrite;
+
+  useLayoutEffect(() => {
+    const systemTheme = systemThemeQuery();
+    const apply = () => applyThemePreference(themePreference);
+    apply();
+    if (themePreference !== "system") return;
+    systemTheme.addEventListener("change", apply);
+    return () => systemTheme.removeEventListener("change", apply);
+  }, [themePreference]);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -84,6 +95,11 @@ export default function App() {
     setCalendarOpen(false);
   };
 
+  const changeThemePreference = (preference: ThemePreference) => {
+    saveThemePreference(preference);
+    setThemePreference(preference);
+  };
+
   return <DialogControlsContext.Provider value={dialogControlsDisabled}><><Backdrop /><UpdateBanner />
     {(reachability !== "reachable" || uncertainWrite) && <div className="connection-banner" role="alert"><span>{uncertainWrite ? "A save result is uncertain. Rostam is locked until you reload and reconcile the server data." : reachability === "unknown" ? "Confirming connection to Rostam…" : "Rostam is disconnected. Editing and saves are paused."}</span>{reachability !== "reachable" && <button className="secondary" onClick={() => void loadConfig()}>Check connection</button>}{uncertainWrite && <button className="secondary" onClick={() => window.location.reload()}>Reload to reconcile</button>}</div>}
     <div data-rostam-app className="app-shell">
@@ -105,7 +121,7 @@ export default function App() {
       {tab === "measurements" && <MeasurementsPage today={config.today} />}
       {tab === "exercises" && <ExercisesPage />}
       {tab === "rotations" && <RotationsPage />}
-      {tab === "settings" && <SettingsPage config={config} pwaInstall={pwaInstall} />}
+      {tab === "settings" && <SettingsPage config={config} pwaInstall={pwaInstall} themePreference={themePreference} onThemePreferenceChange={changeThemePreference} />}
       </Suspense></DeferredBoundary>
     </div>
     {calendarOpen && <DeferredBoundary key="calendar"><Suspense fallback={<div className="deferred-loading" role="status">Loading calendar…</div>}><CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} /></Suspense></DeferredBoundary>}

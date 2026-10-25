@@ -2,6 +2,7 @@ import { Download, HardDriveDownload, RotateCcw, Trash2, Upload } from "lucide-r
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 import type { Backup, BackupSettings, Config } from "../lib/types";
+import type { ThemePreference } from "../lib/theme";
 import { InstallAppPanel, type PwaInstallState } from "./InstallAppPanel";
 import { Modal } from "./Modal";
 import { ReadState } from "./ReadState";
@@ -15,7 +16,12 @@ type RestoreSource =
   | { kind: "backup"; backup: Backup }
   | { kind: "upload"; file: File };
 
-export function SettingsPage({ config, pwaInstall }: { config: Config; pwaInstall: PwaInstallState }) {
+export function SettingsPage({ config, pwaInstall, themePreference = "system", onThemePreferenceChange = () => {} }: {
+  config: Config;
+  pwaInstall: PwaInstallState;
+  themePreference?: ThemePreference;
+  onThemePreferenceChange?: (preference: ThemePreference) => void;
+}) {
   const [backups, setBackups] = useState<Backup[]>([]);
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -130,6 +136,9 @@ export function SettingsPage({ config, pwaInstall }: { config: Config; pwaInstal
 
   return <main className="page settings-page">
     <header className="section-title"><h1>Settings</h1><p>Private server and data protection.</p></header>
+    <section className="settings-card appearance-settings"><div><h2>Appearance</h2><p>Choose how Rostam looks.</p></div><div className="segmented appearance-options" role="group" aria-label="Theme">
+      {(["system", "light", "dark"] as const).map((preference) => <button key={preference} type="button" className={themePreference === preference ? "selected" : ""} aria-pressed={themePreference === preference} onClick={() => onThemePreferenceChange(preference)}>{preference[0].toUpperCase() + preference.slice(1)}</button>)}
+    </div></section>
     <section className="settings-card"><h2>Server</h2><dl><div><dt>Timezone</dt><dd>{config.timezone}</dd></div><div><dt>Version</dt><dd>{config.version}</dd></div></dl></section>
     <section className="settings-card"><div className="card-heading"><div><h2>Backups</h2><p>Daily keeps 7, weekly keeps 8, and on-demand backups persist until deleted.</p></div><button className="primary" disabled={creating || restoring} onClick={() => void create()}><HardDriveDownload />{creating ? "Creating…" : "Create backup"}</button></div><ReadState loading={loadingBackups} error={error && !backupsLoaded ? error : ""} hasData={backupsLoaded} onRetry={() => void load()} loadingText="Loading backups…" />{error && backupsLoaded && <p className="error" role="alert">{error}</p>}{backupsLoaded && (["on-demand", "daily", "weekly"] as const).map((category) => <div className="backup-group" key={category}><h3>{category === "on-demand" ? "On-demand" : category[0].toUpperCase() + category.slice(1)}</h3>{grouped(category).length === 0 ? <p className="empty-copy">No backups yet.</p> : grouped(category).map((backup) => <div className="backup-row" key={backup.id}><div><strong>{new Date(backup.createdAt).toLocaleString()}</strong><small>{bytes(backup.sizeBytes)}</small></div><div className="row-actions"><a className="icon-button" aria-label={`Download ${backup.id}`} href={`/api/backups/${encodeURIComponent(backup.id)}/download`}><Download /></a><button className="icon-button" aria-label={`Restore ${backup.id}`} disabled={restoring} onClick={() => beginRestore({ kind: "backup", backup })}><RotateCcw /></button><button className="icon-button danger" disabled={restoring} aria-label={`Delete ${backup.id}`} onClick={async () => { if (window.prompt("Type DELETE to permanently delete this backup.") !== "DELETE") return; await api.deleteBackup(backup.id); await load(); }}><Trash2 /></button></div></div>)}</div>)}{backupsLoaded && <><label className="switch-row safety-backups-toggle"><span>Show safety backups</span><span className="switch-control"><input type="checkbox" role="switch" aria-label="Show safety backups" checked={showSafety} onChange={(event) => setShowSafety(event.target.checked)} /><span aria-hidden="true" /></span></label>{showSafety && backups.filter((item) => item.isSafety).map((backup) => <div className="backup-row" key={backup.id}><div><strong>{backup.category}</strong><small>{new Date(backup.createdAt).toLocaleString()} · {bytes(backup.sizeBytes)}</small></div><div className="row-actions"><a className="icon-button" aria-label={`Download ${backup.id}`} href={`/api/backups/${encodeURIComponent(backup.id)}/download`}><Download /></a><button className="icon-button" aria-label={`Restore ${backup.id}`} onClick={() => beginRestore({ kind: "backup", backup })}><RotateCcw /></button></div></div>)}</>}</section>
     {!scheduleLoaded && <ReadState loading={loadingSchedule} error={scheduleError} hasData={false} onRetry={() => setScheduleRetry((value) => value + 1)} loadingText="Loading backup schedule…" />}
