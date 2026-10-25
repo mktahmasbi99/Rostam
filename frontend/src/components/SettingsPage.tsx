@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import type { Backup, BackupSettings, Config } from "../lib/types";
 import { InstallAppPanel, type PwaInstallState } from "./InstallAppPanel";
 import { Modal } from "./Modal";
+import { ReadState } from "./ReadState";
 
 function bytes(value: number): string {
   if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} KB`;
@@ -23,6 +24,11 @@ export function SettingsPage({ config, pwaInstall }: { config: Config; pwaInstal
   const [upload, setUpload] = useState<File | null>(null);
   const [legacyImport, setLegacyImport] = useState<File | null>(null);
   const [error, setError] = useState("");
+  const [loadingBackups, setLoadingBackups] = useState(true);
+  const [backupsLoaded, setBackupsLoaded] = useState(false);
+  const [loadingSchedule, setLoadingSchedule] = useState(true);
+  const [scheduleLoaded, setScheduleLoaded] = useState(false);
+  const [scheduleRetry, setScheduleRetry] = useState(0);
   const [showSafety, setShowSafety] = useState(false);
   const [schedule, setSchedule] = useState<BackupSettings | null>(null);
   const [savedSchedule, setSavedSchedule] = useState<BackupSettings | null>(null);
@@ -31,16 +37,20 @@ export function SettingsPage({ config, pwaInstall }: { config: Config; pwaInstal
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [scheduleSaved, setScheduleSaved] = useState(false);
   const [scheduleError, setScheduleError] = useState("");
-  const load = useCallback(async () => { try { setBackups(await api.backups()); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not load backups."); } }, []);
-  useEffect(() => {
-    void load();
-    if ("backupSettings" in api) void api.backupSettings().then((settings) => {
-      setSchedule(settings);
-      setSavedSchedule(settings);
-      setDailyRetentionInput(String(settings.dailyRetention));
-      setWeeklyRetentionInput(String(settings.weeklyRetention));
-    }).catch(() => {});
-  }, [load]);
+  const load = useCallback(async () => { setLoadingBackups(true); setError(""); try { setBackups(await api.backups()); setBackupsLoaded(true); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not load backups."); } finally { setLoadingBackups(false); } }, []);
+  const loadSchedule = useCallback(async () => {
+    if (!("backupSettings" in api)) { setLoadingSchedule(false); return; }
+    setLoadingSchedule(true); setScheduleError("");
+    try {
+      const settings = await api.backupSettings();
+      setSchedule(settings); setSavedSchedule(settings);
+      setDailyRetentionInput(String(settings.dailyRetention)); setWeeklyRetentionInput(String(settings.weeklyRetention));
+      setScheduleLoaded(true);
+    } catch (caught) { setScheduleError(caught instanceof Error ? caught.message : "Could not load backup schedule."); }
+    finally { setLoadingSchedule(false); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void loadSchedule(); }, [loadSchedule, scheduleRetry]);
 
   async function create() {
     setCreating(true); setError("");
@@ -121,7 +131,8 @@ export function SettingsPage({ config, pwaInstall }: { config: Config; pwaInstal
   return <main className="page settings-page">
     <header className="section-title"><h1>Settings</h1><p>Private server and data protection.</p></header>
     <section className="settings-card"><h2>Server</h2><dl><div><dt>Timezone</dt><dd>{config.timezone}</dd></div><div><dt>Version</dt><dd>{config.version}</dd></div></dl></section>
-    <section className="settings-card"><div className="card-heading"><div><h2>Backups</h2><p>Daily keeps 7, weekly keeps 8, and on-demand backups persist until deleted.</p></div><button className="primary" disabled={creating || restoring} onClick={() => void create()}><HardDriveDownload />{creating ? "Creating…" : "Create backup"}</button></div>{error && <p className="error" role="alert">{error}</p>}{(["on-demand", "daily", "weekly"] as const).map((category) => <div className="backup-group" key={category}><h3>{category === "on-demand" ? "On-demand" : category[0].toUpperCase() + category.slice(1)}</h3>{grouped(category).length === 0 ? <p className="empty-copy">No backups yet.</p> : grouped(category).map((backup) => <div className="backup-row" key={backup.id}><div><strong>{new Date(backup.createdAt).toLocaleString()}</strong><small>{bytes(backup.sizeBytes)}</small></div><div className="row-actions"><a className="icon-button" aria-label={`Download ${backup.id}`} href={`/api/backups/${encodeURIComponent(backup.id)}/download`}><Download /></a><button className="icon-button" aria-label={`Restore ${backup.id}`} disabled={restoring} onClick={() => beginRestore({ kind: "backup", backup })}><RotateCcw /></button><button className="icon-button danger" disabled={restoring} aria-label={`Delete ${backup.id}`} onClick={async () => { if (window.prompt("Type DELETE to permanently delete this backup.") !== "DELETE") return; await api.deleteBackup(backup.id); await load(); }}><Trash2 /></button></div></div>)}</div>)}<label className="switch-row safety-backups-toggle"><span>Show safety backups</span><span className="switch-control"><input type="checkbox" role="switch" aria-label="Show safety backups" checked={showSafety} onChange={(event) => setShowSafety(event.target.checked)} /><span aria-hidden="true" /></span></label>{showSafety && backups.filter((item) => item.isSafety).map((backup) => <div className="backup-row" key={backup.id}><div><strong>{backup.category}</strong><small>{new Date(backup.createdAt).toLocaleString()} · {bytes(backup.sizeBytes)}</small></div><div className="row-actions"><a className="icon-button" aria-label={`Download ${backup.id}`} href={`/api/backups/${encodeURIComponent(backup.id)}/download`}><Download /></a><button className="icon-button" aria-label={`Restore ${backup.id}`} onClick={() => beginRestore({ kind: "backup", backup })}><RotateCcw /></button></div></div>)}</section>
+    <section className="settings-card"><div className="card-heading"><div><h2>Backups</h2><p>Daily keeps 7, weekly keeps 8, and on-demand backups persist until deleted.</p></div><button className="primary" disabled={creating || restoring} onClick={() => void create()}><HardDriveDownload />{creating ? "Creating…" : "Create backup"}</button></div><ReadState loading={loadingBackups} error={error && !backupsLoaded ? error : ""} hasData={backupsLoaded} onRetry={() => void load()} loadingText="Loading backups…" />{error && backupsLoaded && <p className="error" role="alert">{error}</p>}{backupsLoaded && (["on-demand", "daily", "weekly"] as const).map((category) => <div className="backup-group" key={category}><h3>{category === "on-demand" ? "On-demand" : category[0].toUpperCase() + category.slice(1)}</h3>{grouped(category).length === 0 ? <p className="empty-copy">No backups yet.</p> : grouped(category).map((backup) => <div className="backup-row" key={backup.id}><div><strong>{new Date(backup.createdAt).toLocaleString()}</strong><small>{bytes(backup.sizeBytes)}</small></div><div className="row-actions"><a className="icon-button" aria-label={`Download ${backup.id}`} href={`/api/backups/${encodeURIComponent(backup.id)}/download`}><Download /></a><button className="icon-button" aria-label={`Restore ${backup.id}`} disabled={restoring} onClick={() => beginRestore({ kind: "backup", backup })}><RotateCcw /></button><button className="icon-button danger" disabled={restoring} aria-label={`Delete ${backup.id}`} onClick={async () => { if (window.prompt("Type DELETE to permanently delete this backup.") !== "DELETE") return; await api.deleteBackup(backup.id); await load(); }}><Trash2 /></button></div></div>)}</div>)}{backupsLoaded && <><label className="switch-row safety-backups-toggle"><span>Show safety backups</span><span className="switch-control"><input type="checkbox" role="switch" aria-label="Show safety backups" checked={showSafety} onChange={(event) => setShowSafety(event.target.checked)} /><span aria-hidden="true" /></span></label>{showSafety && backups.filter((item) => item.isSafety).map((backup) => <div className="backup-row" key={backup.id}><div><strong>{backup.category}</strong><small>{new Date(backup.createdAt).toLocaleString()} · {bytes(backup.sizeBytes)}</small></div><div className="row-actions"><a className="icon-button" aria-label={`Download ${backup.id}`} href={`/api/backups/${encodeURIComponent(backup.id)}/download`}><Download /></a><button className="icon-button" aria-label={`Restore ${backup.id}`} onClick={() => beginRestore({ kind: "backup", backup })}><RotateCcw /></button></div></div>)}</>}</section>
+    {!scheduleLoaded && <ReadState loading={loadingSchedule} error={scheduleError} hasData={false} onRetry={() => setScheduleRetry((value) => value + 1)} loadingText="Loading backup schedule…" />}
     {schedule && <section className="settings-card" data-update-dirty="backup-settings" data-update-dirty-label="Backup schedule"><h2>Backup schedule</h2><p>Server time: {config.timezone}. Daily keeps {schedule.dailyRetention}, and weekly keeps {schedule.weeklyRetention}. Each retention value may be set from 1 to 365.</p><label>Daily time<input type="time" value={schedule.dailyTime} onChange={(event) => { changeSchedule({ ...schedule, dailyTime: event.target.value }); }} /></label><label>Daily retention<input type="text" inputMode="numeric" maxLength={3} value={dailyRetentionInput} onFocus={(event) => event.currentTarget.select()} onChange={(event) => { setDailyRetentionInput(event.target.value.replace(/\D/g, "")); setScheduleSaved(false); setScheduleError(""); }} /></label><label>Weekly retention<input type="text" inputMode="numeric" maxLength={3} value={weeklyRetentionInput} onFocus={(event) => event.currentTarget.select()} onChange={(event) => { setWeeklyRetentionInput(event.target.value.replace(/\D/g, "")); setScheduleSaved(false); setScheduleError(""); }} /></label>{scheduleError && <p className="schedule-error" role="alert">{scheduleError}</p>}{scheduleSaved && <p className="schedule-success" role="status">Backup schedule saved.</p>}<button className="secondary schedule-save-button" disabled={savingSchedule || !scheduleChanged || !retentionValid} onClick={() => void saveSchedule()}>{savingSchedule ? "Saving…" : "Save"}</button></section>}
     <section className="settings-card" data-update-dirty="backup-restore" data-update-dirty-label="Backup restore file"><h2>Restore</h2><p>Restore replaces all live ledger data. Rostam first creates an on-demand safety backup of the current database.</p><label className="file-picker">Upload a SQLite backup<input type="file" accept=".sqlite3,application/x-sqlite3" disabled={restoring} onChange={(event) => setUpload(event.target.files?.[0] ?? null)} /></label>{upload && <div className="restore-upload"><span>{upload.name}</span><button className="secondary" disabled={restoring} onClick={() => beginRestore({ kind: "upload", file: upload })}><Upload />Restore uploaded backup</button></div>}</section>
     <details className="settings-card" data-update-dirty="legacy-import" data-update-dirty-label="Legacy database import"><summary>Advanced: import a legacy database</summary><p>Import is only for compatible older Rostam databases. It validates the file, creates a pre-import safety backup, then replaces the live database.</p><label className="file-picker">Legacy SQLite file<input type="file" accept=".sqlite3,application/x-sqlite3" disabled={restoring} onChange={(event) => setLegacyImport(event.target.files?.[0] ?? null)} /></label>{legacyImport && <button className="danger-button" disabled={restoring} onClick={async () => { if (window.prompt("Type IMPORT to import this legacy database.") !== "IMPORT") return; setRestoring(true); setError(""); try { const result = await api.importLegacy(legacyImport, "IMPORT"); window.alert(`Imported successfully. Safety backup: ${result.safetyBackup.id}`); window.location.reload(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not import the legacy database."); setRestoring(false); } }}>Import legacy database</button>}</details>

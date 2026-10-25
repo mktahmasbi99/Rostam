@@ -7,6 +7,7 @@ import { useOutsideClick } from "../lib/useOutsideClick";
 import { ExerciseImage } from "./ExerciseImage";
 import { ExerciseEditor } from "./ExerciseEditor";
 import { Modal } from "./Modal";
+import { ReadState } from "./ReadState";
 
 export function RotationsPage() {
   const [rotations, setRotations] = useState<Rotation[]>([]);
@@ -28,23 +29,32 @@ export function RotationsPage() {
   const [firstIds, setFirstIds] = useState<Record<number, string>>({});
   const [creatingExerciseFor, setCreatingExerciseFor] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [loadRetry, setLoadRetry] = useState(0);
+  const loadRequestId = useRef(0);
   const [rotationActionSuccess, setRotationActionSuccess] = useState<"activated" | "deactivated" | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => setOpenMenuId(null), []);
   useOutsideClick(menuRef, openMenuId !== null, closeMenu);
 
   const load = useCallback(async () => {
+    const requestId = ++loadRequestId.current;
+    setLoading(true);
+    setError("");
     try {
       const [items, archivedItems, library] = await Promise.all([
         api.rotations("active"), api.rotations("archived"), api.exercises("active"),
       ]);
+      if (requestId !== loadRequestId.current) return;
       setRotations(items);
       setArchived(archivedItems);
       setExercises(library);
-      setError("");
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not load rotations."); }
+      setLoaded(true);
+    } catch (caught) { if (requestId === loadRequestId.current) setError(caught instanceof Error ? caught.message : "Could not load rotations."); }
+    finally { if (requestId === loadRequestId.current) setLoading(false); }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); }, [load, loadRetry]);
 
   async function change(action: () => Promise<unknown>) {
     try { await action(); await load(); }
@@ -176,9 +186,9 @@ export function RotationsPage() {
       <div><h1>Rotations</h1><p>Arrange exercises in the order you want to revisit them.</p></div>
     </header>
     <div className="page-create-action"><button className="rotation-create-icon" aria-label="Create rotation" title="Create rotation" onClick={() => { setCreating(true); setName(""); }}><Plus /></button></div>
-    {error && <p className="error-panel" role="alert">{error}</p>}
-    {rotations.length === 0 && <p className="empty-copy">Create a rotation to keep an ordered list of exercises.</p>}
-    {rotations.map((rotation) => rotationCard(rotation))}
+    <ReadState loading={loading} error={error} hasData={loaded} onRetry={() => setLoadRetry((value) => value + 1)} loadingText="Loading rotations…" />
+    {loaded && rotations.length === 0 && !loading && !error && <p className="empty-copy">Create a rotation to keep an ordered list of exercises.</p>}
+    {loaded && rotations.map((rotation) => rotationCard(rotation))}
     {archived.length > 0 && <details className="archived-activity-results archived-rotation-results"><summary>Archived rotations<ChevronDown aria-hidden="true" /></summary><div>{archived.map((rotation) => rotationCard(rotation, true))}</div></details>}
 
     {creating && <Modal title="Create rotation" onClose={() => setCreating(false)}>

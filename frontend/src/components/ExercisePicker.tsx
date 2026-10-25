@@ -1,10 +1,12 @@
 import { ChevronDown, Pause, Plus, Search, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
 import type { Exercise, ExerciseRecommendations, MeasurementType, RecommendationItem, Rotation } from "../lib/types";
 import { ExerciseEditor } from "./ExerciseEditor";
 import { ExerciseImage } from "./ExerciseImage";
 import { Modal } from "./Modal";
+import { ReadState } from "./ReadState";
 
 interface Props {
   day: string;
@@ -55,8 +57,15 @@ export function ExercisePicker({ day, today, presentIds, onChoose, onClose }: Pr
   const [rotation, setRotation] = useState<Rotation | null>(null);
   const [loadingRotation, setLoadingRotation] = useState(true);
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [exercisesLoaded, setExercisesLoaded] = useState(false);
+  const [loadingExercises, setLoadingExercises] = useState(false);
   const [recommendations, setRecommendations] = useState<ExerciseRecommendations | null>(null);
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  const [readRetry, setReadRetry] = useState(0);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 275);
+  const [immediateQuery, setImmediateQuery] = useState<string | null>(null);
+  const searchQuery = immediateQuery ?? debouncedQuery;
   const [filter, setFilter] = useState<"" | MeasurementType>("");
   const [includePaused, setIncludePaused] = useState(false);
   const [recommendationMode, setRecommendationMode] = useState<RecommendationMode>("exercise");
@@ -65,6 +74,7 @@ export function ExercisePicker({ day, today, presentIds, onChoose, onClose }: Pr
   const [creating, setCreating] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const exerciseSearchController = useRef<AbortController | null>(null);
   const dismissedPauseMenu = useRef(false);
   const restoringPreference = useRef(false);
   const rotationMode = recommendationMode === "rotation";
@@ -96,18 +106,23 @@ export function ExercisePicker({ day, today, presentIds, onChoose, onClose }: Pr
 
   useEffect(() => {
     if (view !== "library") return;
+    const controller = new AbortController();
+    exerciseSearchController.current = controller;
     let active = true;
     setError("");
-    api.exercises("active", query, filter)
-      .then((items) => active && setExercises(items))
-      .catch((caught) => active && setError(caught instanceof Error ? caught.message : "Could not load exercises."));
-    return () => { active = false; };
-  }, [view, query, filter]);
+    setLoadingExercises(true);
+    api.exercises("active", searchQuery, filter, controller.signal)
+      .then((items) => { if (active && !controller.signal.aborted) { setExercises(items); setExercisesLoaded(true); } })
+      .catch((caught) => active && !controller.signal.aborted && setError(caught instanceof Error ? caught.message : "Could not load exercises."))
+      .finally(() => active && !controller.signal.aborted && setLoadingExercises(false));
+    return () => { active = false; controller.abort(); };
+  }, [view, searchQuery, filter, readRetry]);
 
   useEffect(() => {
     if (view !== "recommendations" || rotationMode) return;
     let active = true;
     setError("");
+    setLoadingRecommendations(true);
     api.exerciseRecommendations(day, { includePaused })
       .then((items) => {
         if (!active) return;
@@ -118,9 +133,10 @@ export function ExercisePicker({ day, today, presentIds, onChoose, onClose }: Pr
         }
         restoringPreference.current = false;
       })
-      .catch((caught) => active && setError(caught instanceof Error ? caught.message : "Could not load recommendations."));
+      .catch((caught) => active && setError(caught instanceof Error ? caught.message : "Could not load recommendations."))
+      .finally(() => active && setLoadingRecommendations(false));
     return () => { active = false; };
-  }, [view, day, includePaused, rotationMode]);
+  }, [view, day, includePaused, rotationMode, readRetry]);
 
   function choose(exercise: Exercise) {
     if (dismissedPauseMenu.current) {
@@ -179,7 +195,7 @@ export function ExercisePicker({ day, today, presentIds, onChoose, onClose }: Pr
       <p className="recommendation-intro">{recommendationMode === "rotation" ? "Your due exercise comes first, followed by the rest of your rotation." : recommendationMode === "exercise" ? "Suggestions are ordered by when you last did each exercise." : "Suggestions are ordered by the muscle groups you have trained least recently."}</p>
       {recommendationMode !== "rotation" && <label className="checkbox-row recommendation-paused"><input type="checkbox" checked={includePaused} onChange={(event) => setIncludePaused(event.target.checked)} />Show paused</label>}
       {notice && <p className="notice" role="status">{notice}</p>}
-      {error && <p className="error" role="alert">{error}</p>}
+      <ReadState loading={loadingRecommendations} error={error} hasData={recommendations !== null} onRetry={() => setReadRetry((value) => value + 1)} loadingText="Loading recommendations…" />
       <div className="exercise-results" onPointerDownCapture={(event) => {
         if (openPauseId === null || (event.target as HTMLElement).closest(".pause-menu")) return;
         setOpenPauseId(null);
@@ -210,20 +226,20 @@ export function ExercisePicker({ day, today, presentIds, onChoose, onClose }: Pr
             {recommendations?.unclassified.length ? <section className="recommendation-group"><h3>Muscles not set</h3>{recommendations.unclassified.map(recommendationResult)}</section> : null}
           </> : null}
         {recommendationMode !== "rotation" && recommendations?.neverTried.length ? <section className="never-tried"><button className="never-tried-toggle" onClick={() => setNeverOpen(!neverOpen)} aria-expanded={neverOpen}>Never tried ({recommendations.neverTried.length}) <ChevronDown className={neverOpen ? "rotated" : ""} /></button>{neverOpen && recommendations.neverTried.map(recommendationResult)}</section> : null}
-        {recommendationMode !== "rotation" && !error && recommendations && !hasResults && <p className="empty-copy">No recommendations available.</p>}
+      {recommendationMode !== "rotation" && recommendations && !hasResults && <p className="empty-copy">No recommendations available.</p>}
       </div>
     </Modal>;
   }
 
   return <Modal title="Add exercise" onClose={onClose} wide>
-    <div className="picker-toolbar"><label className="search-box"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={query} onChange={(event) => setQuery(event.target.value)} autoFocus /></label><button className="primary" onClick={() => setCreating(true)}><Plus />New exercise</button></div>
-    <div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Reps</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed reps</button></div>
+    <div className="picker-toolbar"><label className="search-box"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={query} onChange={(event) => { exerciseSearchController.current?.abort(); setImmediateQuery(null); setQuery(event.target.value); }} autoFocus /></label><button className="primary" onClick={() => setCreating(true)}><Plus />New exercise</button></div>
+    <div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => { setImmediateQuery(query); setFilter(""); }}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => { setImmediateQuery(query); setFilter("repetitions"); }}>Reps</button><button className={filter === "duration" ? "selected" : ""} onClick={() => { setImmediateQuery(query); setFilter("duration"); }}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => { setImmediateQuery(query); setFilter("timed_repetitions"); }}>Timed reps</button></div>
     <button className="secondary recommendations-button icon-only-action" aria-label="Show recommendations" title="Show recommendations" onClick={() => { selectRecommendationMode(rotation ? "rotation" : "exercise"); setView("recommendations"); }}><Sparkles /></button>
     {notice && <p className="notice" role="status">{notice}</p>}
-    {error && <p className="error" role="alert">{error}</p>}
+    <ReadState loading={loadingExercises} error={error} hasData={exercisesLoaded} onRetry={() => setReadRetry((value) => value + 1)} loadingText="Loading exercises…" />
     <div className="exercise-results">
       {exercises.map((exercise) => <button key={exercise.id} className="exercise-result" disabled={presentIds.includes(exercise.id)} onClick={() => choose(exercise)}><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><span><strong>{exercise.name}</strong><small>{presentIds.includes(exercise.id) ? "Already added" : exercise.measurementType === "repetitions" ? "Reps" : exercise.measurementType === "duration" ? "Duration" : "Timed reps"}</small></span></button>)}
-      {!error && exercises.length === 0 && <p className="empty-copy">No matching exercises.</p>}
+      {exercisesLoaded && !loadingExercises && !error && exercises.length === 0 && <p className="empty-copy">No matching exercises.</p>}
     </div>
   </Modal>;
 }

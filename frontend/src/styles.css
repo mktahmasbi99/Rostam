@@ -42,7 +42,10 @@ h1, h2, h3, p { margin-top: 0; }
 h1, h2, h3 { color: var(--heading); }
 
 .app-shell { min-height: 100vh; padding-bottom: calc(82px + env(safe-area-inset-bottom)); }
+.app-content-controls { display: block; width: 100%; min-width: 0; margin: 0; padding: 0; border: 0; }
 .content { width: min(100%, 900px); margin: 0 auto; }
+.connection-banner { position: fixed; z-index: 200; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px max(16px, calc((100vw - 860px) / 2)); border-bottom: 1px solid var(--danger-line); background: var(--danger-surface); color: var(--danger); font-weight: 700; box-shadow: var(--shadow); }
+.connection-banner button { flex: 0 0 auto; }
 .brand { display: none; }
 .brand-home { min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 50%; background: transparent; box-shadow: none; }
 .brand-home:hover:not(:disabled), .brand-home:active:not(:disabled) { transform: none; box-shadow: none; }
@@ -50,6 +53,8 @@ h1, h2, h3 { color: var(--heading); }
 .section-title h1, .day-header h1 { font-size: clamp(2rem, 8vw, 3.4rem); letter-spacing: -.055em; margin-bottom: 4px; }
 .section-title p { color: var(--muted); }
 .stack { display: grid; gap: 18px; }
+.refreshing { margin: 0 0 12px; color: var(--muted); font-size: .88rem; }
+.read-state-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 
 button, .icon-button { min-height: 44px; min-width: 44px; border: 1px solid transparent; border-radius: 12px; background: var(--surface-2); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 2px 5px rgba(21, 38, 53, .08); transition: transform .14s ease, box-shadow .14s ease, background-color .14s ease; }
 button:hover:not(:disabled) { filter: none; transform: translateY(-1px); box-shadow: 0 5px 12px rgba(21, 38, 53, .14); }
@@ -215,6 +220,7 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .history-set-list { border-top: 0; }
 .history-set-list .set-row:last-child { border-bottom: 0; }
 .history-load-more { width: 100%; margin-top: 16px; }
+.previous-session-error { min-height: 0; width: fit-content; padding: 0; border: 0; background: transparent; color: var(--danger); box-shadow: none; justify-content: flex-start; font-size: .82rem; }
 .picker-toolbar { display: grid; grid-template-columns: 1fr auto; gap: 9px; }
 .search-box { position: relative; }
 .search-box svg { position: absolute; left: 12px; top: 13px; color: var(--muted); }

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../lib/api";
@@ -67,19 +67,46 @@ describe("ExercisePicker", () => {
     const user = userEvent.setup();
     render(<ExercisePicker day="2026-09-17" presentIds={[]} onChoose={vi.fn()} onClose={vi.fn()} />);
 
-    await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "", ""));
+    await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "", "", expect.any(AbortSignal)));
     expect(api.exerciseRecommendations).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "All" })).toHaveClass("selected");
 
     await user.click(screen.getByRole("button", { name: "Timed reps" }));
 
-    await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "", "timed_repetitions"));
+    await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "", "timed_repetitions", expect.any(AbortSignal)));
   });
 
   it("disables exercises that are already on the selected day in the library", async () => {
     render(<ExercisePicker day="2026-09-17" presentIds={[exercise.id]} onChoose={vi.fn()} onClose={vi.fn()} />);
     expect(await screen.findByRole("button", { name: /Push-ups/ })).toBeDisabled();
     expect(screen.getByText("Already added")).toBeInTheDocument();
+  });
+
+  it("debounces search and ignores a response after its query has been replaced", async () => {
+    const user = userEvent.setup();
+    const deadlift = { ...exercise, id: 4, name: "Deadlift" };
+    const squat = { ...exercise, id: 5, name: "Squat" };
+    let resolveDeadlift!: (items: Exercise[]) => void;
+    let resolveSquat!: (items: Exercise[]) => void;
+    vi.mocked(api.exercises).mockImplementation((_status, query) => {
+      if (query === "dead") return new Promise((resolve) => { resolveDeadlift = resolve; });
+      if (query === "squat") return new Promise((resolve) => { resolveSquat = resolve; });
+      return Promise.resolve([exercise]);
+    });
+    render(<ExercisePicker day="2026-09-17" presentIds={[]} onChoose={vi.fn()} onClose={vi.fn()} />);
+    const input = await screen.findByRole("searchbox", { name: "Search exercises" });
+    await user.type(input, "dead");
+    await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "dead", "", expect.any(AbortSignal)));
+    const obsoleteSignal = vi.mocked(api.exercises).mock.calls.find((call) => call[1] === "dead")?.[3];
+
+    await user.clear(input);
+    await user.type(input, "squat");
+    await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "squat", "", expect.any(AbortSignal)));
+    expect(obsoleteSignal?.aborted).toBe(true);
+    await act(async () => { resolveDeadlift([deadlift]); });
+    expect(screen.queryByRole("button", { name: /Deadlift/ })).not.toBeInTheDocument();
+    await act(async () => { resolveSquat([squat]); });
+    expect(await screen.findByRole("button", { name: /Squat/ })).toBeInTheDocument();
   });
 
   it("loads history-based recommendations only after the user requests them", async () => {

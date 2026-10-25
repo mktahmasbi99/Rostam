@@ -1,6 +1,6 @@
 import { Pencil } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Exercise } from "../lib/types";
 
@@ -46,12 +46,15 @@ export function ExerciseNote({ exercise }: Props) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const lastBody = useRef(body);
 
   useEffect(() => {
+    const previous = lastBody.current;
     const next = exercise.exerciseNote ?? "";
     setBody(next);
-    setDraft(next);
-  }, [exercise.exerciseNote]);
+    if (draft === previous) setDraft(next);
+    lastBody.current = next;
+  }, [exercise.exerciseNote, draft]);
 
   async function save() {
     setSaving(true);
