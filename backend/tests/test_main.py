@@ -1,8 +1,86 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from fastapi.testclient import TestClient
 
 from app import main
+
+
+def test_rotation_endpoints_manage_members_and_skip(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    client = TestClient(main.app)
+    exercise_ids = [item["id"] for item in database.list_exercises("active", "", None)[:2]]
+    created = client.post("/api/rotations", json={"name": "Morning"})
+    assert created.status_code == 201
+    rotation_id = created.json()["id"]
+    assert (
+        client.put(
+            f"/api/rotations/{rotation_id}/members", json={"exerciseIds": exercise_ids}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            f"/api/rotations/{rotation_id}/activate", json={"firstExerciseId": exercise_ids[0]}
+        ).json()["dueExerciseId"]
+        == exercise_ids[0]
+    )
+    assert (
+        client.post(f"/api/rotations/{rotation_id}/skip-today").json()["resolvedToday"] == "skipped"
+    )
+    assert client.delete(f"/api/rotations/{rotation_id}/skip-today").json()["resolvedToday"] is None
+    assert (
+        client.patch(f"/api/rotations/{rotation_id}", json={"name": "Evening"}).json()["name"]
+        == "Evening"
+    )
+    assert client.post(f"/api/rotations/{rotation_id}/deactivate").json()["active"] is False
+    assert client.delete(f"/api/rotations/{rotation_id}").status_code == 204
+
+
+def test_rotation_archive_endpoints(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    client = TestClient(main.app)
+    rotation_id = client.post("/api/rotations", json={"name": "Archive me"}).json()["id"]
+    assert client.post(f"/api/rotations/{rotation_id}/archive").json()["archivedAt"]
+    assert client.get("/api/rotations").json() == []
+    assert client.get("/api/rotations?status=archived").json()[0]["id"] == rotation_id
+    restored = client.post(f"/api/rotations/{rotation_id}/restore")
+    assert restored.status_code == 200
+    assert restored.json()["archivedAt"] is None
+    assert client.get("/api/rotations").json()[0]["id"] == rotation_id
+
+
+def test_rotation_api_accepts_repeats_and_recommends_daily_history(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    client = TestClient(main.app)
+    exercise_id = next(item["id"] for item in database.list_exercises("active", "Squats", None))
+    rotation_id = client.post("/api/rotations", json={"name": "Repeats"}).json()["id"]
+    saved = client.put(
+        f"/api/rotations/{rotation_id}/members",
+        json={"exerciseIds": [exercise_id, exercise_id]},
+    )
+    assert saved.status_code == 200
+    assert [item["position"] for item in saved.json()["members"]] == [0, 1]
+    activated = client.post(f"/api/rotations/{rotation_id}/activate", json={"firstPosition": 1})
+    assert activated.json()["duePosition"] == 1
+
+    day = database.today().isoformat()
+    payload = SimpleNamespace(
+        time="08:00",
+        repetitions=10,
+        durationMinutes=None,
+        durationSeconds=None,
+        holdMinutes=None,
+        holdSeconds=None,
+        resistanceKind="bodyweight",
+        weightKg=None,
+        enrollInRotation=None,
+    )
+    database.add_set(exercise_id, day, payload)
+    database.add_set(exercise_id, day, SimpleNamespace(**{**vars(payload), "time": "09:00"}))
+    assert len(client.get("/api/rotation-recommendations?days=7").json()) == 1
+    assert client.get("/api/rotation-recommendations?days=0").status_code == 422
 
 
 def test_body_measurement_and_profile_endpoints(database, monkeypatch):

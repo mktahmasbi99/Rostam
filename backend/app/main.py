@@ -30,6 +30,9 @@ from .schemas import (
     ProfileUpdate,
     RecommendationPauseUpdate,
     RestoreConfirmation,
+    RotationActivation,
+    RotationMembers,
+    RotationName,
     SetWrite,
 )
 
@@ -227,6 +230,11 @@ def exercise_recommendations(
     )
 
 
+@app.get("/api/rotation-recommendations")
+def rotation_recommendations(days: Annotated[int, Query(ge=1)] = 7) -> list[dict]:
+    return database.rotation_recommendations(days)
+
+
 @app.post("/api/exercises", status_code=201)
 def create_exercise(payload: ExerciseCreate) -> dict:
     return database.create_exercise(payload)
@@ -337,6 +345,63 @@ def delete_exercise(exercise_id: int, payload: DeleteConfirmation) -> None:
 @app.get("/api/exercises/{exercise_id}/prefill")
 def get_prefill(exercise_id: int, day: str, time: str | None = None) -> dict:
     return database.prefill(exercise_id, day, time)
+
+
+@app.get("/api/rotations")
+def list_rotations(status: str = Query("active", pattern="^(active|archived|all)$")) -> list[dict]:
+    return database.rotations(status)
+
+
+@app.post("/api/rotations", status_code=201)
+def create_rotation(payload: RotationName) -> dict:
+    return database.create_rotation(payload.name)
+
+
+@app.patch("/api/rotations/{rotation_id}")
+def rename_rotation(rotation_id: int, payload: RotationName) -> dict:
+    return database.rename_rotation(rotation_id, payload.name)
+
+
+@app.delete("/api/rotations/{rotation_id}", status_code=204)
+def delete_rotation(rotation_id: int) -> None:
+    database.delete_rotation(rotation_id)
+
+
+@app.post("/api/rotations/{rotation_id}/archive")
+def archive_rotation(rotation_id: int) -> dict:
+    return database.archive_rotation(rotation_id)
+
+
+@app.post("/api/rotations/{rotation_id}/restore")
+def restore_rotation(rotation_id: int) -> dict:
+    return database.archive_rotation(rotation_id, archived=False)
+
+
+@app.put("/api/rotations/{rotation_id}/members")
+def set_rotation_members(rotation_id: int, payload: RotationMembers) -> dict:
+    return database.set_rotation_members(rotation_id, payload.exerciseIds)
+
+
+@app.post("/api/rotations/{rotation_id}/activate")
+def activate_rotation(rotation_id: int, payload: RotationActivation) -> dict:
+    return database.activate_rotation(
+        rotation_id, payload.firstExerciseId, first_position=payload.firstPosition
+    )
+
+
+@app.post("/api/rotations/{rotation_id}/deactivate")
+def deactivate_rotation(rotation_id: int) -> dict:
+    return database.deactivate_rotation(rotation_id)
+
+
+@app.post("/api/rotations/{rotation_id}/skip-today")
+def skip_rotation_today(rotation_id: int) -> dict:
+    return database.skip_rotation_today(rotation_id)
+
+
+@app.delete("/api/rotations/{rotation_id}/skip-today")
+def undo_rotation_skip(rotation_id: int) -> dict:
+    return database.skip_rotation_today(rotation_id, undo=True)
 
 
 @app.post("/api/days/{day}/exercises/{exercise_id}/sets", status_code=201)

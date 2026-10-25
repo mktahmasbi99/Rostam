@@ -7,6 +7,9 @@ import { ExercisePicker } from "./ExercisePicker";
 
 vi.mock("../lib/api", () => ({
   api: {
+    rotations: vi.fn(),
+    skipRotation: vi.fn(),
+    undoRotationSkip: vi.fn(),
     exercises: vi.fn(),
     exerciseRecommendations: vi.fn(),
     updateRecommendationPause: vi.fn(),
@@ -29,6 +32,17 @@ const exercise: Exercise = {
 };
 
 beforeEach(() => {
+  vi.clearAllMocks();
+  const storage = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+    },
+  });
+  vi.mocked(api.rotations).mockResolvedValue([]);
   vi.mocked(api.exercises).mockResolvedValue([exercise]);
   vi.mocked(api.exerciseRecommendations).mockResolvedValue({
     groups: [{ muscle: "chest", muscleName: "Chest", lastTrainedDate: "2026-09-01", daysSinceLastTrained: 16, exercises: [{ exercise, lastDoneDate: "2026-09-01", daysSinceLastDone: 16, paused: false }] }],
@@ -40,6 +54,15 @@ beforeEach(() => {
 });
 
 describe("ExercisePicker", () => {
+  it("opens the active rotation and marks its due exercise added today", async () => {
+    vi.mocked(api.rotations).mockResolvedValue([{ id: 1, name: "Morning", active: true, dueExerciseId: exercise.id, resolvedToday: "completed", members: [{ exercise, lastDoneDate: "2026-09-17", daysSinceLastDone: 0 }] }]);
+    render(<ExercisePicker day="2026-09-17" today="2026-09-17" presentIds={[exercise.id]} onChoose={vi.fn()} onClose={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: "Rotation" })).toHaveClass("selected");
+    expect(screen.getByText("Added today")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Push-ups/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Skip exercise" })).not.toBeInTheDocument();
+  });
+
   it("keeps the library and its measurement filters as the default view", async () => {
     const user = userEvent.setup();
     render(<ExercisePicker day="2026-09-17" presentIds={[]} onChoose={vi.fn()} onClose={vi.fn()} />);
@@ -48,9 +71,15 @@ describe("ExercisePicker", () => {
     expect(api.exerciseRecommendations).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "All" })).toHaveClass("selected");
 
-    await user.click(screen.getByRole("button", { name: "Timed repetitions" }));
+    await user.click(screen.getByRole("button", { name: "Timed reps" }));
 
     await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "", "timed_repetitions"));
+  });
+
+  it("disables exercises that are already on the selected day in the library", async () => {
+    render(<ExercisePicker day="2026-09-17" presentIds={[exercise.id]} onChoose={vi.fn()} onClose={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: /Push-ups/ })).toBeDisabled();
+    expect(screen.getByText("Already added")).toBeInTheDocument();
   });
 
   it("loads history-based recommendations only after the user requests them", async () => {
@@ -61,7 +90,7 @@ describe("ExercisePicker", () => {
 
     expect(await screen.findByRole("heading", { name: "Recommendations" })).toBeInTheDocument();
     await waitFor(() => expect(api.exerciseRecommendations).toHaveBeenCalledWith("2026-09-17", { includePaused: false }));
-    expect(screen.getByRole("button", { name: "Back to exercise library" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Go to exercise library" })).toBeInTheDocument();
   });
 
   it("defaults to exercise ordering and groups only consecutive matching muscles", async () => {
@@ -107,7 +136,7 @@ describe("ExercisePicker", () => {
 
     await user.click(await screen.findByRole("button", { name: "Show recommendations" }));
     await user.click(screen.getByRole("button", { name: "By muscle" }));
-    await user.click(screen.getByRole("button", { name: "Back to exercise library" }));
+    await user.click(screen.getByRole("button", { name: "Go to exercise library" }));
     await user.click(await screen.findByRole("button", { name: "Show recommendations" }));
     expect(screen.getByRole("button", { name: "By exercise" })).toHaveClass("selected");
   });

@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../lib/api";
+import type { Exercise } from "../lib/types";
 import { ExercisesPage } from "./ExercisesPage";
 
 vi.mock("../lib/api", () => ({
@@ -17,6 +18,12 @@ beforeEach(() => {
   vi.mocked(api.exercises).mockResolvedValue([]);
 });
 
+const bandPullApart: Exercise = {
+  id: 1, name: "Band pull-aparts", baseName: "Band pull-aparts", measurementType: "repetitions",
+  equipment: "resistance_band", customEquipment: null, allowBodyweight: false, imageKey: null,
+  exerciseNote: null, archivedAt: null, hasHistory: false, primaryMuscle: "back", secondaryMuscles: ["shoulders"],
+};
+
 describe("ExercisesPage", () => {
   it("filters both active and archived exercises by measurement type", async () => {
     const user = userEvent.setup();
@@ -25,11 +32,11 @@ describe("ExercisesPage", () => {
     await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "", ""));
     expect(api.exercises).toHaveBeenCalledWith("archived", "", "");
 
-    await user.click(screen.getByRole("button", { name: "Timed repetitions" }));
+    await user.click(screen.getByRole("button", { name: "Timed reps" }));
 
     await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "", "timed_repetitions"));
     expect(api.exercises).toHaveBeenCalledWith("archived", "", "timed_repetitions");
-    expect(screen.getByRole("button", { name: "Timed repetitions" })).toHaveClass("selected");
+    expect(screen.getByRole("button", { name: "Timed reps" })).toHaveClass("selected");
   });
 
   it("searches both active and archived exercises", async () => {
@@ -42,5 +49,25 @@ describe("ExercisesPage", () => {
       expect(api.exercises).toHaveBeenCalledWith("active", "deadlift", "");
       expect(api.exercises).toHaveBeenCalledWith("archived", "deadlift", "");
     });
+  });
+
+  it("opens a read-only exercise view and edits from its pencil", async () => {
+    vi.mocked(api.exercises).mockImplementation(async (status) => status === "active" ? [bandPullApart] : []);
+    const user = userEvent.setup();
+    render(<ExercisesPage />);
+    await user.click(await screen.findByRole("button", { name: "View Band pull-aparts" }));
+    const dialog = await screen.findByRole("dialog", { name: "Band pull-aparts" });
+    expect(within(dialog).getByText("Back (Shoulders)")).toBeInTheDocument();
+    expect(within(dialog).getByText("Resistance band")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Edit Band pull-aparts" }));
+    expect(await screen.findByRole("textbox", { name: "Exercise name" })).toHaveValue("Band pull-aparts");
+  });
+
+  it("keeps the library pencil as a direct edit shortcut", async () => {
+    vi.mocked(api.exercises).mockImplementation(async (status) => status === "active" ? [bandPullApart] : []);
+    const user = userEvent.setup();
+    render(<ExercisesPage />);
+    await user.click(await screen.findByRole("button", { name: "Edit Band pull-aparts" }));
+    expect(await screen.findByRole("textbox", { name: "Exercise name" })).toHaveValue("Band pull-aparts");
   });
 });

@@ -29,6 +29,25 @@ export const equipmentTitleLabels: Record<Exclude<Equipment, "other">, string> =
   sandbag: "Sandbag",
 };
 
+export const muscleGroupNames: Record<string, string> = {
+  abs: "Abs", back: "Back", biceps: "Biceps", calves: "Calves", chest: "Chest",
+  forearms: "Forearms", glutes: "Glutes", hamstrings: "Hamstrings",
+  hip_flexors: "Hip Flexors", quadriceps: "Quadriceps", shoulders: "Shoulders", triceps: "Triceps",
+};
+
+export function exerciseMuscleNames(exercise: { primaryMuscle?: string | null; secondaryMuscles?: string[] }): string[] {
+  return [exercise.primaryMuscle, ...(exercise.secondaryMuscles ?? [])]
+    .filter((slug): slug is string => Boolean(slug))
+    .map((slug) => muscleGroupNames[slug] ?? slug.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()));
+}
+
+export function exerciseMuscleLabel(exercise: { primaryMuscle?: string | null; secondaryMuscles?: string[] }): string {
+  const names = (slugs: string[]) => slugs.map((slug) => muscleGroupNames[slug] ?? slug.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()));
+  const primary = exercise.primaryMuscle ? names([exercise.primaryMuscle])[0] : "";
+  const secondary = names(exercise.secondaryMuscles ?? []);
+  return [primary, secondary.length ? `(${secondary.join(", ")})` : ""].filter(Boolean).join(" ");
+}
+
 export function exerciseTitle(baseName: string, equipment: Equipment | null, customEquipment: string): string {
   const base = baseName.trim().replace(/\s+/g, " ");
   if (!equipment) return base;

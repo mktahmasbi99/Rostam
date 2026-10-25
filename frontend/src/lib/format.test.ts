@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exerciseTitle, formatDuration, formatMeasurement, formatResistance } from "./format";
+import { exerciseMuscleLabel, exerciseTitle, formatDuration, formatMeasurement, formatResistance } from "./format";
 import type { ExerciseSet } from "./types";
 
 const base: ExerciseSet = {
@@ -21,6 +21,11 @@ const base: ExerciseSet = {
 };
 
 describe("formatting", () => {
+  it("marks secondary muscle groups in parentheses", () => {
+    expect(exerciseMuscleLabel({ primaryMuscle: "hamstrings", secondaryMuscles: ["back", "glutes"] })).toBe("Hamstrings (Back, Glutes)");
+    expect(exerciseMuscleLabel({ primaryMuscle: null, secondaryMuscles: ["back"] })).toBe("(Back)");
+  });
+
   it("generates canonical equipment titles", () => {
     expect(exerciseTitle("  Squats  ", "resistance_band", "")).toBe("Squats (Resistance Bands)");
     expect(exerciseTitle("Lateral raises", "resistance_tube", "")).toBe("Lateral raises (Resistance tubes)");

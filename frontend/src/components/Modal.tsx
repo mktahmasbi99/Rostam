@@ -6,9 +6,13 @@ interface Props {
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  fullScreen?: boolean;
+  closePositionLeft?: boolean;
+  titleHidden?: boolean;
+  headerAction?: ReactNode;
 }
 
-export function Modal({ title, children, onClose, wide = false }: Props) {
+export function Modal({ title, children, onClose, wide = false, fullScreen = false, closePositionLeft = false, titleHidden = false, headerAction }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
 
@@ -30,11 +34,13 @@ export function Modal({ title, children, onClose, wide = false }: Props) {
   }, []);
 
   return (
-    <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className={`modal-sheet ${wide ? "modal-wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}>
+    <div className={`modal-backdrop ${fullScreen ? "modal-fullscreen-backdrop" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <div className={`modal-sheet ${wide ? "modal-wide" : ""} ${fullScreen ? "modal-fullscreen" : ""}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}>
         <div className="modal-header">
-          <h2>{title}</h2>
-          <button className="icon-button" onClick={onClose} aria-label={`Close ${title}`}><X /></button>
+          {closePositionLeft && <button className="icon-button modal-close-framed" onClick={onClose} aria-label={`Close ${title}`}><X /></button>}
+          {!titleHidden && <h2>{title}</h2>}
+          {headerAction}
+          {!closePositionLeft && <button className="icon-button modal-close-framed" onClick={onClose} aria-label={`Close ${title}`}><X /></button>}
         </div>
         <div className="modal-content">{children}</div>
       </div>

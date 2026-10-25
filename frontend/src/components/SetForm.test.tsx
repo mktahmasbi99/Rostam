@@ -7,6 +7,7 @@ import { SetForm } from "./SetForm";
 
 vi.mock("../lib/api", () => ({
   api: {
+    rotations: vi.fn(),
     config: vi.fn(),
     prefill: vi.fn(),
     addSet: vi.fn(),
@@ -29,6 +30,22 @@ const exercise: Exercise = {
 };
 
 describe("SetForm", () => {
+  it("requires an explicit rotation choice before saving a new exercise", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.config).mockResolvedValue({ today: "2026-09-16", timezone: "Europe/Warsaw", version: "1" });
+    vi.mocked(api.rotations).mockResolvedValue([{ id: 1, name: "Cycle", active: true, dueExerciseId: 3, resolvedToday: null, members: [] }]);
+    vi.mocked(api.prefill).mockResolvedValue({ source: "defaults", time: null, repetitions: null, durationMinutes: null, durationSeconds: null, holdMinutes: null, holdSeconds: null, resistanceKind: "bodyweight", weightKg: null });
+    vi.mocked(api.addSet).mockResolvedValue({});
+    render(<SetForm exercise={exercise} day="2026-09-16" firstSet onSaved={vi.fn()} onCancel={vi.fn()} />);
+    await screen.findByText("Add this exercise to your active rotation?");
+    await user.type(screen.getByLabelText("Reps"), "8");
+    await user.click(screen.getByRole("button", { name: "Save set" }));
+    expect(api.addSet).not.toHaveBeenCalled();
+    await user.click(screen.getByLabelText("Add to rotation"));
+    await user.click(screen.getByRole("button", { name: "Save set" }));
+    await waitFor(() => expect(api.addSet).toHaveBeenCalledWith("2026-09-16", exercise.id, expect.objectContaining({ enrollInRotation: true })));
+  });
+
   it("uses fixed equipment without presenting an equipment picker", async () => {
     const user = userEvent.setup();
     vi.mocked(api.config).mockResolvedValue({ today: "2026-09-16", timezone: "Europe/Warsaw", version: "1" });

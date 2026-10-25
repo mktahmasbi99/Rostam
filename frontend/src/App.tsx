@@ -1,4 +1,4 @@
-import { Dumbbell, Images, ListChecks, NotebookPen, Ruler, Settings } from "lucide-react";
+import { Dumbbell, Images, ListChecks, NotebookPen, RotateCw, Ruler, Settings } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { CalendarPage } from "./components/CalendarPage";
 import { DayPage } from "./components/DayPage";
@@ -7,11 +7,12 @@ import { SettingsPage } from "./components/SettingsPage";
 import { NotesPage } from "./components/NotesPage";
 import { PhotosPage } from "./components/PhotosPage";
 import { MeasurementsPage } from "./components/MeasurementsPage";
+import { RotationsPage } from "./components/RotationsPage";
 import { usePwaInstall } from "./hooks/usePwaInstall";
 import { api } from "./lib/api";
 import type { Config } from "./lib/types";
 
-type Tab = "today" | "notes" | "photos" | "measurements" | "exercises" | "settings";
+type Tab = "today" | "notes" | "photos" | "measurements" | "exercises" | "rotations" | "settings";
 
 function shiftDay(day: string, amount: number): string {
   const value = new Date(`${day}T12:00:00Z`);
@@ -70,16 +71,18 @@ export default function App() {
         onNextDay={() => setSelectedDay(shiftDay(selectedDay, 1))}
         onChooseDay={(day) => setSelectedDay(day)}
       />}
-      {tab === "notes" && <NotesPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
+      {tab === "notes" && <NotesPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "photos" && <PhotosPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "measurements" && <MeasurementsPage today={config.today} />}
       {tab === "exercises" && <ExercisesPage />}
+      {tab === "rotations" && <RotationsPage />}
       {tab === "settings" && <SettingsPage config={config} pwaInstall={pwaInstall} />}
     </div>
     {calendarOpen && <CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} />}
     <nav className="bottom-nav" aria-label="Primary navigation">
       <button aria-label="Today" title="Today" className={tab === "today" ? "active" : ""} onClick={goToToday}><ListChecks /></button>
       <button aria-label="Exercises" title="Exercises" className={tab === "exercises" ? "active" : ""} onClick={() => { setTab("exercises"); setCalendarOpen(false); }}><Dumbbell /></button>
+      <button aria-label="Rotations" title="Rotations" className={tab === "rotations" ? "active" : ""} onClick={() => { setTab("rotations"); setCalendarOpen(false); }}><RotateCw /></button>
       <button aria-label="Notes" title="Notes" className={tab === "notes" ? "active" : ""} onClick={() => { setTab("notes"); setCalendarOpen(false); }}><NotebookPen /></button>
       <button aria-label="Photos" title="Photos" className={tab === "photos" ? "active" : ""} onClick={() => { setTab("photos"); setCalendarOpen(false); }}><Images /></button>
       <button aria-label="Measurements" title="Measurements" className={tab === "measurements" ? "active" : ""} onClick={() => { setTab("measurements"); setCalendarOpen(false); }}><Ruler /></button>

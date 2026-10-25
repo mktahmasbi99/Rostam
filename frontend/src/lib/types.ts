@@ -65,6 +65,24 @@ export interface ExerciseRecommendations {
   muscleGroups: MuscleGroup[];
 }
 
+export interface RotationMember {
+  exercise: Exercise;
+  position?: number;
+  lastDoneDate: string | null;
+  daysSinceLastDone: number | null;
+}
+export interface RotationRecommendation { exercise: Exercise; date: string; }
+export interface Rotation {
+  id: number;
+  name: string;
+  active: boolean;
+  dueExerciseId: number | null;
+  duePosition?: number | null;
+  resolvedToday: "completed" | "skipped" | null;
+  archivedAt?: string | null;
+  members: RotationMember[];
+}
+
 export interface ExerciseSet {
   id: number;
   exerciseId: number;
@@ -129,6 +147,7 @@ export interface SetPayload {
   holdSeconds: number | null;
   resistanceKind: ResistanceKind;
   weightKg: string | null;
+  enrollInRotation?: boolean | null;
 }
 
 export interface ExerciseCreatePayload {

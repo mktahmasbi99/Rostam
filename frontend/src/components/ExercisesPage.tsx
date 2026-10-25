@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Exercise, MeasurementType } from "../lib/types";
 import { useOutsideClick } from "../lib/useOutsideClick";
+import { equipmentLabels, exerciseMuscleLabel } from "../lib/format";
 import { ExerciseEditor } from "./ExerciseEditor";
 import { ExerciseImage } from "./ExerciseImage";
 import { Modal } from "./Modal";
@@ -11,6 +12,7 @@ export function ExercisesPage() {
   const [active, setActive] = useState<Exercise[]>([]);
   const [archived, setArchived] = useState<Exercise[]>([]);
   const [editing, setEditing] = useState<Exercise | null>(null);
+  const [viewing, setViewing] = useState<Exercise | null>(null);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"" | MeasurementType>("");
@@ -62,13 +64,38 @@ export function ExercisesPage() {
     </div>;
   }
 
+  function exerciseRow(exercise: Exercise, archivedExercise = false) {
+    const measurement = exercise.measurementType === "repetitions" ? "Reps" : exercise.measurementType === "duration" ? "Duration" : "Timed reps";
+    return <article key={exercise.id} className="management-row exercise-library-row">
+      <button className="exercise-row-main" aria-label={`View ${exercise.name}`} onClick={() => setViewing(exercise)}>
+        <ExerciseImage imageKey={exercise.imageKey} name={exercise.name} />
+        <span><strong>{exercise.name}</strong><small>{measurement}</small></span>
+      </button>
+      <div className="row-actions">
+        {!archivedExercise && <button className="icon-button" aria-label={`Edit ${exercise.name}`} onClick={() => setEditing(exercise)}><Pencil /></button>}
+        {actionsMenu(exercise, archivedExercise)}
+      </div>
+    </article>;
+  }
+
   return <main className="page exercises-page">
-    <header className="section-title card-heading"><div><h1>Exercises</h1><p>Manage the exercise library, fixed equipment, and defaults.</p></div><button className="primary" onClick={() => setCreating(true)}><Plus />New</button></header>
+    <header className="section-title card-heading"><div><h1>Exercises</h1><p>Manage the exercise library, fixed equipment, and defaults.</p></div></header>
     {error && <p className="error-panel" role="alert">{error}</p>}
     <label className="search-box"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-    <div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Repetitions</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed repetitions</button></div>
-    <section className="management-section"><h2>Active</h2><div className="management-list">{active.map((exercise) => <article key={exercise.id} className="management-row"><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><div><strong>{exercise.name}</strong><small>{exercise.measurementType === "repetitions" ? "Repetitions" : exercise.measurementType === "duration" ? "Duration" : "Timed repetitions"}</small></div><div className="row-actions"><button className="icon-button" aria-label={`Edit ${exercise.name}`} onClick={() => setEditing(exercise)}><Pencil /></button>{actionsMenu(exercise)}</div></article>)}</div></section>
-    <section className="management-section"><h2>Archived</h2>{archived.length === 0 ? <p className="empty-copy">No archived exercises.</p> : <div className="management-list">{archived.map((exercise) => <article key={exercise.id} className="management-row"><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><div><strong>{exercise.name}</strong><small>History preserved</small></div>{actionsMenu(exercise, true)}</article>)}</div>}</section>
+    <div className="exercise-filter-toolbar"><div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Reps</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed reps</button></div><button className="rotation-create-icon" aria-label="Create exercise" title="Create exercise" onClick={() => setCreating(true)}><Plus /></button></div>
+    <section className="management-section"><h2>Active</h2><div className="management-list">{active.map((exercise) => exerciseRow(exercise))}</div></section>
+    <section className="management-section"><h2>Archived</h2>{archived.length === 0 ? <p className="empty-copy">No archived exercises.</p> : <div className="management-list">{archived.map((exercise) => exerciseRow(exercise, true))}</div>}</section>
+    {viewing && <Modal title={viewing.name} onClose={() => setViewing(null)} wide headerAction={!viewing.archivedAt ? <button className="icon-button" aria-label={`Edit ${viewing.name}`} title="Edit exercise" onClick={() => { setEditing(viewing); setViewing(null); }}><Pencil /></button> : null}>
+      <div className="exercise-readonly">
+        <div className="exercise-readonly-heading"><ExerciseImage imageKey={viewing.imageKey} name={viewing.name} /><strong>{viewing.name}</strong></div>
+        <dl>
+          <div><dt>Measurement</dt><dd>{viewing.measurementType === "repetitions" ? "Reps" : viewing.measurementType === "duration" ? "Duration" : "Timed reps"}</dd></div>
+          <div><dt>Fixed equipment</dt><dd>{viewing.equipment === "other" ? viewing.customEquipment || "Other" : viewing.equipment ? equipmentLabels[viewing.equipment] : "None"}</dd></div>
+          <div><dt>Bodyweight sets</dt><dd>{viewing.allowBodyweight ? "Allowed" : "Not allowed"}</dd></div>
+          <div><dt>Muscle groups</dt><dd>{exerciseMuscleLabel(viewing) || "Not set"}</dd></div>
+        </dl>
+      </div>
+    </Modal>}
     {editing && <Modal title={`Edit ${editing.name}`} onClose={() => setEditing(null)} wide><ExerciseEditor exercise={editing} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} /></Modal>}
     {creating && <Modal title="New exercise" onClose={() => setCreating(false)} wide><ExerciseEditor onCancel={() => setCreating(false)} onSaved={() => { setCreating(false); void load(); }} /></Modal>}
   </main>;
