@@ -6,6 +6,7 @@ import { useOutsideClick } from "../lib/useOutsideClick";
 import type { Activity } from "../lib/types";
 import { Modal } from "./Modal";
 import { TimeWheelField } from "./TimeWheelField";
+import { ReadState } from "./ReadState";
 
 function zonedNow(timezone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -33,21 +34,30 @@ export function ActivityPicker({ day, timezone, onClose, onStarted }: { day: str
   const [editingName, setEditingName] = useState("");
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [loadRetry, setLoadRetry] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => setOpenMenuId(null), []);
   useOutsideClick(menuRef, openMenuId !== null, closeMenu);
 
   const load = useCallback(async () => {
-    const [activeItems, archivedItems] = await Promise.all([
-      api.activities("active"),
-      api.activities("archived"),
-    ]);
-    const activeNames = new Set(activeItems.map((activity) => activityKey(activity.name)));
-    setActivities(activeItems);
-    setArchived(archivedItems.filter((activity) => !activeNames.has(activityKey(activity.name))));
+    setLoading(true);
+    setError("");
+    try {
+      const [activeItems, archivedItems] = await Promise.all([
+        api.activities("active"),
+        api.activities("archived"),
+      ]);
+      const activeNames = new Set(activeItems.map((activity) => activityKey(activity.name)));
+      setActivities(activeItems);
+      setArchived(archivedItems.filter((activity) => !activeNames.has(activityKey(activity.name))));
+      setLoaded(true);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not load activities."); }
+    finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { void load().catch((caught) => setError(caught.message)); }, [load]);
+  useEffect(() => { void load(); }, [load, loadRetry]);
 
   async function create() {
     setError("");
@@ -125,8 +135,8 @@ export function ActivityPicker({ day, timezone, onClose, onStarted }: { day: str
   return <Modal title="Add timed activity" onClose={onClose}>
     <div className="stack"><TimeWheelField label="Start time" value={start} onChange={setStart} max={1438} />
       {!creating ? <button className="secondary icon-only-action" aria-label="New activity" title="New activity" onClick={() => setCreating(true)}><Plus /></button> : <div className="activity-create"><label>Activity name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="BJJ – No Gi" maxLength={100} /></label><button className="primary" disabled={!name.trim()} onClick={() => void create()}>Create</button></div>}
-      {error && <p className="error" role="alert">{error}</p>}
-      <div className="exercise-results">{activities.map((activity) => activityRow(activity))}{activities.length === 0 && !error && <p className="empty-copy">Create an activity to get started.</p>}{archived.length > 0 && <details className="archived-activity-results"><summary>Archived activities<ChevronDown aria-hidden="true" /></summary><div>{archived.map((activity) => activityRow(activity, true))}</div></details>}</div>
+      <ReadState loading={loading} error={error} hasData={loaded} onRetry={() => setLoadRetry((value) => value + 1)} loadingText="Loading activities…" />
+      <div className="exercise-results">{loaded && activities.map((activity) => activityRow(activity))}{loaded && !loading && activities.length === 0 && !error && <p className="empty-copy">Create an activity to get started.</p>}{loaded && archived.length > 0 && <details className="archived-activity-results"><summary>Archived activities<ChevronDown aria-hidden="true" /></summary><div>{archived.map((activity) => activityRow(activity, true))}</div></details>}</div>
     </div>
   </Modal>;
 }

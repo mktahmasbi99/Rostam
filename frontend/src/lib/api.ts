@@ -1,7 +1,10 @@
 import type { Activity, ActivityEntry, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, Rotation, RotationRecommendation, SetPayload } from "./types";
 import { trackWrite } from "./restartSafety";
+import { reportServerReachability, reportUncertainWrite, requireReachableServer, ServerConnectionError } from "./connectivity";
 
 async function request<T>(path: string, init?: RequestInit, options: { clearDraftOnSuccess?: boolean } = {}): Promise<T> {
+  const isWrite = Boolean(init?.method && !["GET", "HEAD"].includes(init.method.toUpperCase()));
+  if (isWrite) requireReachableServer();
   const operation = () => fetch(path, {
     ...init,
     headers: init?.body && !(init.body instanceof FormData)
@@ -9,9 +12,22 @@ async function request<T>(path: string, init?: RequestInit, options: { clearDraf
       : init?.headers,
     cache: "no-store",
   });
-  const response = init?.method && !["GET", "HEAD"].includes(init.method.toUpperCase())
+  let response: Response;
+  try {
+    response = isWrite
     ? await trackWrite(operation, options.clearDraftOnSuccess !== false)
     : await operation();
+    reportServerReachability("reachable");
+  } catch (caught) {
+    if (init?.signal?.aborted) throw caught;
+    if (!(caught instanceof TypeError)) throw caught;
+    reportServerReachability("disconnected");
+    if (isWrite) {
+      reportUncertainWrite();
+      throw new ServerConnectionError("Connection lost while saving. The change may have reached Rostam; reconnect and refresh the data before deciding whether to retry.");
+    }
+    throw new ServerConnectionError("Could not reach Rostam. Check the server connection and retry.");
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed (${response.status})`);
@@ -59,18 +75,18 @@ export const api = {
   updateActivityNote: (id: number, note: string) => request<ActivityEntry>(`/api/activity-entries/${id}/note`, json("PUT", { note })),
   deleteActivity: (id: number) => request<void>(`/api/activity-entries/${id}`, { method: "DELETE" }),
   activityNotes: () => request<ActivityEntry[]>("/api/activity-notes"),
-  calendar: (month: string) =>
-    request<{ month: string; activeDates: string[] }>(`/api/calendar/${month}`),
+  calendar: (month: string, signal?: AbortSignal) =>
+    request<{ month: string; activeDates: string[] }>(`/api/calendar/${month}`, { signal }),
   exerciseHistory: (id: number, options: { beforeDate?: string; limit?: number } = {}, signal?: AbortSignal) => {
     const params = new URLSearchParams();
     if (options.beforeDate) params.set("beforeDate", options.beforeDate);
     if (options.limit !== undefined) params.set("limit", String(options.limit));
     return request<ExerciseHistoryPage>(`/api/exercises/${id}/history?${params}`, { signal });
   },
-  exercises: (status = "active", query = "", measurementType = "") => {
+  exercises: (status = "active", query = "", measurementType = "", signal?: AbortSignal) => {
     const params = new URLSearchParams({ status, query });
     if (measurementType) params.set("measurementType", measurementType);
-    return request<Exercise[]>(`/api/exercises?${params}`);
+    return request<Exercise[]>(`/api/exercises?${params}`, { signal });
   },
   exerciseRecommendations: (day: string, options: { query?: string; measurementType?: string; muscleGroup?: string; muscleRole?: string; includePaused?: boolean; sort?: string } = {}) => {
     const params = new URLSearchParams({ day });
@@ -95,8 +111,8 @@ export const api = {
   updateDailyNote: (day: string, body: string) => request<{ date: string; dailyNote: string | null }>(`/api/days/${day}/note`, json("PUT", { body })),
   deleteDailyNote: (day: string) => request<void>(`/api/days/${day}/note`, { method: "DELETE" }),
   dailyNotes: () => request<DailyNote[]>("/api/notes"),
-  dayPhotos: (day: string) => request<DailyPhoto[]>(`/api/days/${day}/photos`),
-  photos: () => request<PhotoGroup[]>("/api/photos"),
+  dayPhotos: (day: string, signal?: AbortSignal) => request<DailyPhoto[]>(`/api/days/${day}/photos`, { signal }),
+  photos: (signal?: AbortSignal) => request<PhotoGroup[]>("/api/photos", { signal }),
   uploadPhotos: (day: string, files: File[]) => { const form = new FormData(); files.forEach((file) => form.append("files", file)); return request<DailyPhoto[]>(`/api/days/${day}/photos`, { method: "POST", body: form }); },
   deletePhoto: (id: number) => request<void>(`/api/photos/${id}`, { method: "DELETE" }),
   archiveExercise: (id: number) =>

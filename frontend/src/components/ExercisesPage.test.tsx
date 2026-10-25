@@ -26,17 +26,19 @@ const bandPullApart: Exercise = {
 };
 
 describe("ExercisesPage", () => {
-  it("filters both active and archived exercises by measurement type", async () => {
+  it("loads archived results on demand and applies measurement filters immediately", async () => {
     const user = userEvent.setup();
     render(<ExercisesPage />);
 
-    await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "", ""));
-    expect(api.exercises).toHaveBeenCalledWith("archived", "", "");
+    await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "", "", expect.any(AbortSignal)));
+    expect(api.exercises).not.toHaveBeenCalledWith("archived", "", "", expect.any(AbortSignal));
+    await user.click(await screen.findByText("Archived"));
+    await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("archived", "", "", expect.any(AbortSignal)));
 
     await user.click(screen.getByRole("button", { name: "Timed reps" }));
 
-    await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "", "timed_repetitions"));
-    expect(api.exercises).toHaveBeenCalledWith("archived", "", "timed_repetitions");
+    await waitFor(() => expect(api.exercises).toHaveBeenCalledWith("active", "", "timed_repetitions", expect.any(AbortSignal)));
+    expect(api.exercises).toHaveBeenCalledWith("archived", "", "timed_repetitions", expect.any(AbortSignal));
     expect(screen.getByRole("button", { name: "Timed reps" })).toHaveClass("selected");
   });
 
@@ -44,11 +46,12 @@ describe("ExercisesPage", () => {
     const user = userEvent.setup();
     render(<ExercisesPage />);
 
+    await user.click(await screen.findByText("Archived"));
     await user.type(screen.getByPlaceholderText("Search exercises"), "deadlift");
 
     await waitFor(() => {
-      expect(api.exercises).toHaveBeenCalledWith("active", "deadlift", "");
-      expect(api.exercises).toHaveBeenCalledWith("archived", "deadlift", "");
+      expect(api.exercises).toHaveBeenCalledWith("active", "deadlift", "", expect.any(AbortSignal));
+      expect(api.exercises).toHaveBeenCalledWith("archived", "deadlift", "", expect.any(AbortSignal));
     });
   });
 

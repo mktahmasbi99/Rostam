@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { formatExerciseTotal } from "../lib/format";
 import type { Exercise, ExerciseHistorySession } from "../lib/types";
 import { Modal } from "./Modal";
 import { SetRow } from "./SetRow";
+import { ReadState } from "./ReadState";
 
 function dateLabel(value: string): string {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T12:00:00Z`));
@@ -24,21 +25,29 @@ export function ExerciseHistoryDialog({ exercise, onClose, onChooseDay }: { exer
   const [nextBeforeDate, setNextBeforeDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const failedCursor = useRef<string | undefined>(undefined);
+  const controller = useRef<AbortController | null>(null);
   const loadHistory = useCallback(async (beforeDate?: string) => {
+    controller.current?.abort();
+    const current = new AbortController();
+    controller.current = current;
     setLoading(true); setError("");
     try {
-      const result = await api.exerciseHistory(exercise.id, { beforeDate, limit: 10 });
+      const result = await api.exerciseHistory(exercise.id, { beforeDate, limit: 10 }, current.signal);
+      if (current.signal.aborted) return;
       setSessions((current) => beforeDate ? [...current, ...result.sessions] : result.sessions);
       setNextBeforeDate(result.nextBeforeDate);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not load exercise history."); }
-    finally { setLoading(false); }
+      setLoaded(true);
+      failedCursor.current = undefined;
+    } catch (caught) { if (!current.signal.aborted) { failedCursor.current = beforeDate; setError(caught instanceof Error ? caught.message : "Could not load exercise history."); } }
+    finally { if (!current.signal.aborted) setLoading(false); }
   }, [exercise.id]);
-  useEffect(() => { void loadHistory(); }, [loadHistory]);
+  useEffect(() => { void loadHistory(); return () => controller.current?.abort(); }, [loadHistory]);
   return <Modal title={`${exercise.name} history`} onClose={onClose} wide>
-    {error && <p className="error" role="alert">{error}</p>}
-    {!error && !sessions.length && !loading && <p className="empty-copy">No history yet.</p>}
+    <ReadState loading={loading} error={error} hasData={loaded} onRetry={() => void loadHistory(failedCursor.current)} loadingText="Loading history…" />
+    {loaded && !error && !sessions.length && <p className="empty-copy">No history yet.</p>}
     <div className="history-sessions">{sessions.map((session) => <SessionBlock key={session.date} session={session} exercise={exercise} onChooseDay={(day) => { onClose(); onChooseDay?.(day); }} />)}</div>
-    {loading && <p className="loading">Loading history…</p>}
     {nextBeforeDate && !loading && <button className="secondary history-load-more" onClick={() => void loadHistory(nextBeforeDate)}>Load older</button>}
   </Modal>;
 }

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { DailyPhoto } from "../lib/types";
 import { Modal } from "./Modal";
+import { ReadState } from "./ReadState";
 
 export function DailyJournal({ day, today, note, photoCount, onChanged, openOnMount = false, hideActions = false }: { day: string; today: string; note: string | null; photoCount: number; onChanged: () => void; openOnMount?: boolean; hideActions?: boolean }) {
   const [mode, setMode] = useState<"note" | "photos" | null>(openOnMount ? "note" : null);
@@ -10,14 +11,31 @@ export function DailyJournal({ day, today, note, photoCount, onChanged, openOnMo
   const [photos, setPhotos] = useState<DailyPhoto[]>([]);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [loadingPhotos, setLoadingPhotos] = useState(false);
+  const [photosLoaded, setPhotosLoaded] = useState(false);
+  const [photoRetry, setPhotoRetry] = useState(0);
+  const lastNote = useRef(note ?? "");
   const input = useRef<HTMLInputElement>(null);
   const editable = day <= today;
   const close = useCallback(() => setMode(null), []);
-  useEffect(() => { setDraft(note ?? ""); }, [note]);
-  useEffect(() => { if (mode === "photos") void api.dayPhotos(day).then(setPhotos).catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load photos.")); }, [day, mode]);
+  useEffect(() => {
+    const next = note ?? "";
+    if (draft === lastNote.current) setDraft(next);
+    lastNote.current = next;
+  }, [note, draft]);
+  useEffect(() => {
+    if (mode !== "photos") return;
+    const controller = new AbortController();
+    setLoadingPhotos(true);
+    setError("");
+    api.dayPhotos(day, controller.signal).then((items) => { if (!controller.signal.aborted) { setPhotos(items); setPhotosLoaded(true); } }).catch((caught) => { if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : "Could not load photos."); }).finally(() => { if (!controller.signal.aborted) setLoadingPhotos(false); });
+    return () => controller.abort();
+  }, [day, mode, photoRetry]);
   async function saveNote() { setSaving(true); setError(""); try { await api.updateDailyNote(day, draft); setMode(null); onChanged(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not save note."); } finally { setSaving(false); } }
   async function upload(files: FileList | null) { if (!files?.length) return; setSaving(true); setError(""); try { setPhotos(await api.uploadPhotos(day, [...files])); onChanged(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not upload photos."); } finally { setSaving(false); if (input.current) input.current.value = ""; } }
   async function remove(photo: DailyPhoto) { if (!window.confirm("Delete this photo? This cannot be undone.")) return; try { await api.deletePhoto(photo.id); setPhotos((current) => current.filter((item) => item.id !== photo.id)); onChanged(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not delete photo."); } }
   async function deleteNote() { if (!window.confirm("Delete this daily note?")) return; setSaving(true); setError(""); try { await api.deleteDailyNote(day); close(); onChanged(); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not delete note."); } finally { setSaving(false); } }
-  return <>{!hideActions && <div className="journal-actions"><button aria-label="Open daily note" title="Open daily note" className={note ? "journal-active" : ""} onClick={() => setMode("note")}><NotebookPen /></button><button aria-label="Open daily photos" title="Open daily photos" className={photoCount ? "journal-active" : ""} onClick={() => setMode("photos")}><ImagePlus /></button></div>}{mode === "note" && <Modal title="Daily note" onClose={close}><form className="journal-editor" data-update-dirty="daily-note" data-update-dirty-label="Daily note" onSubmit={(event) => { event.preventDefault(); void saveNote(); }}><label>Note<textarea autoFocus rows={10} maxLength={20000} value={draft} disabled={!editable || saving} onChange={(event) => setDraft(event.target.value)} /></label><small>{draft.length.toLocaleString()} / 20,000</small>{error && <p className="error" role="alert">{error}</p>}<div className="draft-actions">{note && editable && <button type="button" className="icon-button danger" aria-label="Delete note" title="Delete note" disabled={saving} onClick={() => void deleteNote()}><Trash2 /></button>}<button type="button" onClick={close}>Cancel</button>{editable && <button className="primary" disabled={saving}>{saving ? "Saving…" : "Save note"}</button>}</div></form></Modal>}{mode === "photos" && <Modal title="Daily photos" onClose={close} dirtyLabel="Photo upload"><div className="photo-dialog">{editable && <><input ref={input} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" multiple onChange={(event) => void upload(event.target.files)} /><button className="primary icon-only-action" aria-label={saving ? "Uploading photos" : "Add photos"} title={saving ? "Uploading photos" : "Add photos"} disabled={saving || photoCount >= 10} onClick={() => input.current?.click()}><ImagePlus /></button><p>{photos.length} of 10 photos</p></>}{error && <p className="error" role="alert">{error}</p>}<div className="photo-grid">{photos.map((photo) => <figure key={photo.id}><a href={photo.url} target="_blank" rel="noreferrer"><img src={photo.thumbnailUrl} alt={`Photo from ${day}`} /></a>{editable && <button className="icon-button danger" aria-label="Delete photo" onClick={() => void remove(photo)}><Trash2 /></button>}</figure>)}</div></div></Modal>}</>;
+  return <>{!hideActions && <div className="journal-actions"><button aria-label="Open daily note" title="Open daily note" className={note ? "journal-active" : ""} onClick={() => setMode("note")}><NotebookPen /></button><button aria-label="Open daily photos" title="Open daily photos" className={photoCount ? "journal-active" : ""} onClick={() => setMode("photos")}><ImagePlus /></button></div>}{mode === "note" && <Modal title="Daily note" onClose={close}><form className="journal-editor" data-update-dirty="daily-note" data-update-dirty-label="Daily note" onSubmit={(event) => { event.preventDefault(); void saveNote(); }}><label>Note<textarea autoFocus rows={10} maxLength={20000} value={draft} disabled={!editable || saving} onChange={(event) => setDraft(event.target.value)} /></label><small>{draft.length.toLocaleString()} / 20,000</small>{error && <p className="error" role="alert">{error}</p>}<div className="draft-actions">{note && editable && <button type="button" className="icon-button danger" aria-label="Delete note" title="Delete note" disabled={saving} onClick={() => void deleteNote()}><Trash2 /></button>}<button type="button" onClick={close}>Cancel</button>{editable && <button className="primary" disabled={saving}>{saving ? "Saving…" : "Save note"}</button>}</div></form></Modal>}{mode === "photos" && <Modal title="Daily photos" onClose={close} dirtyLabel="Photo upload"><div className="photo-dialog">{editable && <><input ref={input} className="visually-hidden" type="file" accept="image/jpeg,image/png,image/heic,image/heif,image/webp" multiple onChange={(event) => void upload(event.target.files)} /><button className="primary icon-only-action" aria-label={saving ? "Uploading photos" : "Add photos"} title={saving ? "Uploading photos" : "Add photos"} disabled={saving || photoCount >= 10} onClick={() => input.current?.click()}><ImagePlus /></button><p>{photos.length} of 10 photos</p></>}
+    <ReadState loading={loadingPhotos} error={error} hasData={photosLoaded} onRetry={() => setPhotoRetry((value) => value + 1)} loadingText="Loading photos…" />
+    <div className="photo-grid">{photos.map((photo) => <figure key={photo.id}><a href={photo.url} target="_blank" rel="noreferrer"><img src={photo.thumbnailUrl} alt={`Photo from ${day}`} /></a>{editable && <button className="icon-button danger" aria-label="Delete photo" onClick={() => void remove(photo)}><Trash2 /></button>}</figure>)}</div>{photosLoaded && !loadingPhotos && !error && photos.length === 0 && <p className="empty-copy">No photos for this day.</p>}</div></Modal>}</>;
 }

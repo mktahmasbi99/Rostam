@@ -7,6 +7,7 @@ import type { DayData, Exercise, ExerciseSet } from "../lib/types";
 import { ExerciseImage } from "./ExerciseImage";
 import { SetRow } from "./SetRow";
 import { ActivityEntryCard } from "./ActivityEntry";
+import { ReadState } from "./ReadState";
 
 const ExerciseNote = lazy(() => import("./ExerciseNote").then((module) => ({ default: module.ExerciseNote })));
 const DailyJournal = lazy(() => import("./DailyJournal").then((module) => ({ default: module.DailyJournal })));
@@ -28,6 +29,7 @@ interface Props {
 export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar, onPreviousDay, onNextDay, onChooseDay }: Props) {
   const [data, setData] = useState<DayData>({ date: day, sections: [] });
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activityPickerOpen, setActivityPickerOpen] = useState(false);
@@ -44,6 +46,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       const next = await api.day(day, signal);
       if (signal?.aborted || loadId !== latestLoad.current) return;
       setData(next);
+      setLoaded(true);
     } catch (caught) {
       if (signal?.aborted || loadId !== latestLoad.current) return;
       setError(caught instanceof Error ? caught.message : "Could not load this day.");
@@ -89,17 +92,16 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       </header>
 
       <div className="day-actions">
-        {!loading && !error && <Suspense fallback={<span className="deferred-loading" role="status">Loading journal…</span>}><DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} /></Suspense>}
+        {loaded && <Suspense fallback={<span className="deferred-loading" role="status">Loading journal…</span>}><DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} /></Suspense>}
         <div className="day-add-actions"><button className="secondary" onClick={() => setActivityPickerOpen(true)}><Clock3 />Add activity</button><button className="add-exercise" aria-label="Add exercise" title="Add exercise" onClick={() => setPickerOpen(true)}><Plus /></button></div>
       </div>
 
-      {error && <div className="error-panel" role="alert"><p>{error}</p><button onClick={() => void load()}>Retry</button></div>}
-      {loading && <p className="loading">Loading sets…</p>}
-      {!loading && !error && data.sections.length === 0 && !(data.activities?.length) && !pendingExercise && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise or start a timed activity.</p></div>}
+      <ReadState loading={loading} error={error} hasData={loaded} onRetry={() => void load()} loadingText="Loading sets…" />
+      {loaded && !loading && !error && data.sections.length === 0 && !(data.activities?.length) && !pendingExercise && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise or start a timed activity.</p></div>}
 
       {!!data.activities?.length && <section className="activity-card"><h2>Timed activities</h2><div className="activity-entry-list">{data.activities.map((entry) => <ActivityEntryCard key={entry.id} entry={entry} activities={data.activities ?? []} timezone={timezone} onChanged={() => void load()} />)}</div></section>}
 
-      <div className="exercise-sections">
+      {loaded && <div className="exercise-sections">
         {data.sections.map((section) => <section className="exercise-card" key={`${day}-${section.exercise.id}`}>
           <header className="exercise-card-header"><ExerciseImage imageKey={section.exercise.imageKey} name={section.exercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2>{section.exercise.name}</h2><Suspense fallback={null}><ExerciseHistory exercise={section.exercise} day={day} onChooseDay={onChooseDay} /></Suspense></div><strong className="daily-total">{formatExerciseTotal(section.exercise, section.total, section.sets)}</strong></div></header>
           <Suspense fallback={null}><ExerciseNote exercise={section.exercise} /></Suspense>
@@ -110,7 +112,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
         </section>)}
 
         {pendingExercise && <section className="exercise-card pending-card"><header className="exercise-card-header"><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2>{pendingExercise.name}</h2><Suspense fallback={null}><ExerciseHistory exercise={pendingExercise} day={day} onChooseDay={onChooseDay} /></Suspense></div><span className="daily-total">New today</span></div></header><Suspense fallback={null}><ExerciseNote exercise={pendingExercise} /></Suspense><Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={pendingExercise} day={day} firstSet onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></Suspense></section>}
-      </div>
+      </div>}
       {pickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading exercise picker…</div>}><ExercisePicker day={day} today={today} presentIds={[...presentIds, ...(pendingExercise ? [pendingExercise.id] : [])]} onClose={() => setPickerOpen(false)} onChoose={(exercise) => { setPickerOpen(false); setPendingExercise(exercise); setAddingTo(null); setEditingSet(null); }} /></Suspense>}
       {activityPickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading activity picker…</div>}><ActivityPicker day={day} timezone={timezone} onClose={() => setActivityPickerOpen(false)} onStarted={() => { setActivityPickerOpen(false); void load(); }} /></Suspense>}
     </main>

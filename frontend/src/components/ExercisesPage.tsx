@@ -1,12 +1,14 @@
 import { Archive, Check, MoreVertical, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
 import type { Exercise, MeasurementType } from "../lib/types";
 import { useOutsideClick } from "../lib/useOutsideClick";
 import { equipmentLabels, exerciseMuscleLabel } from "../lib/format";
 import { ExerciseEditor } from "./ExerciseEditor";
 import { ExerciseImage } from "./ExerciseImage";
 import { Modal } from "./Modal";
+import { ReadState } from "./ReadState";
 
 export function ExercisesPage() {
   const [active, setActive] = useState<Exercise[]>([]);
@@ -15,28 +17,43 @@ export function ExercisesPage() {
   const [viewing, setViewing] = useState<Exercise | null>(null);
   const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState("");
+  const debouncedQuery = useDebouncedValue(query, 275);
+  const [immediateQuery, setImmediateQuery] = useState<string | null>(null);
+  const searchQuery = immediateQuery ?? debouncedQuery;
   const [filter, setFilter] = useState<"" | MeasurementType>("");
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [readRetry, setReadRetry] = useState(0);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const exerciseSearchController = useRef<AbortController | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const closeMenu = useCallback(() => setOpenMenuId(null), []);
   useOutsideClick(menuRef, openMenuId !== null, closeMenu);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
     setError("");
     try {
-      const [activeItems, archivedItems] = await Promise.all([
-        api.exercises("active", query, filter),
-        api.exercises("archived", query, filter),
-      ]);
+      const requests = [api.exercises("active", searchQuery, filter, signal)];
+      if (archivedExpanded) requests.push(api.exercises("archived", searchQuery, filter, signal));
+      const [activeItems, archivedItems] = await Promise.all(requests);
       setActive(activeItems);
-      setArchived(archivedItems);
+      if (archivedItems) setArchived(archivedItems);
+      setLoaded(true);
     } catch (caught) {
+      if (signal?.aborted) return;
       setError(caught instanceof Error ? caught.message : "Could not load exercises.");
-    }
-  }, [filter, query]);
+    } finally { if (!signal?.aborted) setLoading(false); }
+  }, [archivedExpanded, searchQuery, filter]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    const controller = new AbortController();
+    exerciseSearchController.current = controller;
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load, readRetry]);
 
   async function archiveExercise(exercise: Exercise) {
     if (!window.confirm(`Archive ${exercise.name}? Its history will remain available.`)) return;
@@ -87,11 +104,11 @@ export function ExercisesPage() {
 
   return <main className="page exercises-page">
     <header className="section-title card-heading"><div><h1>Exercises</h1><p>Manage the exercise library, fixed equipment, and defaults.</p></div></header>
-    {error && <p className="error-panel" role="alert">{error}</p>}
-    <label className="search-box"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-    <div className="exercise-filter-toolbar"><div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Reps</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed reps</button></div><button className="rotation-create-icon" aria-label="Create exercise" title="Create exercise" onClick={() => setCreating(true)}><Plus /></button></div>
-    <section className="management-section"><h2>Active</h2><div className="management-list">{active.map((exercise) => exerciseRow(exercise))}</div></section>
-    <section className="management-section"><h2>Archived</h2>{archived.length === 0 ? <p className="empty-copy">No archived exercises.</p> : <div className="management-list">{archived.map((exercise) => exerciseRow(exercise, true))}</div>}</section>
+    <ReadState loading={loading} error={error} hasData={loaded} onRetry={() => setReadRetry((value) => value + 1)} loadingText="Loading exercises…" />
+    <label className="search-box"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={query} onChange={(event) => { exerciseSearchController.current?.abort(); setImmediateQuery(null); setQuery(event.target.value); }} /></label>
+    <div className="exercise-filter-toolbar"><div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => { setImmediateQuery(query); setFilter(""); }}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => { setImmediateQuery(query); setFilter("repetitions"); }}>Reps</button><button className={filter === "duration" ? "selected" : ""} onClick={() => { setImmediateQuery(query); setFilter("duration"); }}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => { setImmediateQuery(query); setFilter("timed_repetitions"); }}>Timed reps</button></div><button className="rotation-create-icon" aria-label="Create exercise" title="Create exercise" onClick={() => setCreating(true)}><Plus /></button></div>
+    {loaded && <><section className="management-section"><h2>Active</h2><div className="management-list">{active.map((exercise) => exerciseRow(exercise))}{!loading && !error && active.length === 0 && <p className="empty-copy">No matching active exercises.</p>}</div></section>
+    <details className="management-section" onToggle={(event) => setArchivedExpanded(event.currentTarget.open)}><summary><h2>Archived</h2></summary>{archived.length === 0 ? <p className="empty-copy">No archived exercises.</p> : <div className="management-list">{archived.map((exercise) => exerciseRow(exercise, true))}</div>}</details></>}
     {viewing && <Modal title={viewing.name} onClose={() => setViewing(null)} wide groupHeaderActionWithClose headerAction={!viewing.archivedAt ? <button className="icon-button" aria-label={`Edit ${viewing.name}`} title="Edit exercise" onClick={() => { setEditing(viewing); setViewing(null); }}><Pencil /></button> : null}>
       <div className="exercise-readonly">
         <div className="exercise-readonly-heading"><ExerciseImage imageKey={viewing.imageKey} name={viewing.name} /><strong>{viewing.name}</strong></div>

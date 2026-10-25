@@ -19,14 +19,24 @@ function weightLabel(session: ExerciseHistorySession): string {
 export function ExerciseHistory({ exercise, day, onChooseDay }: Props) {
   const [previous, setPrevious] = useState<ExerciseHistorySession | null>(null);
   const [open, setOpen] = useState(false);
+  const [loadingPrevious, setLoadingPrevious] = useState(false);
+  const [previousError, setPreviousError] = useState("");
+  const [retryPrevious, setRetryPrevious] = useState(0);
   useEffect(() => {
-    if (!exercise.hasHistory) { setPrevious(null); return; }
+    if (!exercise.hasHistory) { setPrevious(null); setLoadingPrevious(false); setPreviousError(""); return; }
     const controller = new AbortController();
-    api.exerciseHistory(exercise.id, { beforeDate: day, limit: 1 }, controller.signal).then((result) => setPrevious(result.sessions[0] ?? null)).catch(() => { if (!controller.signal.aborted) setPrevious(null); });
+    setLoadingPrevious(true);
+    setPreviousError("");
+    api.exerciseHistory(exercise.id, { beforeDate: day, limit: 1 }, controller.signal)
+      .then((result) => { if (!controller.signal.aborted) setPrevious(result.sessions[0] ?? null); })
+      .catch((caught) => { if (!controller.signal.aborted) setPreviousError(caught instanceof Error ? caught.message : "Could not load the previous session."); })
+      .finally(() => { if (!controller.signal.aborted) setLoadingPrevious(false); });
     return () => controller.abort();
-  }, [day, exercise.id, exercise.hasHistory]);
+  }, [day, exercise.id, exercise.hasHistory, retryPrevious]);
   return <>
     {exercise.hasHistory && <button className="history-button" aria-label={`History for ${exercise.name}`} title="History" onClick={() => setOpen(true)}><HistoryIcon /></button>}
+    {exercise.hasHistory && loadingPrevious && !previous && <small className="previous-session" role="status">Loading previous session…</small>}
+    {exercise.hasHistory && previousError && <button className="previous-session-error" title={previousError} onClick={() => setRetryPrevious((value) => value + 1)}>Previous session unavailable · Retry</button>}
     {previous && <span className="previous-session">Last session · {dateLabel(previous.date)} · {formatExerciseTotal(exercise, previous.total, previous.sets)}{weightLabel(previous) ? ` · ${weightLabel(previous)}` : ""}</span>}
     {open && <Suspense fallback={<span className="deferred-loading" role="status">Loading history…</span>}><ExerciseHistoryDialog exercise={exercise} onClose={() => setOpen(false)} onChooseDay={onChooseDay} /></Suspense>}
   </>;

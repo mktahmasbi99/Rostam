@@ -1,5 +1,5 @@
 import { Dumbbell, Images, ListChecks, NotebookPen, RotateCw, Ruler, Settings } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { DayPage } from "./components/DayPage";
 import { DeferredBoundary } from "./components/DeferredBoundary";
 import { UpdateBanner } from "./components/UpdateBanner";
@@ -14,6 +14,7 @@ import { usePwaInstall } from "./hooks/usePwaInstall";
 import { api } from "./lib/api";
 import type { Config } from "./lib/types";
 import { artwork } from "./artwork";
+import { getServerReachability, getWriteOutcomeUncertain, reportServerReachability, subscribeServerReachability } from "./lib/connectivity";
 
 type Tab = "today" | "notes" | "photos" | "measurements" | "exercises" | "rotations" | "settings";
 
@@ -45,11 +46,14 @@ export default function App() {
   const [config, setConfig] = useState<Config | null>(null);
   const [selectedDay, setSelectedDay] = useState("");
   const [error, setError] = useState("");
+  const reachability = useSyncExternalStore(subscribeServerReachability, getServerReachability, getServerReachability);
+  const uncertainWrite = useSyncExternalStore(subscribeServerReachability, getWriteOutcomeUncertain, getWriteOutcomeUncertain);
   const pwaInstall = usePwaInstall();
 
   const loadConfig = useCallback(async () => {
     try {
       const next = await api.config();
+      reportServerReachability("reachable");
       setConfig((current) => {
         if (!selectedDay || selectedDay === current?.today) setSelectedDay(next.today);
         return next;
@@ -80,7 +84,9 @@ export default function App() {
 
   return <><Backdrop /><div data-rostam-app className="app-shell">
     <UpdateBanner />
+    {(reachability !== "reachable" || uncertainWrite) && <div className="connection-banner" role="alert"><span>{uncertainWrite ? "A save result is uncertain. Rostam is locked until you reload and reconcile the server data." : reachability === "unknown" ? "Confirming connection to Rostam…" : "Rostam is disconnected. Editing and saves are paused."}</span>{reachability !== "reachable" && <button className="secondary" onClick={() => void loadConfig()}>Check connection</button>}{uncertainWrite && <button className="secondary" onClick={() => window.location.reload()}>Reload to reconcile</button>}</div>}
     <div className="brand"><button className="brand-home" aria-label="Go to Today" title="Go to Today" onClick={goToToday}><Logo className="app-logo brand-logo" sizes="44px" /></button></div>
+    <fieldset className="app-content-controls" disabled={reachability !== "reachable" || uncertainWrite}>
     <div className="content">
       <DeferredBoundary key={tab}><Suspense fallback={<div className="deferred-loading" role="status">Loading page…</div>}>
       {tab === "today" && <DayPage key={selectedDay}
@@ -101,6 +107,7 @@ export default function App() {
       </Suspense></DeferredBoundary>
     </div>
     {calendarOpen && <DeferredBoundary key="calendar"><Suspense fallback={<div className="deferred-loading" role="status">Loading calendar…</div>}><CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} /></Suspense></DeferredBoundary>}
+    </fieldset>
     <nav className="bottom-nav" aria-label="Primary navigation">
       <button aria-label="Today" title="Today" className={tab === "today" ? "active" : ""} onClick={goToToday}><ListChecks /></button>
       <button aria-label="Exercises" title="Exercises" className={tab === "exercises" ? "active" : ""} onClick={() => { setTab("exercises"); setCalendarOpen(false); }}><Dumbbell /></button>
