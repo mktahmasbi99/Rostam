@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
-import { type ReactNode, useEffect, useRef } from "react";
+import { type ReactNode } from "react";
+import { AccessibleDialog } from "./AccessibleDialog";
 
 interface Props {
   title: string;
@@ -15,29 +16,15 @@ interface Props {
 }
 
 export function Modal({ title, children, onClose, wide = false, fullScreen = false, closePositionLeft = false, titleHidden = false, headerAction, groupHeaderActionWithClose = false, dirtyLabel }: Props) {
-  const ref = useRef<HTMLDivElement>(null);
-  const onCloseRef = useRef(onClose);
-
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
-
-  useEffect(() => {
-    const before = document.activeElement as HTMLElement | null;
-    ref.current?.focus();
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCloseRef.current();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      before?.focus();
-    };
-  }, []);
-
   return (
-    <div className={`modal-backdrop ${fullScreen ? "modal-fullscreen-backdrop" : ""}`} onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <div className={`modal-sheet ${wide ? "modal-wide" : ""} ${fullScreen ? "modal-fullscreen" : ""}`} data-update-dirty={dirtyLabel ? "modal-draft" : undefined} data-update-dirty-label={dirtyLabel} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}>
+    <AccessibleDialog
+      backdropClassName={`modal-backdrop ${fullScreen ? "modal-fullscreen-backdrop" : ""}`}
+      className=""
+      panelClassName={`modal-sheet ${wide ? "modal-wide" : ""} ${fullScreen ? "modal-fullscreen" : ""}`}
+      label={title}
+      onClose={onClose}
+    >
+      <div data-update-dirty={dirtyLabel ? "modal-draft" : undefined} data-update-dirty-label={dirtyLabel}>
         <div className="modal-header">
           {closePositionLeft && <button className="icon-button modal-close-framed" onClick={onClose} aria-label={`Close ${title}`}><X /></button>}
           {!titleHidden && <h2>{title}</h2>}
@@ -47,6 +34,6 @@ export function Modal({ title, children, onClose, wide = false, fullScreen = fal
         </div>
         <div className="modal-content">{children}</div>
       </div>
-    </div>
+    </AccessibleDialog>
   );
 }
