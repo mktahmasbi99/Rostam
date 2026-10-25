@@ -12,5 +12,6 @@ frontend/node_modules/
 frontend/dist/
 frontend/public/exercise-assets/
 frontend/public/icons/
+frontend/src/generated/artwork/
 frontend/test-results/
 frontend/playwright-report/

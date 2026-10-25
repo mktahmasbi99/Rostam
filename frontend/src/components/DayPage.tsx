@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Clock3, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { artwork } from "../artwork";
 import { formatDay, formatExerciseTotal } from "../lib/format";
 import type { DayData, Exercise, ExerciseSet } from "../lib/types";
 import { ExerciseImage } from "./ExerciseImage";
@@ -83,7 +84,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       <header className="day-header">
         <button className="day-navigation" aria-label="Previous day" title="Previous day" onClick={onPreviousDay}><ChevronLeft /></button>
         <div><h1><button className="day-title" aria-label="Choose a day" onClick={onOpenCalendar}>{formatDay(day, today)}</button></h1></div>
-        <button className="day-navigation" aria-label="Next day" title="Next day" disabled={day >= today} onClick={onNextDay}><ChevronRight /></button>
+        {day < today && <button className="day-navigation" aria-label="Next day" title="Next day" onClick={onNextDay}><ChevronRight /></button>}
       </header>
 
       <div className="day-actions">
@@ -93,7 +94,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
 
       {error && <div className="error-panel" role="alert"><p>{error}</p><button onClick={() => void load()}>Retry</button></div>}
       {loading && <p className="loading">Loading sets…</p>}
-      {!loading && !error && data.sections.length === 0 && !(data.activities?.length) && !pendingExercise && <div className="empty-state"><img className="app-logo empty-logo" src="/rostam-logo.png" alt="" /><h2>No activity recorded</h2><p>Add an exercise or start a timed activity.</p></div>}
+      {!loading && !error && data.sections.length === 0 && !(data.activities?.length) && !pendingExercise && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise or start a timed activity.</p></div>}
 
       {!!data.activities?.length && <section className="activity-card"><h2>Timed activities</h2><div className="activity-entry-list">{data.activities.map((entry) => <ActivityEntryCard key={entry.id} entry={entry} activities={data.activities ?? []} timezone={timezone} onChanged={() => void load()} />)}</div></section>}
 

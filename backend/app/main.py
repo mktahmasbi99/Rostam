@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 import sqlite3
 import tempfile
 from contextlib import asynccontextmanager, suppress
+from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from .config import load_settings
 from .database import DomainError, RostamDatabase
@@ -64,14 +68,47 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Rostam API", version="1.0.0", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
+
+
+@lru_cache(maxsize=4)
+def load_hashed_assets(directory: Path) -> frozenset[str]:
+    manifest_path = directory / ".vite" / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return frozenset()
+
+    files = set()
+    for entry in manifest.values():
+        files.update(entry.get("assets", []))
+        files.update(entry.get("css", []))
+        if entry.get("file"):
+            files.add(entry["file"])
+    return frozenset(
+        f"/{name}" for name in files if re.search(r"-[a-zA-Z0-9_-]{8,}\.", Path(name).name)
+    )
 
 
 @app.middleware("http")
 async def prevent_api_caching(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith("/api/"):
-        response.headers["Cache-Control"] = "no-store"
+    cache_control = response_cache_control(
+        request.url.path, response.status_code, load_hashed_assets(frontend_dist)
+    )
+    if cache_control:
+        response.headers["Cache-Control"] = cache_control
     return response
+
+
+def response_cache_control(
+    path: str, status_code: int, immutable_assets: frozenset[str]
+) -> str | None:
+    if path.startswith("/api/"):
+        return "no-store"
+    if status_code < 400:
+        return "public, max-age=31536000, immutable" if path in immutable_assets else "no-cache"
+    return None
 
 
 @app.exception_handler(DomainError)

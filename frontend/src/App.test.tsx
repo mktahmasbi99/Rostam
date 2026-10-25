@@ -26,10 +26,16 @@ describe("Rostam shell", () => {
   });
 
   it("starts on an empty observational day", async () => {
-    render(<App />);
+    const { container } = render(<App />);
     expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
     expect(await screen.findByText("No activity recorded")).toBeInTheDocument();
     expect(screen.queryByText(/goal/i)).not.toBeInTheDocument();
+    const backdrop = container.querySelector(".site-backdrop");
+    expect(backdrop?.querySelector('source[type="image/webp"]')).toHaveAttribute("media", "(max-width: 768px)");
+    expect(backdrop?.querySelector('source[type="image/jpeg"]')).toHaveAttribute("media", "(max-width: 768px)");
+    const emptyLogo = container.querySelector(".empty-state picture");
+    expect(emptyLogo?.querySelector('source[type="image/webp"]')).toBeInTheDocument();
+    expect(emptyLogo?.querySelector("img")).toHaveAttribute("srcset", expect.stringContaining(".png"));
   });
 
   it("opens Rotations from the primary navigation", async () => {
@@ -76,7 +82,7 @@ describe("Rostam shell", () => {
     render(<App />);
 
     await screen.findByRole("heading", { name: "Today" });
-    expect(screen.getByRole("button", { name: "Next day" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Next day" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Previous day" }));
     await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-12", expect.any(AbortSignal)));

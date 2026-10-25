@@ -5,11 +5,14 @@
   "type": "module",
   "scripts": {
     "sync-assets": "node scripts/sync-exercise-assets.mjs",
-    "predev": "npm run sync-assets && node scripts/build-icons.mjs",
-    "prebuild": "npm run sync-assets && node scripts/build-icons.mjs",
+    "generate-artwork": "node scripts/generate-artwork.mjs",
+    "predev": "npm run sync-assets && npm run generate-artwork",
+    "prebuild": "npm run sync-assets && npm run generate-artwork",
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/build-pwa.mjs",
+    "pretypecheck": "npm run generate-artwork",
     "typecheck": "tsc -b --pretty false",
+    "pretest": "npm run generate-artwork",
     "test": "vitest",
     "test:e2e": "playwright test",
     "lint": "eslint ."
