@@ -1,4 +1,4 @@
-import { Archive, MoreVertical, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
+import { Archive, Check, MoreVertical, Pencil, Plus, RotateCcw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Exercise, MeasurementType } from "../lib/types";
@@ -40,7 +40,14 @@ export function ExercisesPage() {
 
   async function archiveExercise(exercise: Exercise) {
     if (!window.confirm(`Archive ${exercise.name}? Its history will remain available.`)) return;
-    await api.archiveExercise(exercise.id); await load();
+    try {
+      await api.archiveExercise(exercise.id);
+      setEditing(null);
+      setViewing(null);
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not archive exercise.");
+    }
   }
 
   async function remove(exercise: Exercise) {
@@ -48,7 +55,7 @@ export function ExercisesPage() {
       `Permanently delete ${exercise.name}? This will delete all workout history for this exercise.\n\nArchiving is safer and keeps its history.\n\nType DELETE to continue.`,
     );
     if (confirmation === null) return;
-    try { await api.deleteExercise(exercise.id, confirmation); await load(); }
+    try { await api.deleteExercise(exercise.id, confirmation); setEditing(null); setViewing(null); await load(); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Could not delete exercise."); }
     finally { setOpenMenuId(null); }
   }
@@ -85,7 +92,7 @@ export function ExercisesPage() {
     <div className="exercise-filter-toolbar"><div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Reps</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed reps</button></div><button className="rotation-create-icon" aria-label="Create exercise" title="Create exercise" onClick={() => setCreating(true)}><Plus /></button></div>
     <section className="management-section"><h2>Active</h2><div className="management-list">{active.map((exercise) => exerciseRow(exercise))}</div></section>
     <section className="management-section"><h2>Archived</h2>{archived.length === 0 ? <p className="empty-copy">No archived exercises.</p> : <div className="management-list">{archived.map((exercise) => exerciseRow(exercise, true))}</div>}</section>
-    {viewing && <Modal title={viewing.name} onClose={() => setViewing(null)} wide headerAction={!viewing.archivedAt ? <button className="icon-button" aria-label={`Edit ${viewing.name}`} title="Edit exercise" onClick={() => { setEditing(viewing); setViewing(null); }}><Pencil /></button> : null}>
+    {viewing && <Modal title={viewing.name} onClose={() => setViewing(null)} wide groupHeaderActionWithClose headerAction={!viewing.archivedAt ? <button className="icon-button" aria-label={`Edit ${viewing.name}`} title="Edit exercise" onClick={() => { setEditing(viewing); setViewing(null); }}><Pencil /></button> : null}>
       <div className="exercise-readonly">
         <div className="exercise-readonly-heading"><ExerciseImage imageKey={viewing.imageKey} name={viewing.name} /><strong>{viewing.name}</strong></div>
         <dl>
@@ -96,7 +103,7 @@ export function ExercisesPage() {
         </dl>
       </div>
     </Modal>}
-    {editing && <Modal title={`Edit ${editing.name}`} onClose={() => setEditing(null)} wide><ExerciseEditor exercise={editing} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} /></Modal>}
+    {editing && <Modal title={`Edit ${editing.name}`} titleHidden closePositionLeft onClose={() => setEditing(null)} wide headerAction={<div className="exercise-edit-header-actions">{actionsMenu(editing)}<button className="rotation-save-button" type="submit" form="exercise-editor-form" aria-label="Save exercise" title="Save exercise"><Check /></button></div>}><ExerciseEditor exercise={editing} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); void load(); }} /></Modal>}
     {creating && <Modal title="New exercise" onClose={() => setCreating(false)} wide><ExerciseEditor onCancel={() => setCreating(false)} onSaved={() => { setCreating(false); void load(); }} /></Modal>}
   </main>;
 }

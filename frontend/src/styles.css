@@ -193,6 +193,7 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .modal-backdrop.modal-fullscreen-backdrop { align-items: stretch; padding: 0; }
 .modal-sheet.modal-fullscreen { width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0; padding: max(18px, env(safe-area-inset-top)) 18px max(18px, env(safe-area-inset-bottom)); }
 .modal-header { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.modal-header-actions { display: flex; align-items: center; gap: 8px; }
 .modal-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding-bottom: env(safe-area-inset-bottom); }
 .modal-header h2 { margin: 0; font-size: 1.45rem; }
 .history-sessions { display: grid; gap: 18px; }
@@ -375,6 +376,8 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .modal-close-framed { border-color: var(--line) !important; }
 .rotation-save-button { width: 44px; min-width: 44px; height: 44px; border: 1px solid #438d5a; border-radius: 12px; color: #8fe0a4; background: rgba(31, 101, 57, .35); display: inline-flex; align-items: center; justify-content: center; }
 .rotation-save-button svg { width: 22px; height: 22px; stroke-width: 3; }
+.exercise-edit-header-actions { display: flex; align-items: center; gap: 8px; }
+.exercise-editor-title { margin: 0 0 4px; font-size: 1.35rem; }
 .rotation-name-field { display: grid; gap: 5px; margin-bottom: 16px; }
 .rotation-name-field > span { display: flex; align-items: center; gap: 8px; }
 .exercise-library-row { gap: 10px; }
