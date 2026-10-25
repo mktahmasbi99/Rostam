@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timedelta
 from io import BytesIO
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -41,6 +41,7 @@ def set_payload(**overrides):
         "holdSeconds": None,
         "resistanceKind": "bodyweight",
         "weightKg": None,
+        "enrollInRotation": None,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -663,7 +664,7 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 14))
+        ] == list(range(1, 17))
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM exercises WHERE exercise_note IS NOT NULL"
@@ -699,7 +700,7 @@ def test_schema_v2_migration_adds_notes_without_changing_history(database):
     with migrated.connect() as connection:
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 14))
+        ] == list(range(1, 17))
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
@@ -775,7 +776,7 @@ def test_restore_validates_staged_database_before_atomic_replacement(database, m
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (14)", "schema is newer"),
+        ("INSERT INTO schema_migrations(version) VALUES (17)", "schema is newer"),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(
@@ -840,3 +841,205 @@ def test_restore_keeps_current_backup_policy_and_import_creates_safety_copy(data
     with database.connect() as connection:
         assert connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
+
+
+def test_rotation_activation_cycles_skip_and_break(database, monkeypatch):
+    day = date(2026, 10, 20)
+    monkeypatch.setattr(
+        database,
+        "now_local",
+        lambda: datetime.combine(day, datetime.min.time()).replace(
+            hour=20, tzinfo=database.settings.timezone
+        ),
+    )
+    exercises = database.list_exercises("active", "", None)
+    a, b, c = [
+        item["id"]
+        for item in exercises
+        if item["equipment"] is None and item["measurementType"] == "repetitions"
+    ]
+    first = database.create_rotation("Morning")
+    second = database.create_rotation("Evening")
+    database.set_rotation_members(first["id"], [a, b, c])
+    database.set_rotation_members(second["id"], [b])
+    assert database.activate_rotation(first["id"], a)["dueExerciseId"] == a
+    assert sum(item["active"] for item in database.rotations()) == 1
+    database.add_set(a, day.isoformat(), set_payload(enrollInRotation=None))
+    database.add_set(a, day.isoformat(), set_payload(time="09:00"))
+    assert database.rotations()[0]["resolvedToday"] == "completed"
+    day += timedelta(days=1)
+    assert database.rotations()[0]["dueExerciseId"] == b
+    day += timedelta(days=1)
+    assert database.rotations()[0]["dueExerciseId"] == b
+    database.skip_rotation_today(first["id"])
+    assert database.rotations()[0]["resolvedToday"] == "skipped"
+    database.skip_rotation_today(first["id"], undo=True)
+    assert database.rotations()[0]["resolvedToday"] is None
+    database.skip_rotation_today(first["id"])
+    day += timedelta(days=1)
+    assert database.rotations()[0]["dueExerciseId"] == c
+    database.activate_rotation(second["id"], b)
+    assert [item["active"] for item in database.rotations()] == [False, True]
+    assert database.activate_rotation(first["id"], a)["dueExerciseId"] == a
+
+
+def test_rotation_enrollment_order_and_time_correction(database, monkeypatch):
+    day = date(2026, 10, 20)
+    monkeypatch.setattr(
+        database,
+        "now_local",
+        lambda: datetime.combine(day, datetime.min.time()).replace(
+            hour=20, tzinfo=database.settings.timezone
+        ),
+    )
+    ids = [
+        item["id"]
+        for item in database.list_exercises("active", "", None)
+        if item["equipment"] is None and item["measurementType"] == "repetitions"
+    ]
+    ids += [
+        database.create_exercise(
+            exercise_payload(baseName=f"New {index}", measurementType="repetitions")
+        )["id"]
+        for index in range(2)
+    ]
+    due, early, newcomer_a, newcomer_b = ids[:4]
+    rotation = database.create_rotation("Cycle")
+    rotation_id = rotation["id"]
+    database.set_rotation_members(rotation_id, [due, early])
+    database.activate_rotation(rotation_id, due)
+    database.add_set(early, day.isoformat(), set_payload())
+    assert database.rotations()[0]["dueExerciseId"] == due
+    with pytest.raises(DomainError, match="Choose Add"):
+        database.add_set(newcomer_a, day.isoformat(), set_payload())
+    database.add_set(newcomer_b, day.isoformat(), set_payload(enrollInRotation=False))
+    assert [item["exercise"]["id"] for item in database.rotations()[0]["members"]] == [due, early]
+    first = database.add_set(
+        newcomer_a, day.isoformat(), set_payload(time="12:00", enrollInRotation=True)
+    )
+    # An exercise explicitly recorded without enrolling is not prompted again today.
+    assert newcomer_b not in [item["exercise"]["id"] for item in database.rotations()[0]["members"]]
+    another = ids[4]
+    next_set = database.add_set(
+        another, day.isoformat(), set_payload(time="13:00", enrollInRotation=True)
+    )
+    assert [item["exercise"]["id"] for item in database.rotations()[0]["members"]] == [
+        due,
+        newcomer_a,
+        another,
+        early,
+    ]
+    database.update_set(next_set["id"], set_payload(time="10:00"))
+    assert [item["exercise"]["id"] for item in database.rotations()[0]["members"]] == [
+        due,
+        another,
+        newcomer_a,
+        early,
+    ]
+    database.set_rotation_members(rotation_id, [due, newcomer_a, early, another])
+    database.update_set(next_set["id"], set_payload(time="09:00"))
+    assert [item["exercise"]["id"] for item in database.rotations()[0]["members"]] == [
+        due,
+        newcomer_a,
+        early,
+        another,
+    ]
+    database.add_set(due, day.isoformat(), set_payload())
+    day += timedelta(days=1)
+    assert database.rotations()[0]["dueExerciseId"] == early
+    assert first["id"] != next_set["id"]
+
+
+def test_rotation_state_survives_backup_restore_and_archive_removes_member(database):
+    exercise = next(item for item in database.list_exercises("active", "Push-ups", None))
+    rotation = database.create_rotation("Cycle")
+    database.set_rotation_members(rotation["id"], [exercise["id"]])
+    database.activate_rotation(rotation["id"], exercise["id"])
+    backup = database.create_backup("on-demand")
+    database.delete_rotation(rotation["id"])
+    database.restore_backup(backup["id"], "RESTORE")
+    restored = database.rotations()[0]
+    assert restored["name"] == "Cycle"
+    assert restored["active"] is True
+    assert restored["members"][0]["exercise"]["id"] == exercise["id"]
+    database.archive_exercise(exercise["id"])
+    assert database.rotations()[0]["members"] == []
+    assert database.rotations()[0]["dueExerciseId"] is None
+
+
+def test_rotation_archive_and_restore_preserve_members_and_deactivate(database):
+    exercise = database.list_exercises("active", "Push", None)[0]
+    rotation = database.create_rotation("Archived cycle")
+    database.set_rotation_members(rotation["id"], [exercise["id"]])
+    database.activate_rotation(rotation["id"], exercise["id"])
+
+    archived = database.archive_rotation(rotation["id"])
+
+    assert archived["active"] is False
+    assert archived["archivedAt"]
+    assert database.rotations() == []
+    assert database.rotations("archived")[0]["members"][0]["exercise"]["id"] == exercise["id"]
+
+    restored = database.archive_rotation(rotation["id"], archived=False)
+    assert restored["archivedAt"] is None
+    assert [item["id"] for item in database.rotations()] == [rotation["id"]]
+
+
+def test_logging_skipped_due_exercise_marks_it_completed_today(database):
+    exercise = next(item for item in database.list_exercises("active", "Push-ups", None))
+    rotation = database.create_rotation("Cycle")
+    database.set_rotation_members(rotation["id"], [exercise["id"]])
+    database.activate_rotation(rotation["id"], exercise["id"])
+    database.skip_rotation_today(rotation["id"])
+    database.add_set(exercise["id"], database.today().isoformat(), set_payload())
+    assert database.rotations()[0]["resolvedToday"] == "completed"
+
+
+def test_rotation_allows_duplicate_slots_and_advances_one_slot_at_a_time(database, monkeypatch):
+    day = date(2026, 10, 20)
+    monkeypatch.setattr(
+        database,
+        "now_local",
+        lambda: datetime.combine(day, datetime.min.time()).replace(
+            hour=20, tzinfo=database.settings.timezone
+        ),
+    )
+    exercise = next(item for item in database.list_exercises("active", "Squats", None))
+    rotation = database.create_rotation("Repeat squats")
+    database.set_rotation_members(rotation["id"], [exercise["id"], exercise["id"]])
+    assert [member["position"] for member in database.rotations()[0]["members"]] == [0, 1]
+    database.activate_rotation(rotation["id"], first_position=0)
+    database.add_set(exercise["id"], day.isoformat(), set_payload())
+    day += timedelta(days=1)
+    rotated = database.rotations()[0]
+    assert rotated["duePosition"] == 1
+    assert rotated["dueExerciseId"] == exercise["id"]
+    database.add_set(exercise["id"], day.isoformat(), set_payload())
+    day += timedelta(days=1)
+    assert database.rotations()[0]["duePosition"] == 0
+
+
+def test_rotation_recommendations_return_one_occurrence_per_exercise_day(database, monkeypatch):
+    today = date(2026, 10, 20)
+    monkeypatch.setattr(
+        database,
+        "now_local",
+        lambda: datetime.combine(today, datetime.min.time()).replace(
+            hour=20, tzinfo=database.settings.timezone
+        ),
+    )
+    exercise = next(item for item in database.list_exercises("active", "Squats", None))
+    database.add_set(exercise["id"], (today - timedelta(days=7)).isoformat(), set_payload())
+    database.add_set(
+        exercise["id"], (today - timedelta(days=7)).isoformat(), set_payload(time="09:00")
+    )
+    database.add_set(exercise["id"], (today - timedelta(days=6)).isoformat(), set_payload())
+    assert [item["date"] for item in database.rotation_recommendations(7)] == [
+        (today - timedelta(days=6)).isoformat()
+    ]
+    assert [item["date"] for item in database.rotation_recommendations(8)] == [
+        (today - timedelta(days=7)).isoformat(),
+        (today - timedelta(days=6)).isoformat(),
+    ]
+    with pytest.raises(DomainError, match="at least one day"):
+        database.rotation_recommendations(0)

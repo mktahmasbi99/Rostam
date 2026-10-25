@@ -113,6 +113,20 @@ class SetWrite(BaseModel):
     holdSeconds: int | None = None
     resistanceKind: ResistanceKind
     weightKg: str | None = None
+    enrollInRotation: bool | None = None
+
+
+class RotationName(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class RotationMembers(BaseModel):
+    exerciseIds: list[int]
+
+
+class RotationActivation(BaseModel):
+    firstExerciseId: int | None = None
+    firstPosition: int | None = Field(default=None, ge=0)
 
 
 class ActivityCreate(BaseModel):

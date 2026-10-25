@@ -7,6 +7,7 @@ import { DayPage } from "./DayPage";
 
 vi.mock("../lib/api", () => ({
   api: {
+    rotations: vi.fn().mockResolvedValue([]),
     day: vi.fn(),
     exercises: vi.fn(),
     exerciseRecommendations: vi.fn(),

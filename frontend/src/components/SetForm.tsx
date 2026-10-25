@@ -9,9 +9,10 @@ interface Props {
   existing?: ExerciseSet;
   onSaved: () => void;
   onCancel: () => void;
+  firstSet?: boolean;
 }
 
-export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
+export function SetForm({ exercise, day, existing, onSaved, onCancel, firstSet = false }: Props) {
   const [time, setTime] = useState(existing?.time ?? "");
   const [timeEdited, setTimeEdited] = useState(false);
   const [repetitions, setRepetitions] = useState(existing?.repetitions?.toString() ?? "");
@@ -24,10 +25,24 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
   const [loading, setLoading] = useState(!existing);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [offerRotation, setOfferRotation] = useState(false);
+  const [enrollChoice, setEnrollChoice] = useState<boolean | null>(null);
+  const [checkingRotation, setCheckingRotation] = useState(firstSet);
   const measurementEdited = useRef({ repetitions: false, minutes: false, seconds: false, holdMinutes: false, holdSeconds: false });
   const resistanceEdited = useRef(false);
   const firstMeasurementInput = useRef<HTMLInputElement>(null);
   const [suggested, setSuggested] = useState({ repetitions: false, minutes: false, seconds: false, holdMinutes: false, holdSeconds: false, weight: false });
+
+  useEffect(() => {
+    if (!firstSet || existing) return;
+    let active = true;
+    Promise.all([api.config(), api.rotations()]).then(([config, rotations]) => {
+      if (!active) return;
+      const rotation = rotations.find((item) => item.active);
+      setOfferRotation(day === config.today && Boolean(rotation) && !rotation?.members.some((member) => member.exercise.id === exercise.id));
+    }).catch((caught) => setError(caught instanceof Error ? caught.message : "Could not check rotation.")).finally(() => active && setCheckingRotation(false));
+    return () => { active = false; };
+  }, [day, exercise.id, existing, firstSet]);
 
   useEffect(() => {
     const firstMeasurementSuggested = exercise.measurementType === "duration" ? suggested.minutes : suggested.repetitions;
@@ -109,6 +124,11 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
   }, [day, exercise.id, existing]);
 
   async function save() {
+    if (checkingRotation) return;
+    if (offerRotation && enrollChoice === null) {
+      setError("Choose Add to rotation or Just record it.");
+      return;
+    }
     setSaving(true);
     setError("");
     const payload: SetPayload = {
@@ -120,6 +140,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
       holdSeconds: exercise.measurementType === "timed_repetitions" ? Number(holdSeconds || 0) : null,
       resistanceKind: resistance,
       weightKg: resistance === "external" ? weight : null,
+      ...(offerRotation ? { enrollInRotation: enrollChoice } : {}),
     };
     try {
       if (existing) await api.updateSet(existing.id, payload);
@@ -147,8 +168,9 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel }: Props) {
         </>}
         {exercise.measurementType === "duration" ? <div className="duration-fields"><label>Minutes<input ref={firstMeasurementInput} className={suggested.minutes ? "suggested-value" : ""} type="number" min="0" step="1" inputMode="numeric" value={minutes} onFocus={(event) => suggested.minutes && event.currentTarget.select()} onClick={(event) => suggested.minutes && event.currentTarget.select()} onKeyDown={(event) => suggested.minutes && event.currentTarget.select()} onChange={(event) => editMeasurement("minutes", event.target.value, setMinutes)} autoFocus /></label><label>Seconds<input className={suggested.seconds ? "suggested-value" : ""} type="number" min="0" max="59" step="1" inputMode="numeric" value={seconds} onFocus={(event) => suggested.seconds && event.currentTarget.select()} onClick={(event) => suggested.seconds && event.currentTarget.select()} onKeyDown={(event) => suggested.seconds && event.currentTarget.select()} onChange={(event) => editMeasurement("seconds", event.target.value, setSeconds)} /></label></div> : exercise.measurementType === "timed_repetitions" ? <><label>Reps<input ref={firstMeasurementInput} className={suggested.repetitions ? "suggested-value" : ""} type="number" min="1" step="1" inputMode="numeric" value={repetitions} onFocus={(event) => suggested.repetitions && event.currentTarget.select()} onClick={(event) => suggested.repetitions && event.currentTarget.select()} onKeyDown={(event) => suggested.repetitions && event.currentTarget.select()} onChange={(event) => editMeasurement("repetitions", event.target.value, setRepetitions)} required autoFocus /></label><div className="duration-fields"><label>Hold minutes<input className={suggested.holdMinutes ? "suggested-value" : ""} type="number" min="0" step="1" inputMode="numeric" value={holdMinutes} onFocus={(event) => suggested.holdMinutes && event.currentTarget.select()} onClick={(event) => suggested.holdMinutes && event.currentTarget.select()} onKeyDown={(event) => suggested.holdMinutes && event.currentTarget.select()} onChange={(event) => editMeasurement("holdMinutes", event.target.value, setHoldMinutes)} /></label><label>Hold seconds<input className={suggested.holdSeconds ? "suggested-value" : ""} type="number" min="0" max="59" step="1" inputMode="numeric" value={holdSeconds} onFocus={(event) => suggested.holdSeconds && event.currentTarget.select()} onClick={(event) => suggested.holdSeconds && event.currentTarget.select()} onKeyDown={(event) => suggested.holdSeconds && event.currentTarget.select()} onChange={(event) => editMeasurement("holdSeconds", event.target.value, setHoldSeconds)} /></label></div></> : <label>Reps<input ref={firstMeasurementInput} className={suggested.repetitions ? "suggested-value" : ""} type="number" min="1" step="1" inputMode="numeric" value={repetitions} onFocus={(event) => suggested.repetitions && event.currentTarget.select()} onClick={(event) => suggested.repetitions && event.currentTarget.select()} onKeyDown={(event) => suggested.repetitions && event.currentTarget.select()} onChange={(event) => editMeasurement("repetitions", event.target.value, setRepetitions)} required autoFocus /></label>}
       </div>
+      {offerRotation && <fieldset className="rotation-offer"><legend>Add this exercise to your active rotation?</legend><label><input type="radio" name={`rotation-${exercise.id}`} checked={enrollChoice === true} onChange={() => setEnrollChoice(true)} /> Add to rotation</label><label><input type="radio" name={`rotation-${exercise.id}`} checked={enrollChoice === false} onChange={() => setEnrollChoice(false)} /> Just record it</label></fieldset>}
       {error && <div className="save-error" role="alert"><span>{error} Your values remain unsaved on this page.</span><button type="button" onClick={() => void save()}><RotateCcw />Retry</button></div>}
-      <div className="draft-actions"><button type="button" className="icon-button" aria-label="Cancel set" onClick={onCancel}><X /></button><button type="submit" className="save-set" aria-label={saving ? "Saving set" : "Save set"} disabled={saving}><Check /></button></div>
+      <div className="draft-actions"><button type="button" className="icon-button" aria-label="Cancel set" onClick={onCancel}><X /></button><button type="submit" className="save-set" aria-label={saving ? "Saving set" : "Save set"} disabled={saving || checkingRotation}><Check /></button></div>
     </form>
   );
 }

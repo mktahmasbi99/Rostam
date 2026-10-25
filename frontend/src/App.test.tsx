@@ -10,6 +10,7 @@ vi.mock("./lib/api", () => ({
     day: vi.fn(),
     calendar: vi.fn(),
     exercises: vi.fn(),
+    rotations: vi.fn(),
     backups: vi.fn(),
   },
 }));
@@ -20,6 +21,7 @@ describe("Rostam shell", () => {
     vi.mocked(api.day).mockResolvedValue({ date: "2026-09-13", sections: [] });
     vi.mocked(api.calendar).mockResolvedValue({ month: "2026-09", activeDates: ["2026-09-13"] });
     vi.mocked(api.exercises).mockResolvedValue([]);
+    vi.mocked(api.rotations).mockResolvedValue([]);
     vi.mocked(api.backups).mockResolvedValue([]);
   });
 
@@ -28,6 +30,14 @@ describe("Rostam shell", () => {
     expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
     expect(await screen.findByText("No activity recorded")).toBeInTheDocument();
     expect(screen.queryByText(/goal/i)).not.toBeInTheDocument();
+  });
+
+  it("opens Rotations from the primary navigation", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Rotations" }));
+    expect(await screen.findByRole("heading", { name: "Rotations" })).toBeInTheDocument();
+    expect(api.rotations).toHaveBeenCalled();
   });
 
   it("opens the calendar from the day heading and returns through the standard ledger", async () => {

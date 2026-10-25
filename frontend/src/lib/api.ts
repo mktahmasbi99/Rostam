@@ -1,4 +1,4 @@
-import type { Activity, ActivityEntry, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, SetPayload } from "./types";
+import type { Activity, ActivityEntry, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, Rotation, RotationRecommendation, SetPayload } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -22,6 +22,18 @@ const json = (method: string, body?: unknown): RequestInit => ({
 });
 
 export const api = {
+  rotations: (status: "active" | "archived" | "all" = "active") => request<Rotation[]>(`/api/rotations?status=${status}`),
+  createRotation: (name: string) => request<Rotation>("/api/rotations", json("POST", { name })),
+  renameRotation: (id: number, name: string) => request<Rotation>(`/api/rotations/${id}`, json("PATCH", { name })),
+  deleteRotation: (id: number) => request<void>(`/api/rotations/${id}`, { method: "DELETE" }),
+  archiveRotation: (id: number) => request<Rotation>(`/api/rotations/${id}/archive`, { method: "POST" }),
+  restoreRotation: (id: number) => request<Rotation>(`/api/rotations/${id}/restore`, { method: "POST" }),
+  setRotationMembers: (id: number, exerciseIds: number[]) => request<Rotation>(`/api/rotations/${id}/members`, json("PUT", { exerciseIds })),
+  activateRotation: (id: number, firstPosition: number) => request<Rotation>(`/api/rotations/${id}/activate`, json("POST", { firstPosition })),
+  rotationRecommendations: (days: number) => request<RotationRecommendation[]>(`/api/rotation-recommendations?days=${days}`),
+  deactivateRotation: (id: number) => request<Rotation>(`/api/rotations/${id}/deactivate`, { method: "POST" }),
+  skipRotation: (id: number) => request<Rotation>(`/api/rotations/${id}/skip-today`, { method: "POST" }),
+  undoRotationSkip: (id: number) => request<Rotation>(`/api/rotations/${id}/skip-today`, { method: "DELETE" }),
   config: () => request<Config>("/api/config"),
   profile: () => request<Profile>("/api/profile"),
   updateProfile: (payload: ProfilePayload) => request<Profile>("/api/profile", json("PUT", payload)),

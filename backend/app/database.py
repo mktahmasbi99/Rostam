@@ -75,7 +75,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "rostam"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 16
 MUSCLE_GROUPS = (
     ("abs", "Abs"),
     ("back", "Back"),
@@ -707,6 +707,99 @@ class RostamDatabase:
                     """
                 )
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (13)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 14").fetchone()
+                is None
+            ):
+                connection.executescript(
+                    """
+                    CREATE TABLE rotations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        active INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0, 1)),
+                        due_exercise_id INTEGER,
+                        resolved_date TEXT,
+                        resolved_kind TEXT CHECK (resolved_kind IN ('completed', 'skipped'))
+                    );
+                    CREATE UNIQUE INDEX one_active_rotation ON rotations(active) WHERE active = 1;
+                    CREATE TABLE rotation_members (
+                        rotation_id INTEGER NOT NULL REFERENCES rotations(id) ON DELETE CASCADE,
+                        exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+                        position INTEGER NOT NULL,
+                        enrolled_date TEXT,
+                        enroll_sequence INTEGER,
+                        auto_order INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY (rotation_id, exercise_id)
+                    );
+                    """
+                )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (14)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 15").fetchone()
+                is None
+            ):
+                rotation_columns = {
+                    row["name"] for row in connection.execute("PRAGMA table_info(rotations)")
+                }
+                if "due_position" not in rotation_columns:
+                    connection.execute("ALTER TABLE rotations ADD COLUMN due_position INTEGER")
+                    connection.execute(
+                        """UPDATE rotations SET due_position = (
+                            SELECT position FROM rotation_members
+                            WHERE rotation_id = rotations.id
+                              AND exercise_id = rotations.due_exercise_id
+                            ORDER BY position LIMIT 1
+                        )"""
+                    )
+                member_columns = {
+                    row["name"] for row in connection.execute("PRAGMA table_info(rotation_members)")
+                }
+                enrolled_date = (
+                    "enrolled_date"
+                    if "enrolled_date" in member_columns
+                    else "substr(enrolled_at, 1, 10)"
+                    if "enrolled_at" in member_columns
+                    else "NULL"
+                )
+                enroll_sequence = (
+                    "enroll_sequence" if "enroll_sequence" in member_columns else "NULL"
+                )
+                auto_order = "auto_order" if "auto_order" in member_columns else "0"
+                connection.executescript(
+                    f"""
+                    DROP TABLE IF EXISTS rotation_members_new;
+                    CREATE TABLE rotation_members_new (
+                        member_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        rotation_id INTEGER NOT NULL REFERENCES rotations(id) ON DELETE CASCADE,
+                        exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+                        position INTEGER NOT NULL,
+                        enrolled_date TEXT,
+                        enroll_sequence INTEGER,
+                        auto_order INTEGER NOT NULL DEFAULT 0,
+                        UNIQUE (rotation_id, position)
+                    );
+                    INSERT INTO rotation_members_new(
+                        rotation_id, exercise_id, position, enrolled_date,
+                        enroll_sequence, auto_order
+                    ) SELECT rotation_id, exercise_id, position, {enrolled_date},
+                        {enroll_sequence}, {auto_order} FROM rotation_members ORDER BY rotation_id, position;
+                    DROP TABLE rotation_members;
+                    ALTER TABLE rotation_members_new RENAME TO rotation_members;
+                    CREATE INDEX idx_rotation_members_exercise
+                        ON rotation_members(exercise_id, rotation_id);
+                    """
+                )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (15)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 16").fetchone()
+                is None
+            ):
+                rotation_columns = {
+                    row["name"] for row in connection.execute("PRAGMA table_info(rotations)")
+                }
+                if "archived_at" not in rotation_columns:
+                    connection.execute("ALTER TABLE rotations ADD COLUMN archived_at TEXT")
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (16)")
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -1632,6 +1725,7 @@ class RostamDatabase:
         with self.connect() as connection:
             row = self._exercise_row(connection, exercise_id)
             if row["archived_at"] is None:
+                self._remove_from_rotations(connection, exercise_id)
                 connection.execute(
                     "UPDATE exercises SET archived_at = ?, updated_at = ? WHERE id = ?",
                     (self._utc_now(), self._utc_now(), exercise_id),
@@ -1658,6 +1752,7 @@ class RostamDatabase:
             self.create_backup("pre-delete")
             with self.connect() as connection:
                 connection.execute("BEGIN IMMEDIATE")
+                self._remove_from_rotations(connection, exercise_id)
                 connection.execute(
                     "DELETE FROM exercise_sets WHERE exercise_id = ?", (exercise_id,)
                 )
@@ -2178,6 +2273,29 @@ class RostamDatabase:
             exercise = self._exercise_row(connection, exercise_id)
             if exercise["archived_at"] is not None:
                 raise DomainError("Restore this exercise before adding a set.")
+            active = connection.execute("SELECT * FROM rotations WHERE active = 1").fetchone()
+            first_today = (
+                connection.execute(
+                    "SELECT 1 FROM exercise_sets WHERE entry_date = ? AND exercise_id = ?",
+                    (day_value, exercise_id),
+                ).fetchone()
+                is None
+            )
+            member = (
+                active
+                and connection.execute(
+                    "SELECT 1 FROM rotation_members WHERE rotation_id = ? AND exercise_id = ?",
+                    (active["id"], exercise_id),
+                ).fetchone()
+            )
+            if (
+                active
+                and first_today
+                and not member
+                and day_value == self.today().isoformat()
+                and getattr(payload, "enrollInRotation", None) is None
+            ):
+                raise DomainError("Choose Add to rotation or Just record it before saving.")
             reps, duration, hold, resistance, weight, equipment, custom = self._validate_set(
                 exercise,
                 payload.repetitions,
@@ -2226,6 +2344,11 @@ class RostamDatabase:
                     now,
                 ),
             )
+            if active and day_value == self.today().isoformat():
+                self._roll_rotation(connection, active["id"])
+                if first_today and not member and getattr(payload, "enrollInRotation", None):
+                    self._enroll_today(connection, active["id"], exercise_id, day_value)
+                self._resolve_due_if_logged(connection, active["id"], day_value)
             connection.commit()
             row = connection.execute(
                 "SELECT * FROM exercise_sets WHERE id = ?", (cursor.lastrowid,)
@@ -2275,6 +2398,10 @@ class RostamDatabase:
                     set_id,
                 ),
             )
+            if current["entry_date"] == self.today().isoformat():
+                active = connection.execute("SELECT id FROM rotations WHERE active = 1").fetchone()
+                if active:
+                    self._reorder_enrolled_today(connection, active["id"], current["entry_date"])
             connection.commit()
             return self._serialize_set(
                 connection.execute("SELECT * FROM exercise_sets WHERE id = ?", (set_id,)).fetchone()
@@ -2300,7 +2427,492 @@ class RostamDatabase:
                     "DELETE FROM day_exercises WHERE entry_date = ? AND exercise_id = ?",
                     (row["entry_date"], row["exercise_id"]),
                 )
+            if row["entry_date"] == self.today().isoformat():
+                active = connection.execute("SELECT * FROM rotations WHERE active = 1").fetchone()
+                if active:
+                    self._reorder_enrolled_today(connection, active["id"], row["entry_date"])
+                if active and active["due_exercise_id"] == row["exercise_id"]:
+                    remaining = connection.execute(
+                        "SELECT 1 FROM exercise_sets WHERE entry_date = ? AND exercise_id = ?",
+                        (row["entry_date"], row["exercise_id"]),
+                    ).fetchone()
+                    if not remaining and active["resolved_kind"] == "completed":
+                        connection.execute(
+                            "UPDATE rotations SET resolved_date = NULL, resolved_kind = NULL WHERE id = ?",
+                            (active["id"],),
+                        )
             connection.commit()
+
+    def _rotation_ids(self, connection: sqlite3.Connection, rotation_id: int) -> list[int]:
+        return [
+            row["exercise_id"]
+            for row in connection.execute(
+                "SELECT exercise_id FROM rotation_members WHERE rotation_id = ? ORDER BY position",
+                (rotation_id,),
+            )
+        ]
+
+    def _set_rotation_order(
+        self, connection: sqlite3.Connection, rotation_id: int, member_ids: list[int]
+    ) -> None:
+        rows = connection.execute(
+            "SELECT member_id FROM rotation_members WHERE rotation_id = ? ORDER BY position",
+            (rotation_id,),
+        ).fetchall()
+        if len(rows) != len(member_ids) or {row["member_id"] for row in rows} != set(member_ids):
+            raise DomainError("Rotation member order is inconsistent.")
+        # Move positions out of the unique range before applying the new order.
+        connection.execute(
+            "UPDATE rotation_members SET position = -position - 1 WHERE rotation_id = ?",
+            (rotation_id,),
+        )
+        for position, member_id in enumerate(member_ids):
+            connection.execute(
+                "UPDATE rotation_members SET position = ? WHERE member_id = ?",
+                (position, member_id),
+            )
+
+    def _rotation_row(self, connection: sqlite3.Connection, rotation_id: int) -> sqlite3.Row:
+        row = connection.execute("SELECT * FROM rotations WHERE id = ?", (rotation_id,)).fetchone()
+        if row is None:
+            raise DomainError("Rotation not found.")
+        return row
+
+    def _roll_rotation(self, connection: sqlite3.Connection, rotation_id: int) -> None:
+        row = self._rotation_row(connection, rotation_id)
+        today = self.today().isoformat()
+        ids = self._rotation_ids(connection, rotation_id)
+        due_position = row["due_position"]
+        if due_position is None or not 0 <= due_position < len(ids):
+            due_position = 0 if ids else None
+            due = ids[due_position] if due_position is not None else None
+            connection.execute(
+                "UPDATE rotations SET due_exercise_id = ?, due_position = ?, resolved_date = NULL, "
+                "resolved_kind = NULL WHERE id = ?",
+                (due, due_position, rotation_id),
+            )
+        elif row["resolved_date"] and row["resolved_date"] < today:
+            start = due_position
+            due = ids[start]
+            for step in range(1, len(ids) + 1):
+                candidate_position = (start + step) % len(ids)
+                candidate = ids[candidate_position]
+                newly_completed = connection.execute(
+                    "SELECT 1 FROM rotation_members m WHERE m.rotation_id = ? "
+                    "AND m.position = ? AND m.enrolled_date = ? AND EXISTS ("
+                    "SELECT 1 FROM exercise_sets s WHERE s.exercise_id = m.exercise_id "
+                    "AND s.entry_date = m.enrolled_date)",
+                    (rotation_id, candidate_position, row["resolved_date"]),
+                ).fetchone()
+                if not newly_completed:
+                    due = candidate
+                    due_position = candidate_position
+                    break
+            connection.execute(
+                "UPDATE rotations SET due_exercise_id = ?, due_position = ?, resolved_date = NULL, "
+                "resolved_kind = NULL WHERE id = ?",
+                (due, due_position, rotation_id),
+            )
+
+    def _resolve_due_if_logged(
+        self, connection: sqlite3.Connection, rotation_id: int, day: str
+    ) -> None:
+        row = self._rotation_row(connection, rotation_id)
+        if row["due_exercise_id"] is None:
+            return
+        logged = connection.execute(
+            "SELECT 1 FROM exercise_sets WHERE entry_date = ? AND exercise_id = ? LIMIT 1",
+            (day, row["due_exercise_id"]),
+        ).fetchone()
+        if logged:
+            connection.execute(
+                "UPDATE rotations SET resolved_date = ?, resolved_kind = 'completed' WHERE id = ?",
+                (day, rotation_id),
+            )
+
+    def _remove_from_rotations(self, connection: sqlite3.Connection, exercise_id: int) -> None:
+        rotations = connection.execute(
+            "SELECT DISTINCT rotation_id FROM rotation_members WHERE exercise_id = ?",
+            (exercise_id,),
+        ).fetchall()
+        for row in rotations:
+            rotation_id = row["rotation_id"]
+            rotation = self._rotation_row(connection, rotation_id)
+            due_member = (
+                connection.execute(
+                    "SELECT member_id FROM rotation_members WHERE rotation_id = ? AND position = ?",
+                    (rotation_id, rotation["due_position"]),
+                ).fetchone()
+                if rotation["due_position"] is not None
+                else None
+            )
+            connection.execute(
+                "DELETE FROM rotation_members WHERE rotation_id = ? AND exercise_id = ?",
+                (rotation_id, exercise_id),
+            )
+            remaining = connection.execute(
+                "SELECT member_id, exercise_id FROM rotation_members WHERE rotation_id = ? ORDER BY position",
+                (rotation_id,),
+            ).fetchall()
+            self._set_rotation_order(
+                connection, rotation_id, [item["member_id"] for item in remaining]
+            )
+            next_position = next(
+                (
+                    i
+                    for i, item in enumerate(remaining)
+                    if due_member and item["member_id"] == due_member["member_id"]
+                ),
+                0 if remaining else None,
+            )
+            due_id = remaining[next_position]["exercise_id"] if next_position is not None else None
+            connection.execute(
+                "UPDATE rotations SET due_exercise_id = ?, due_position = ? WHERE id = ?",
+                (due_id, next_position, rotation_id),
+            )
+            self._roll_rotation(connection, rotation_id)
+
+    def _reorder_enrolled_today(
+        self, connection: sqlite3.Connection, rotation_id: int, day: str
+    ) -> None:
+        row = self._rotation_row(connection, rotation_id)
+        ids = self._rotation_ids(connection, rotation_id)
+        due = row["due_exercise_id"]
+        due_position = row["due_position"]
+        newcomers = connection.execute(
+            "SELECT member_id, exercise_id FROM rotation_members WHERE rotation_id = ? AND enrolled_date = ? "
+            "AND auto_order = 1",
+            (rotation_id, day),
+        ).fetchall()
+        newcomer_ids = {item["member_id"] for item in newcomers if item["exercise_id"] != due}
+        if not newcomer_ids or due not in ids or due_position is None:
+            return
+        ordered_new = sorted(
+            newcomer_ids,
+            key=lambda member_id: (
+                connection.execute(
+                    "SELECT MIN(s.occurred_at) FROM exercise_sets s JOIN rotation_members m "
+                    "ON s.exercise_id = m.exercise_id WHERE m.member_id = ? AND entry_date = ?",
+                    (member_id, day),
+                ).fetchone()[0]
+                or "9999",
+                connection.execute(
+                    "SELECT enroll_sequence FROM rotation_members WHERE member_id = ?",
+                    (member_id,),
+                ).fetchone()[0],
+            ),
+        )
+        member_rows = connection.execute(
+            "SELECT member_id, exercise_id FROM rotation_members WHERE rotation_id = ? ORDER BY position",
+            (rotation_id,),
+        ).fetchall()
+        remaining = [item for item in member_rows if item["member_id"] not in newcomer_ids]
+        due_member = next(
+            (
+                item
+                for item in remaining
+                if item["member_id"]
+                == connection.execute(
+                    "SELECT member_id FROM rotation_members WHERE rotation_id = ? AND position = ?",
+                    (rotation_id, due_position),
+                ).fetchone()["member_id"]
+            ),
+            None,
+        )
+        if due_member is None:
+            return
+        at = remaining.index(due_member) + 1
+        new_rows = [
+            connection.execute(
+                "SELECT member_id, exercise_id FROM rotation_members WHERE member_id = ?",
+                (member_id,),
+            ).fetchone()
+            for member_id in ordered_new
+        ]
+        ordered_members = remaining[:at] + new_rows + remaining[at:]
+        self._set_rotation_order(
+            connection, rotation_id, [item["member_id"] for item in ordered_members]
+        )
+
+    def _enroll_today(
+        self, connection: sqlite3.Connection, rotation_id: int, exercise_id: int, day: str
+    ) -> None:
+        sequence = connection.execute(
+            "SELECT COALESCE(MAX(enroll_sequence), 0) + 1 FROM rotation_members "
+            "WHERE rotation_id = ?",
+            (rotation_id,),
+        ).fetchone()[0]
+        connection.execute(
+            "INSERT INTO rotation_members(rotation_id, exercise_id, position, enrolled_date, "
+            "enroll_sequence, auto_order) VALUES (?, ?, ?, ?, ?, 1)",
+            (
+                rotation_id,
+                exercise_id,
+                len(self._rotation_ids(connection, rotation_id)),
+                day,
+                sequence,
+            ),
+        )
+        self._reorder_enrolled_today(connection, rotation_id, day)
+
+    def _serialize_rotation(self, connection: sqlite3.Connection, row: sqlite3.Row) -> dict:
+        ids = self._rotation_ids(connection, row["id"])
+        today = self.today().isoformat()
+        members = []
+        for position, exercise_id in enumerate(ids):
+            exercise = connection.execute(
+                "SELECT e.*, EXISTS(SELECT 1 FROM exercise_sets s WHERE s.exercise_id = e.id) "
+                "AS has_history FROM exercises e WHERE e.id = ?",
+                (exercise_id,),
+            ).fetchone()
+            last = connection.execute(
+                "SELECT MAX(entry_date) FROM exercise_sets WHERE exercise_id = ? "
+                "AND entry_date <= ?",
+                (exercise_id, today),
+            ).fetchone()[0]
+            members.append(
+                {
+                    "exercise": self._serialize_exercise(exercise, connection),
+                    "position": position,
+                    "lastDoneDate": last,
+                    "daysSinceLastDone": (self.today() - date.fromisoformat(last)).days
+                    if last
+                    else None,
+                }
+            )
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "active": bool(row["active"]),
+            "dueExerciseId": row["due_exercise_id"],
+            "duePosition": row["due_position"],
+            "resolvedToday": row["resolved_kind"] if row["resolved_date"] == today else None,
+            "archivedAt": row["archived_at"],
+            "members": members,
+        }
+
+    def rotations(self, status: str = "active") -> list[dict]:
+        if status not in {"active", "archived", "all"}:
+            raise DomainError("Rotation status must be active, archived, or all.")
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            archived_filter = (
+                " WHERE archived_at IS NULL"
+                if status == "active"
+                else (" WHERE archived_at IS NOT NULL" if status == "archived" else "")
+            )
+            rows = connection.execute(
+                f"SELECT id FROM rotations{archived_filter} ORDER BY id"
+            ).fetchall()
+            for row in rows:
+                if connection.execute(
+                    "SELECT active FROM rotations WHERE id = ?", (row["id"],)
+                ).fetchone()[0]:
+                    self._roll_rotation(connection, row["id"])
+            result = [
+                self._serialize_rotation(connection, self._rotation_row(connection, row["id"]))
+                for row in rows
+            ]
+            connection.commit()
+            return result
+
+    def rotation_recommendations(self, days: int) -> list[dict]:
+        if days < 1:
+            raise DomainError("Lookback must be at least one day.")
+        end = self.today()
+        try:
+            start = end - timedelta(days=days - 1)
+        except OverflowError as exc:
+            raise DomainError("Lookback is too large.") from exc
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT de.exercise_id, de.entry_date
+                FROM day_exercises de JOIN exercises e ON e.id = de.exercise_id
+                WHERE de.entry_date BETWEEN ? AND ? AND e.archived_at IS NULL
+                ORDER BY de.entry_date, de.display_order
+                """,
+                (start.isoformat(), end.isoformat()),
+            ).fetchall()
+            result = []
+            for row in rows:
+                exercise = self._exercise_row(connection, row["exercise_id"])
+                result.append(
+                    {
+                        "exercise": self._serialize_exercise(exercise, connection),
+                        "date": row["entry_date"],
+                    }
+                )
+            return result
+
+    def create_rotation(self, name: str) -> dict:
+        name = " ".join(name.split())
+        if not name or len(name) > 100:
+            raise DomainError("Rotation name must be 1–100 characters.")
+        with self.connect() as connection:
+            cursor = connection.execute("INSERT INTO rotations(name) VALUES (?)", (name,))
+            connection.commit()
+            return self._serialize_rotation(
+                connection, self._rotation_row(connection, cursor.lastrowid)
+            )
+
+    def rename_rotation(self, rotation_id: int, name: str) -> dict:
+        name = " ".join(name.split())
+        if not name or len(name) > 100:
+            raise DomainError("Rotation name must be 1–100 characters.")
+        with self.connect() as connection:
+            self._rotation_row(connection, rotation_id)
+            connection.execute("UPDATE rotations SET name = ? WHERE id = ?", (name, rotation_id))
+            connection.commit()
+            return self._serialize_rotation(connection, self._rotation_row(connection, rotation_id))
+
+    def delete_rotation(self, rotation_id: int) -> None:
+        with self.connect() as connection:
+            self._rotation_row(connection, rotation_id)
+            connection.execute("DELETE FROM rotations WHERE id = ?", (rotation_id,))
+            connection.commit()
+
+    def archive_rotation(self, rotation_id: int, archived: bool = True) -> dict:
+        with self.connect() as connection:
+            row = self._rotation_row(connection, rotation_id)
+            if archived:
+                connection.execute(
+                    "UPDATE rotations SET archived_at = ?, active = 0 WHERE id = ?",
+                    (self._utc_now(), rotation_id),
+                )
+            else:
+                connection.execute(
+                    "UPDATE rotations SET archived_at = NULL WHERE id = ?", (rotation_id,)
+                )
+            connection.commit()
+            return self._serialize_rotation(connection, self._rotation_row(connection, row["id"]))
+
+    def set_rotation_members(self, rotation_id: int, exercise_ids: list[int]) -> dict:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._rotation_row(connection, rotation_id)
+            for exercise_id in exercise_ids:
+                if self._exercise_row(connection, exercise_id)["archived_at"]:
+                    raise DomainError("Archived exercises cannot join a rotation.")
+            old = connection.execute(
+                "SELECT exercise_id, position, member_id, enrolled_date, enroll_sequence, auto_order "
+                "FROM rotation_members "
+                "WHERE rotation_id = ? ORDER BY position",
+                (rotation_id,),
+            ).fetchall()
+            old_due_position = self._rotation_row(connection, rotation_id)["due_position"]
+            old_due_member = (
+                old[old_due_position]["member_id"]
+                if old_due_position is not None and old_due_position < len(old)
+                else None
+            )
+            unused = list(old)
+            ordered_member_ids = []
+            for position, exercise_id in enumerate(exercise_ids):
+                existing = next(
+                    (item for item in unused if item["exercise_id"] == exercise_id), None
+                )
+                if existing is not None:
+                    unused.remove(existing)
+                    ordered_member_ids.append(existing["member_id"])
+                else:
+                    cursor = connection.execute(
+                        "INSERT INTO rotation_members(rotation_id, exercise_id, position) "
+                        "VALUES (?, ?, ?)",
+                        (rotation_id, exercise_id, -1_000_000_000 - position),
+                    )
+                    ordered_member_ids.append(cursor.lastrowid)
+            removed_ids = [item["member_id"] for item in unused]
+            if removed_ids:
+                connection.executemany(
+                    "DELETE FROM rotation_members WHERE member_id = ?",
+                    [(member_id,) for member_id in removed_ids],
+                )
+            connection.execute(
+                "UPDATE rotation_members SET position = -member_id WHERE rotation_id = ?",
+                (rotation_id,),
+            )
+            for position, member_id in enumerate(ordered_member_ids):
+                connection.execute(
+                    "UPDATE rotation_members SET position = ? WHERE member_id = ?",
+                    (position, member_id),
+                )
+            next_due_position = (
+                ordered_member_ids.index(old_due_member)
+                if old_due_member in ordered_member_ids
+                else (0 if exercise_ids else None)
+            )
+            next_due = exercise_ids[next_due_position] if next_due_position is not None else None
+            connection.execute(
+                "UPDATE rotations SET due_exercise_id = ?, due_position = ? WHERE id = ?",
+                (next_due, next_due_position, rotation_id),
+            )
+            connection.execute(
+                "UPDATE rotation_members SET auto_order = 0 WHERE rotation_id = ?", (rotation_id,)
+            )
+            self._roll_rotation(connection, rotation_id)
+            connection.commit()
+            return self._serialize_rotation(connection, self._rotation_row(connection, rotation_id))
+
+    def activate_rotation(
+        self,
+        rotation_id: int,
+        first_exercise_id: int | None = None,
+        *,
+        first_position: int | None = None,
+    ) -> dict:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._rotation_row(connection, rotation_id)
+            ids = self._rotation_ids(connection, rotation_id)
+            if first_position is None:
+                first_position = ids.index(first_exercise_id) if first_exercise_id in ids else -1
+            if first_position < 0 or first_position >= len(ids):
+                raise DomainError("Choose an exercise in this rotation to start with.")
+            first_exercise_id = ids[first_position]
+            connection.execute("UPDATE rotations SET active = 0 WHERE active = 1")
+            connection.execute(
+                "UPDATE rotations SET active = 1, due_exercise_id = ?, due_position = ?, "
+                "resolved_date = NULL, resolved_kind = NULL WHERE id = ?",
+                (first_exercise_id, first_position, rotation_id),
+            )
+            self._resolve_due_if_logged(connection, rotation_id, self.today().isoformat())
+            connection.commit()
+            return self._serialize_rotation(connection, self._rotation_row(connection, rotation_id))
+
+    def deactivate_rotation(self, rotation_id: int) -> dict:
+        with self.connect() as connection:
+            row = self._rotation_row(connection, rotation_id)
+            if row["active"]:
+                connection.execute("UPDATE rotations SET active = 0 WHERE id = ?", (rotation_id,))
+                connection.commit()
+            return self._serialize_rotation(connection, self._rotation_row(connection, rotation_id))
+
+    def skip_rotation_today(self, rotation_id: int, undo: bool = False) -> dict:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._roll_rotation(connection, rotation_id)
+            row = self._rotation_row(connection, rotation_id)
+            if not row["active"] or row["due_exercise_id"] is None:
+                raise DomainError("Activate a rotation with members first.")
+            today = self.today().isoformat()
+            if undo:
+                if row["resolved_date"] != today or row["resolved_kind"] != "skipped":
+                    raise DomainError("There is no skip to undo today.")
+                connection.execute(
+                    "UPDATE rotations SET resolved_date = NULL, resolved_kind = NULL WHERE id = ?",
+                    (rotation_id,),
+                )
+                self._resolve_due_if_logged(connection, rotation_id, today)
+            else:
+                if row["resolved_date"] == today:
+                    raise DomainError("Today's due exercise is already resolved.")
+                connection.execute(
+                    "UPDATE rotations SET resolved_date = ?, resolved_kind = 'skipped' WHERE id = ?",
+                    (today, rotation_id),
+                )
+            connection.commit()
+            return self._serialize_rotation(connection, self._rotation_row(connection, rotation_id))
 
     def create_backup(self, category: str) -> dict:
         """Take a consistent online snapshot; never copy a WAL database on disk."""

@@ -1,20 +1,21 @@
 import { ChevronDown, Pause, Plus, Search, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
-import type { Exercise, ExerciseRecommendations, MeasurementType, RecommendationItem } from "../lib/types";
+import type { Exercise, ExerciseRecommendations, MeasurementType, RecommendationItem, Rotation } from "../lib/types";
 import { ExerciseEditor } from "./ExerciseEditor";
 import { ExerciseImage } from "./ExerciseImage";
 import { Modal } from "./Modal";
 
 interface Props {
   day: string;
+  today?: string;
   presentIds: number[];
   onChoose: (exercise: Exercise) => void;
   onClose: () => void;
 }
 
 type View = "library" | "recommendations";
-type RecommendationMode = "exercise" | "muscle";
+type RecommendationMode = "rotation" | "exercise" | "muscle";
 
 interface RecommendationRun {
   label: string;
@@ -49,8 +50,10 @@ function exerciseRecommendationRuns(recommendations: ExerciseRecommendations): R
   }, []);
 }
 
-export function ExercisePicker({ day, presentIds, onChoose, onClose }: Props) {
+export function ExercisePicker({ day, today, presentIds, onChoose, onClose }: Props) {
   const [view, setView] = useState<View>("library");
+  const [rotation, setRotation] = useState<Rotation | null>(null);
+  const [loadingRotation, setLoadingRotation] = useState(true);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [recommendations, setRecommendations] = useState<ExerciseRecommendations | null>(null);
   const [query, setQuery] = useState("");
@@ -63,6 +66,33 @@ export function ExercisePicker({ day, presentIds, onChoose, onClose }: Props) {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const dismissedPauseMenu = useRef(false);
+  const restoringPreference = useRef(false);
+  const rotationMode = recommendationMode === "rotation";
+
+  useEffect(() => {
+    let active = true;
+    api.rotations().then((items) => {
+      if (!active) return;
+      const current = day === today ? items.find((item) => item.active) ?? null : null;
+      setRotation(current);
+      if (current) { setView("recommendations"); setRecommendationMode("rotation"); }
+      else {
+        const last = window.localStorage.getItem("rostam-picker-view");
+        if (last === "exercise" || last === "muscle") {
+          restoringPreference.current = true;
+          setView("recommendations"); setRecommendationMode(last);
+        }
+      }
+    }).catch(() => { /* Library remains available if rotations cannot load. */ })
+      .finally(() => active && setLoadingRotation(false));
+    return () => { active = false; };
+  }, [day, today]);
+
+  function selectRecommendationMode(mode: RecommendationMode) {
+    restoringPreference.current = false;
+    setRecommendationMode(mode);
+    if (mode !== "rotation") window.localStorage.setItem("rostam-picker-view", mode);
+  }
 
   useEffect(() => {
     if (view !== "library") return;
@@ -75,14 +105,22 @@ export function ExercisePicker({ day, presentIds, onChoose, onClose }: Props) {
   }, [view, query, filter]);
 
   useEffect(() => {
-    if (view !== "recommendations") return;
+    if (view !== "recommendations" || rotationMode) return;
     let active = true;
     setError("");
     api.exerciseRecommendations(day, { includePaused })
-      .then((items) => active && setRecommendations(items))
+      .then((items) => {
+        if (!active) return;
+        setRecommendations(items);
+        if (restoringPreference.current && !items.allExercises.some((item) => item.daysSinceLastDone !== null)) {
+          setView("library");
+          window.localStorage.setItem("rostam-picker-view", "library");
+        }
+        restoringPreference.current = false;
+      })
       .catch((caught) => active && setError(caught instanceof Error ? caught.message : "Could not load recommendations."));
     return () => { active = false; };
-  }, [view, day, includePaused]);
+  }, [view, day, includePaused, rotationMode]);
 
   function choose(exercise: Exercise) {
     if (dismissedPauseMenu.current) {
@@ -126,17 +164,20 @@ export function ExercisePicker({ day, presentIds, onChoose, onClose }: Props) {
     </Modal>;
   }
 
+  if (loadingRotation) return <Modal title="Add exercise" onClose={onClose} wide><p>Loading exercises…</p></Modal>;
+
   if (view === "recommendations") {
     const hasResults = Boolean(recommendations?.allExercises.length);
     const exerciseRuns = recommendations ? exerciseRecommendationRuns(recommendations) : [];
     return <Modal title="Recommendations" onClose={onClose} wide>
-      <div className="recommendation-toolbar"><button className="secondary" onClick={() => setView("library")}>Back to exercise library</button><button className="primary" onClick={() => setCreating(true)}><Plus />New exercise</button></div>
+      <div className="recommendation-toolbar"><button className="secondary" onClick={() => { setView("library"); window.localStorage.setItem("rostam-picker-view", "library"); }}>Go to exercise library</button><button className="primary" onClick={() => setCreating(true)}><Plus />New exercise</button></div>
       <div className="segmented recommendation-mode" role="group" aria-label="Recommendation view">
-        <button type="button" className={recommendationMode === "exercise" ? "selected" : ""} aria-pressed={recommendationMode === "exercise"} onClick={() => setRecommendationMode("exercise")}>By exercise</button>
-        <button type="button" className={recommendationMode === "muscle" ? "selected" : ""} aria-pressed={recommendationMode === "muscle"} onClick={() => setRecommendationMode("muscle")}>By muscle</button>
+        {rotation && <button type="button" className={recommendationMode === "rotation" ? "selected" : ""} aria-pressed={recommendationMode === "rotation"} onClick={() => selectRecommendationMode("rotation")}>Rotation</button>}
+        <button type="button" className={recommendationMode === "exercise" ? "selected" : ""} aria-pressed={recommendationMode === "exercise"} onClick={() => selectRecommendationMode("exercise")}>By exercise</button>
+        <button type="button" className={recommendationMode === "muscle" ? "selected" : ""} aria-pressed={recommendationMode === "muscle"} onClick={() => selectRecommendationMode("muscle")}>By muscle</button>
       </div>
-      <p className="recommendation-intro">{recommendationMode === "exercise" ? "Suggestions are ordered by when you last did each exercise." : "Suggestions are ordered by the muscle groups you have trained least recently."}</p>
-      <label className="checkbox-row recommendation-paused"><input type="checkbox" checked={includePaused} onChange={(event) => setIncludePaused(event.target.checked)} />Show paused</label>
+      <p className="recommendation-intro">{recommendationMode === "rotation" ? "Your due exercise comes first, followed by the rest of your rotation." : recommendationMode === "exercise" ? "Suggestions are ordered by when you last did each exercise." : "Suggestions are ordered by the muscle groups you have trained least recently."}</p>
+      {recommendationMode !== "rotation" && <label className="checkbox-row recommendation-paused"><input type="checkbox" checked={includePaused} onChange={(event) => setIncludePaused(event.target.checked)} />Show paused</label>}
       {notice && <p className="notice" role="status">{notice}</p>}
       {error && <p className="error" role="alert">{error}</p>}
       <div className="exercise-results" onPointerDownCapture={(event) => {
@@ -144,26 +185,44 @@ export function ExercisePicker({ day, presentIds, onChoose, onClose }: Props) {
         setOpenPauseId(null);
         if ((event.target as HTMLElement).closest(".exercise-result")) dismissedPauseMenu.current = true;
       }}>
+        {recommendationMode === "rotation" && rotation && <section className="recommendation-group rotation-recommendations"><h3>{rotation.name}</h3>{(() => {
+          const dueIndex = rotation.duePosition ?? rotation.members.findIndex((member) => member.exercise.id === rotation.dueExerciseId);
+          const ordered = dueIndex < 0 ? rotation.members : [...rotation.members.slice(dueIndex), ...rotation.members.slice(0, dueIndex)];
+          const seen = new Map<number, number>();
+          const totals = new Map<number, number>();
+          rotation.members.forEach((member) => totals.set(member.exercise.id, (totals.get(member.exercise.id) ?? 0) + 1));
+          return ordered.map((member, index) => {
+            const memberPosition = member.position ?? rotation.members.indexOf(member);
+            const occurrence = (seen.get(member.exercise.id) ?? 0) + 1;
+            seen.set(member.exercise.id, occurrence);
+            const due = memberPosition === dueIndex;
+            const added = presentIds.includes(member.exercise.id);
+            return <div className={due && day === today ? "rotation-due-row" : undefined} key={member.position ?? index}>
+              <button className={`exercise-result rotation-result ${due ? "due" : ""} ${due && added ? "muted" : ""}`} disabled={added} onClick={() => choose(member.exercise)}><ExerciseImage imageKey={member.exercise.imageKey} name={member.exercise.name} /><span><strong>{member.exercise.name}{(totals.get(member.exercise.id) ?? 0) > 1 ? ` · ${occurrence}` : ""}</strong><small>{due && <b>Due · </b>}{elapsed(member.daysSinceLastDone, "Last done")}</small>{due && added && <em className="rotation-badge">Added today</em>}{!due && added && <small>Already added</small>}</span></button>
+              {due && day === today && <div className="rotation-skip">{rotation.resolvedToday === "skipped" ? <><strong>Skipped today</strong><button className="secondary" onClick={async () => { try { setRotation(await api.undoRotationSkip(rotation.id)); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not undo skip."); } }}>Undo skip</button></> : !rotation.resolvedToday && <button className="secondary" onClick={async () => { try { setRotation(await api.skipRotation(rotation.id)); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not skip exercise."); } }}>Skip exercise</button>}</div>}
+            </div>;
+          });
+        })()}</section>}
         {recommendationMode === "exercise"
           ? exerciseRuns.map((run, index) => <section className="recommendation-group" key={`${run.label}-${index}`}><h3>{run.label}</h3>{run.items.map(recommendationResult)}</section>)
-          : <>
+          : recommendationMode === "muscle" ? <>
             {recommendations?.groups.map((group) => <section className="recommendation-group" key={group.muscle}><h3>{group.muscleName}<small>{elapsed(group.daysSinceLastTrained, "Last trained")}</small></h3>{group.exercises.map(recommendationResult)}</section>)}
             {recommendations?.unclassified.length ? <section className="recommendation-group"><h3>Muscles not set</h3>{recommendations.unclassified.map(recommendationResult)}</section> : null}
-          </>}
-        {recommendations?.neverTried.length ? <section className="never-tried"><button className="never-tried-toggle" onClick={() => setNeverOpen(!neverOpen)} aria-expanded={neverOpen}>Never tried ({recommendations.neverTried.length}) <ChevronDown className={neverOpen ? "rotated" : ""} /></button>{neverOpen && recommendations.neverTried.map(recommendationResult)}</section> : null}
-        {!error && recommendations && !hasResults && <p className="empty-copy">No recommendations available.</p>}
+          </> : null}
+        {recommendationMode !== "rotation" && recommendations?.neverTried.length ? <section className="never-tried"><button className="never-tried-toggle" onClick={() => setNeverOpen(!neverOpen)} aria-expanded={neverOpen}>Never tried ({recommendations.neverTried.length}) <ChevronDown className={neverOpen ? "rotated" : ""} /></button>{neverOpen && recommendations.neverTried.map(recommendationResult)}</section> : null}
+        {recommendationMode !== "rotation" && !error && recommendations && !hasResults && <p className="empty-copy">No recommendations available.</p>}
       </div>
     </Modal>;
   }
 
   return <Modal title="Add exercise" onClose={onClose} wide>
     <div className="picker-toolbar"><label className="search-box"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={query} onChange={(event) => setQuery(event.target.value)} autoFocus /></label><button className="primary" onClick={() => setCreating(true)}><Plus />New exercise</button></div>
-    <div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Repetitions</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed repetitions</button></div>
-    <button className="secondary recommendations-button icon-only-action" aria-label="Show recommendations" title="Show recommendations" onClick={() => { setRecommendationMode("exercise"); setView("recommendations"); }}><Sparkles /></button>
+    <div className="filter-row" aria-label="Measurement filter"><button className={!filter ? "selected" : ""} onClick={() => setFilter("")}>All</button><button className={filter === "repetitions" ? "selected" : ""} onClick={() => setFilter("repetitions")}>Reps</button><button className={filter === "duration" ? "selected" : ""} onClick={() => setFilter("duration")}>Duration</button><button className={filter === "timed_repetitions" ? "selected" : ""} onClick={() => setFilter("timed_repetitions")}>Timed reps</button></div>
+    <button className="secondary recommendations-button icon-only-action" aria-label="Show recommendations" title="Show recommendations" onClick={() => { selectRecommendationMode(rotation ? "rotation" : "exercise"); setView("recommendations"); }}><Sparkles /></button>
     {notice && <p className="notice" role="status">{notice}</p>}
     {error && <p className="error" role="alert">{error}</p>}
     <div className="exercise-results">
-      {exercises.map((exercise) => <button key={exercise.id} className="exercise-result" onClick={() => choose(exercise)}><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><span><strong>{exercise.name}</strong><small>{exercise.measurementType === "repetitions" ? "Repetitions" : exercise.measurementType === "duration" ? "Duration" : "Timed repetitions"}</small></span></button>)}
+      {exercises.map((exercise) => <button key={exercise.id} className="exercise-result" disabled={presentIds.includes(exercise.id)} onClick={() => choose(exercise)}><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><span><strong>{exercise.name}</strong><small>{presentIds.includes(exercise.id) ? "Already added" : exercise.measurementType === "repetitions" ? "Reps" : exercise.measurementType === "duration" ? "Duration" : "Timed reps"}</small></span></button>)}
       {!error && exercises.length === 0 && <p className="empty-copy">No matching exercises.</p>}
     </div>
   </Modal>;
