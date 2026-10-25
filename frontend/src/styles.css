@@ -487,15 +487,15 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .measurement-form, .profile-form { display: grid; gap: 12px; }
 .measurement-form { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
 .measurement-form h3 { margin: 0; font-size: 1rem; }
-.measurement-form .form-grid { grid-template-columns: repeat(3, 1fr); }
+.measurement-form .form-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
 .update-measurements { min-height: 40px; padding: 0 12px; }
-.measurement-summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.metric { padding: 14px; background: var(--surface-2); border-radius: 15px; }
+.measurement-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.metric { min-width: 0; padding: 14px; background: var(--surface-2); border-radius: 15px; }
 .metric > svg { float: right; color: var(--accent-dark); }
 .metric-update { width: 100%; min-height: 38px; margin-top: 12px; padding: 0 10px; }
 .metric span, .trend-card small { display: block; color: var(--muted); }
-.metric strong { display: block; font-size: 1.35rem; margin-top: 4px; }
-.trend-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.metric strong { display: block; min-width: 0; overflow-wrap: anywhere; font-size: 1.35rem; margin-top: 4px; }
+.trend-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .trend-card { border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
 .trend-card h3 { font-size: .95rem; margin-bottom: 4px; }
 .trend-line { width: 100%; height: 90px; overflow: visible; }
@@ -510,6 +510,11 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .profile-values strong { color: var(--ink); font-size: 1.05rem; }
 .profile-menu { position: relative; }
 .profile-menu-action { position: absolute; z-index: 2; right: 0; top: calc(100% + 6px); min-width: 150px; padding: 0 12px; background: var(--surface); border-color: var(--line); white-space: nowrap; }
+
+@media (max-width: 380px) {
+  .measurement-summary, .trend-grid { grid-template-columns: minmax(0, 1fr); }
+  .measurement-form .form-grid { grid-template-columns: minmax(0, 1fr); }
+}
 
 @media (min-width: 720px) {
   .app-shell { padding: 0 0 0 210px; }
