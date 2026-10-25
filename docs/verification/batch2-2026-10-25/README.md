@@ -10,6 +10,14 @@
 - Cache inspection confirms API and custom exercise-photo URLs are not cached, and no write queue is created. Generated cache routes cap public artwork at 100 entries and deferred JS/CSS at 32 entries, each with a 30-day lifetime.
 - Checks passed: backend **70 tests**, Ruff check/format; frontend **80 tests**, typecheck, lint, production build; Playwright **10 scenarios**; `git diff --check`. The two-build fixture covers the waiting update prompt, clean and dirty tabs, pending writes, requester cancel/discard, timeouts, and simultaneous restart requests.
 
+## R3 follow-up — 25 October 2026
+
+- The R3 delivery behavior is implemented: the worker precaches the essential shell only, runtime-caches public illustrations and deferred JS/CSS with entry and age bounds, excludes API and private upload routes, and fails the build on Workbox warnings. WebP is served intentionally with a JPEG fallback.
+- Reduced generated background WebP quality from 82 to 75 to address the measured cold-transfer overage. For the 1214px desktop background this changes the local production asset from **306,578 bytes to 230,228 bytes**, saving **76,350 bytes (24.9%)**. The 768px WebP is **121,117 bytes**. The updated build precaches **10 files / 392,120 uncompressed bytes**, below the 1 MiB limit.
+- The updated production Playwright fixture measured **344,747 bytes** for page-observed cold-install responses including response headers, below the 500,000-byte budget. This is a local fixture measurement, not a new measurement of the deployed NAS build; service-worker import/precache traffic may not be included in page request events.
+- Rerun production Playwright coverage passed **12 scenarios**, including deferred cold navigation, waiting-worker updates across tabs, dirty-form and pending-write protection, and cache exclusions for API/private uploads. The shell and runtime cache configuration remains bounded; the build fails on Workbox warnings. Build output reports the 10-file precache and total. No write queue or ledger-data cache is added.
+- The new build has not been deployed. Repeat the transfer measurement against the fresh NAS build and verify old-to-new installed-device updates when available. Those deployment/device checks remain pending in final acceptance.
+
 ## Screenshots
 
 Loading and error states were captured at 390×844 and 1440×1000 in light and dark color schemes. Update-ready is shown in dark phone layout; the dirty-other-tab blocker is shown in dark desktop layout.
