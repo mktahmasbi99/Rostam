@@ -66,12 +66,12 @@ Status: Verified locally; not merged. Commit: `0e942c3`. PR: —. Evidence: back
 ## Batch 4 — responsive and consistent shared GUI
 
 - [x] **R5 — Measurement layout.** Fix summary cards and single-metric/history-edit forms at narrow widths; accommodate long values and enlarged text.
-- [ ] **R6 — Dialog behavior.** Share accessible initial focus, contained Tab/Shift+Tab, Escape dismissal, inert background, scroll locking, and focus restoration; include the calendar and nested-dialog cases.
-- [ ] **R10 — Theme consistency.** Limit inversion to bundled monochrome exercise art, preserve custom photo colors, and unify save/success/switch/error tokens. Preserve familiar action meanings and assess light/dark contrast.
+- [x] **R6 — Dialog behavior.** Share accessible initial focus, contained Tab/Shift+Tab, Escape dismissal, inert background, scroll locking, and focus restoration; include the calendar and nested-dialog cases.
+- [x] **R10 — Theme consistency.** Limit inversion to bundled monochrome exercise art, preserve custom photo colors, and unify save/success/switch/error tokens. Preserve familiar action meanings and assess light/dark contrast.
 
 Acceptance: 320/360/390/430px and desktop checks; keyboard operation; text enlargement; both themes; custom photos; clean form exit and confirmation before destructive/reload actions where relevant. Save screenshots for visible changes. Include required focus indicators on the search controls affected by R6/R7 accessibility checks without silently expanding cosmetic scope.
 
-Status: R5 verified locally; R6 and R10 planned. Commit: pending evidence commit. PR: —. Evidence: [R5 verification report](verification/r5-2026-10-25/README.md). Merged: No.
+Status: R5, R6, and R10 verified locally; not merged. Commits: `d7c4caf` (R5), `91d200e` (R6/R10). PR: —. Evidence: [R5 verification report](verification/r5-2026-10-25/README.md) and [Batch 4 verification report](verification/batch4-2026-10-25/README.md). Merged: No.
 
 ## Batch 5 — bounded archive loading
 
