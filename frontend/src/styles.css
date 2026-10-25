@@ -485,6 +485,7 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .skeleton { color: var(--muted); }
 .measurements-page { max-width: 760px; }
+.measurements-page .section-title h1 { min-width: 0; overflow-wrap: anywhere; }
 .measurement-form, .profile-form { display: grid; gap: 12px; }
 .measurement-form { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--line); }
 .measurement-form h3 { margin: 0; font-size: 1rem; }
