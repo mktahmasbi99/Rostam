@@ -1,0 +1,250 @@
+[
+  {
+    "version": "baseline",
+    "theme": "light",
+    "width": 390,
+    "filename": "baseline-light-390.png",
+    "overflow": false,
+    "images": [
+      {
+        "src": "/rostam-logo.png",
+        "width": 512,
+        "height": 512,
+        "displayWidth": 512,
+        "displayHeight": 512
+      },
+      {
+        "src": "/rostam-logo.png",
+        "width": 512,
+        "height": 512,
+        "displayWidth": 76,
+        "displayHeight": 76
+      }
+    ],
+    "nextDayButtons": 1,
+    "errors": []
+  },
+  {
+    "version": "current",
+    "theme": "light",
+    "width": 390,
+    "filename": "current-light-390.png",
+    "overflow": false,
+    "images": [
+      {
+        "src": "/assets/background-768-CTwJlhhP.webp",
+        "width": 768,
+        "height": 819,
+        "displayWidth": 390,
+        "displayHeight": 900
+      },
+      {
+        "src": "/assets/logo-112-Dk2pMw8Q.webp",
+        "width": 44,
+        "height": 44,
+        "displayWidth": 112,
+        "displayHeight": 112
+      },
+      {
+        "src": "/assets/logo-112-Dk2pMw8Q.webp",
+        "width": 76,
+        "height": 76,
+        "displayWidth": 76,
+        "displayHeight": 76
+      }
+    ],
+    "nextDayButtons": 0,
+    "focus": {
+      "outline": "none",
+      "borderFocused": "color(srgb 0.390196 0.40251 0.391373)",
+      "borderBlurred": "rgb(201, 185, 152)"
+    },
+    "errors": []
+  },
+  {
+    "version": "baseline",
+    "theme": "light",
+    "width": 1440,
+    "filename": "baseline-light-1440.png",
+    "overflow": false,
+    "images": [
+      {
+        "src": "/rostam-logo.png",
+        "width": 512,
+        "height": 512,
+        "displayWidth": 44,
+        "displayHeight": 44
+      },
+      {
+        "src": "/rostam-logo.png",
+        "width": 512,
+        "height": 512,
+        "displayWidth": 76,
+        "displayHeight": 76
+      }
+    ],
+    "nextDayButtons": 1,
+    "errors": []
+  },
+  {
+    "version": "current",
+    "theme": "light",
+    "width": 1440,
+    "filename": "current-light-1440.png",
+    "overflow": false,
+    "images": [
+      {
+        "src": "/assets/background-1214-yYasFyga.webp",
+        "width": 1214,
+        "height": 1295,
+        "displayWidth": 1440,
+        "displayHeight": 900
+      },
+      {
+        "src": "/assets/logo-112-Dk2pMw8Q.webp",
+        "width": 44,
+        "height": 44,
+        "displayWidth": 44,
+        "displayHeight": 44
+      },
+      {
+        "src": "/assets/logo-112-Dk2pMw8Q.webp",
+        "width": 76,
+        "height": 76,
+        "displayWidth": 76,
+        "displayHeight": 76
+      }
+    ],
+    "nextDayButtons": 0,
+    "focus": {
+      "outline": "none",
+      "borderFocused": "color(srgb 0.390196 0.40251 0.391373)",
+      "borderBlurred": "rgb(201, 185, 152)"
+    },
+    "errors": []
+  },
+  {
+    "version": "baseline",
+    "theme": "dark",
+    "width": 390,
+    "filename": "baseline-dark-390.png",
+    "overflow": false,
+    "images": [
+      {
+        "src": "/rostam-logo.png",
+        "width": 512,
+        "height": 512,
+        "displayWidth": 512,
+        "displayHeight": 512
+      },
+      {
+        "src": "/rostam-logo.png",
+        "width": 512,
+        "height": 512,
+        "displayWidth": 76,
+        "displayHeight": 76
+      }
+    ],
+    "nextDayButtons": 1,
+    "errors": []
+  },
+  {
+    "version": "current",
+    "theme": "dark",
+    "width": 390,
+    "filename": "current-dark-390.png",
+    "overflow": false,
+    "images": [
+      {
+        "src": "/assets/background-768-CTwJlhhP.webp",
+        "width": 768,
+        "height": 819,
+        "displayWidth": 390,
+        "displayHeight": 900
+      },
+      {
+        "src": "/assets/logo-112-Dk2pMw8Q.webp",
+        "width": 44,
+        "height": 44,
+        "displayWidth": 112,
+        "displayHeight": 112
+      },
+      {
+        "src": "/assets/logo-112-Dk2pMw8Q.webp",
+        "width": 76,
+        "height": 76,
+        "displayWidth": 76,
+        "displayHeight": 76
+      }
+    ],
+    "nextDayButtons": 0,
+    "focus": {
+      "outline": "none",
+      "borderFocused": "color(srgb 0.699137 0.719843 0.707686)",
+      "borderBlurred": "rgb(82, 107, 130)"
+    },
+    "errors": []
+  },
+  {
+    "version": "baseline",
+    "theme": "dark",
+    "width": 1440,
+    "filename": "baseline-dark-1440.png",
+    "overflow": false,
+    "images": [
+      {
+        "src": "/rostam-logo.png",
+        "width": 512,
+        "height": 512,
+        "displayWidth": 44,
+        "displayHeight": 44
+      },
+      {
+        "src": "/rostam-logo.png",
+        "width": 512,
+        "height": 512,
+        "displayWidth": 76,
+        "displayHeight": 76
+      }
+    ],
+    "nextDayButtons": 1,
+    "errors": []
+  },
+  {
+    "version": "current",
+    "theme": "dark",
+    "width": 1440,
+    "filename": "current-dark-1440.png",
+    "overflow": false,
+    "images": [
+      {
+        "src": "/assets/background-1214-yYasFyga.webp",
+        "width": 1214,
+        "height": 1295,
+        "displayWidth": 1440,
+        "displayHeight": 900
+      },
+      {
+        "src": "/assets/logo-112-Dk2pMw8Q.webp",
+        "width": 44,
+        "height": 44,
+        "displayWidth": 44,
+        "displayHeight": 44
+      },
+      {
+        "src": "/assets/logo-112-Dk2pMw8Q.webp",
+        "width": 76,
+        "height": 76,
+        "displayWidth": 76,
+        "displayHeight": 76
+      }
+    ],
+    "nextDayButtons": 0,
+    "focus": {
+      "outline": "none",
+      "borderFocused": "color(srgb 0.699137 0.719843 0.707686)",
+      "borderBlurred": "rgb(82, 107, 130)"
+    },
+    "errors": []
+  }
+]

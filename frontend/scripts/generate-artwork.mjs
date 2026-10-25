@@ -28,4 +28,11 @@ for (const [name, size] of [["icon-192", 192], ["icon-512", 512], ["apple-touch-
     .flatten({ background: "#eee4d2" })
     .png()
     .toFile(`public/icons/${name}.png`);
+  if (name === "icon-192" || name === "icon-512") {
+    await sharp("artwork/rostam-logo.png")
+      .resize(size, size)
+      .flatten({ background: "#eee4d2" })
+      .webp({ quality: 90, effort: 6 })
+      .toFile(`public/icons/${name}.webp`);
+  }
 }

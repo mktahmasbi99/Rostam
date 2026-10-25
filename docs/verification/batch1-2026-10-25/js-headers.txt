@@ -1,0 +1,10 @@
+HTTP/2 200
+accept-ranges: bytes
+cache-control: public, max-age=31536000, immutable
+content-encoding: gzip
+content-type: text/javascript; charset=utf-8
+date: Sun, 25 Oct 2026 14:14:52 GMT
+etag: "c63c6181ac6b38f28ed7f28594f35e75"
+last-modified: Sun, 25 Oct 2026 14:07:01 GMT
+server: uvicorn
+vary: Accept-Encoding

@@ -1,4 +1,4 @@
-import { exercises as artworkCatalog } from "@bryllim/workout-guide";
+import artworkCatalog from "../generated/exercise-catalog.json";
 import { Check, ImageOff, ImagePlus } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
@@ -108,7 +108,7 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
   }
 
   return (
-    <form id={exercise ? "exercise-editor-form" : undefined} className="stack editor" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+    <form id={exercise ? "exercise-editor-form" : undefined} className="stack editor" data-update-dirty="exercise-editor" data-update-dirty-label="Exercise editor" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       {exercise && <h2 className="exercise-editor-title">Edit {exercise.name}</h2>}
       <label>Exercise name<input value={baseName} onChange={(event) => setBaseName(event.target.value)} required maxLength={100} /></label>
       {title && <p className="name-preview"><span>Displayed as</span><strong>{title}</strong></p>}

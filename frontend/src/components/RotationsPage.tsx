@@ -182,13 +182,13 @@ export function RotationsPage() {
     {archived.length > 0 && <details className="archived-activity-results archived-rotation-results"><summary>Archived rotations<ChevronDown aria-hidden="true" /></summary><div>{archived.map((rotation) => rotationCard(rotation, true))}</div></details>}
 
     {creating && <Modal title="Create rotation" onClose={() => setCreating(false)}>
-      <form className="rotation-create-form" onSubmit={(event) => void createRotation(event)}>
+      <form className="rotation-create-form" data-update-dirty="rotation-create" data-update-dirty-label="New rotation" onSubmit={(event) => void createRotation(event)}>
         <label>Rotation name<input autoFocus required value={name} maxLength={100} onChange={(event) => setName(event.target.value)} placeholder="For example, Morning" /></label>
         <div className="draft-actions"><button type="button" className="secondary" onClick={() => setCreating(false)}>Cancel</button><button className="primary" disabled={!name.trim()} type="submit">Create</button></div>
       </form>
     </Modal>}
 
-    {selectedRotation && <Modal title={`${selectedRotation.name}${selectedRotation.active ? " · Active" : ""}`} onClose={closeDetails} fullScreen closePositionLeft titleHidden headerAction={editing && !selectedIsArchived ? <button className="rotation-save-button" aria-label="Done" title="Done" onClick={() => void (async () => {
+    {selectedRotation && <Modal title={`${selectedRotation.name}${selectedRotation.active ? " · Active" : ""}`} onClose={closeDetails} dirtyLabel={editing ? "Rotation editor" : undefined} fullScreen closePositionLeft titleHidden headerAction={editing && !selectedIsArchived ? <button className="rotation-save-button" aria-label="Done" title="Done" onClick={() => void (async () => {
       try {
         const trimmedName = editingName.trim();
         if (!trimmedName) { setError("Enter a rotation name."); return; }

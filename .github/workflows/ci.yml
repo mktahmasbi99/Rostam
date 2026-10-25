@@ -2,7 +2,7 @@ name: CI and container
 
 on:
   push:
-    branches: [master]
+    branches: [master, dev]
   pull_request:
 
 permissions:
@@ -38,6 +38,10 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
 
   publish:
     if: github.event_name == 'push'
@@ -54,7 +58,8 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository_owner }}/rostam
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/dev' }}
             type=sha
       - uses: docker/build-push-action@v6
         with:

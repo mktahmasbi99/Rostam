@@ -3,12 +3,22 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  build: { manifest: true },
+  build: {
+    manifest: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("@bryllim/workout-guide")) return "exercise-artwork-catalog";
+        },
+      },
+    },
+  },
   server: {
     proxy: { "/api": "http://127.0.0.1:8000" },
   },
   test: {
     environment: "jsdom",
     setupFiles: "./src/test-setup.ts",
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
   },
 });

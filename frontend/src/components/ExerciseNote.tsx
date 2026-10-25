@@ -70,7 +70,7 @@ export function ExerciseNote({ exercise }: Props) {
   }
 
   if (editing) {
-    return <form className="exercise-note-editor" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+    return <form className="exercise-note-editor" data-update-dirty="exercise-note" data-update-dirty-label="Exercise note" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <label>Exercise note<textarea rows={5} autoFocus value={draft} onChange={(event) => setDraft(event.target.value)} /></label>
       {error && <p className="save-error" role="alert">{error}</p>}
       <div className="exercise-note-actions">
