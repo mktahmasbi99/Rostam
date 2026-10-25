@@ -23,6 +23,8 @@ export interface Config {
 export interface Profile { heightCm: string | null; dateOfBirth: string | null; age: number | null; }
 export interface ProfilePayload { heightCm: string | null; dateOfBirth: string | null; }
 export interface BodyMeasurement { id: number; date: string; measurementType: "weight" | "waist"; weightKg: string | null; waistCm: string | null; createdAt: string; updatedAt: string; }
+export interface BodyMeasurementPage { items: BodyMeasurement[]; nextBeforeDate: string | null; nextBeforeId: number | null; }
+export interface MeasurementTrends { latest: { weight: { date: string; value: string } | null; waist: { date: string; value: string } | null }; trends: { weight: { date: string; value: string }[]; waist: { date: string; value: string }[] }; }
 export interface BodyMeasurementPayload { date: string; weightKg: string | null; waistCm: string | null; }
 
 export interface Exercise {
@@ -135,8 +137,11 @@ export interface ActivityEntry {
 }
 
 export interface DailyNote { date: string; body: string; createdAt: string; updatedAt: string; }
+export interface DailyNotePage { items: DailyNote[]; nextBeforeDate: string | null; }
 export interface DailyPhoto { id: number; date: string; displayOrder: number; width: number; height: number; createdAt: string; thumbnailUrl: string; url: string; }
 export interface PhotoGroup { date: string; photos: DailyPhoto[]; }
+export interface PhotoPage { items: PhotoGroup[]; nextBeforeDate: string | null; }
+export interface ActivityNotePage { items: ActivityEntry[]; nextBeforeStartedAt: string | null; nextBeforeId: number | null; }
 
 export interface SetPayload {
   time: string | null;

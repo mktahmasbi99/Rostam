@@ -96,7 +96,8 @@ def test_body_measurement_and_profile_endpoints(database, monkeypatch):
     assert profile.status_code == 200
     assert profile.json()["heightCm"] == "180"
     assert created.status_code == 201
-    assert client.get("/api/body-measurements").json()[0]["weightKg"] == "80.2"
+    assert client.get("/api/body-measurements").json()["items"][0]["weightKg"] == "80.2"
+    assert client.get("/api/body-measurements/trends").json()["latest"]["weight"]["value"] == "80.2"
     assert client.delete(f"/api/body-measurements/{created.json()['id']}").status_code == 204
 
 
@@ -308,7 +309,13 @@ def test_timed_activity_entries_allow_repeats_and_keep_notes_in_order(database, 
 
     day = client.get("/api/days/2026-09-17").json()
     assert [entry["id"] for entry in day["activities"]] == [first["id"], second["id"]]
-    assert [entry["note"] for entry in client.get("/api/activity-notes").json()] == [
+    note_page = client.get("/api/activity-notes?limit=1").json()
+    assert [entry["note"] for entry in note_page["items"]] == ["Arm drags"]
+    older_notes = client.get(
+        f"/api/activity-notes?limit=1&beforeStartedAt={note_page['nextBeforeStartedAt']}&beforeId={note_page['nextBeforeId']}"
+    ).json()
+    assert [entry["note"] for entry in older_notes["items"]] == ["Guard retention"]
+    assert [entry["note"] for entry in client.get("/api/activity-notes").json()["items"]] == [
         "Arm drags",
         "Guard retention",
     ]
