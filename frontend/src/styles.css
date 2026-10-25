@@ -501,7 +501,8 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
 .trend-card h3 { font-size: .95rem; margin-bottom: 4px; }
 .trend-line { width: 100%; height: 90px; overflow: visible; }
 .measurement-history { display: grid; }
-.measurement-row { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-top: 1px solid var(--line); }
+.measurement-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; min-width: 0; padding: 12px 0; border-top: 1px solid var(--line); }
+.measurement-row > div:first-child, .measurement-row p { min-width: 0; overflow-wrap: anywhere; }
 .measurement-row p { margin: 4px 0 0; color: var(--muted); }
 .profile-heading { align-items: center; }
 .profile-heading p { margin: 0; }

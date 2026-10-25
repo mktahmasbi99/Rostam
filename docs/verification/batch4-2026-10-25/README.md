@@ -26,7 +26,7 @@ Status: verified locally; not merged or deployed.
 
 ## Follow-up after PR check failure
 
-The first GitHub Actions run exposed regressions from portaling dialogs outside the app fieldset: modal inputs did not inherit connection-based disabling, and the modal backdrop blocked the update banner. Global update and connection banners now sit outside the inert app area, the dialog stack sits below those banners, and a shared context disables controls inside portaled dialogs when the server is unavailable or a write result is uncertain. The full local Chromium E2E suite then passed: 15/15, including the Batch 2 update coordination tests, Batch 3 disconnect/save reconciliation tests, and Batch 4 responsive/dialog tests. The R5 enlarged-text scenario also passed in this full run. GitHub Actions rerun for the corrective commit is pending.
+The first GitHub Actions run exposed regressions from portaling dialogs outside the app fieldset: modal inputs did not inherit connection-based disabling, and the modal backdrop blocked the update banner. Global update and connection banners now sit outside the inert app area, the dialog stack sits below those banners, and a shared context disables controls inside portaled dialogs when the server is unavailable or a write result is uncertain. A subsequent hosted run passed those cases but found a remaining R5 overflow at 320px with 125% text. The measurement-history row's first grid column now has a zero minimum width and long values wrap. After this fix, the full local Chromium E2E suite passed 15/15, including the R5 enlarged-text check. GitHub Actions rerun for the latest corrective commit is pending.
 
 ## Remaining acceptance
 
