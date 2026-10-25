@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../lib/api";
@@ -17,6 +17,11 @@ const squat: Exercise = {
   id: 3, name: "Squats", baseName: "Squats", measurementType: "repetitions",
   equipment: null, customEquipment: null, allowBodyweight: true, imageKey: null,
   exerciseNote: null, archivedAt: null, hasHistory: true, primaryMuscle: "quadriceps", secondaryMuscles: [],
+};
+const bicepCurl: Exercise = {
+  id: 4, name: "Bicep curls", baseName: "Bicep curls", measurementType: "repetitions",
+  equipment: null, customEquipment: null, allowBodyweight: true, imageKey: null,
+  exerciseNote: null, archivedAt: null, hasHistory: true, primaryMuscle: "biceps", secondaryMuscles: ["forearms"],
 };
 
 const rotation = (members: Rotation["members"]): Rotation => ({
@@ -64,7 +69,9 @@ describe("RotationsPage", () => {
     const user = userEvent.setup();
     render(<RotationsPage />);
     await user.click(await screen.findByRole("button", { name: "Open Morning" }));
-    expect(await screen.findByRole("dialog", { name: "Morning" })).toBeInTheDocument();
+    const rotationDialog = await screen.findByRole("dialog", { name: "Morning" });
+    expect(rotationDialog).toBeInTheDocument();
+    expect(within(rotationDialog).getByText("2 exercises")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove Squats · 1" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Edit Morning" }));
     expect(await screen.findByRole("button", { name: "Remove Squats · 1" })).toBeInTheDocument();
@@ -90,17 +97,26 @@ describe("RotationsPage", () => {
   it("opens the exercise chooser from the plus button and shows muscle groups", async () => {
     const withOne = rotation([{ exercise: squat, position: 0, lastDoneDate: null, daysSinceLastDone: null }]);
     vi.mocked(api.rotations).mockImplementation(async (status) => status === "archived" ? [] : [withOne]);
+    vi.mocked(api.exercises).mockResolvedValue([squat, bicepCurl]);
     const user = userEvent.setup();
     render(<RotationsPage />);
     await user.click(await screen.findByRole("button", { name: "Open Morning" }));
     await user.click(screen.getByRole("button", { name: "Edit Morning" }));
+    const rotationDialog = screen.getByRole("dialog", { name: "Morning" });
+    expect(within(rotationDialog).getByText("1 exercise")).toBeInTheDocument();
     expect(screen.getAllByText("Quadriceps").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Add exercise to Morning" }));
     expect(await screen.findByRole("dialog", { name: "Add to Morning" })).toBeInTheDocument();
+    const search = screen.getByRole("searchbox", { name: "Search exercises" });
+    await user.type(search, "BICEP");
+    expect(screen.getByRole("button", { name: "Add Bicep curls to Morning" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add Squats to Morning" })).not.toBeInTheDocument();
+    await user.clear(search);
     expect(screen.getByRole("button", { name: "Add Squats to Morning" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Create New Exercise" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add Squats to Morning" }));
     expect(await screen.findByRole("button", { name: "Remove Squats · 2" })).toBeInTheDocument();
+    expect(within(rotationDialog).getByText("2 exercises")).toBeInTheDocument();
   });
 
   it("discards staged member changes when the close button is used", async () => {

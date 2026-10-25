@@ -1,4 +1,4 @@
-import { Archive, Check, ChevronDown, ChevronUp, MoreVertical, Pencil, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { Archive, Check, ChevronDown, ChevronUp, MoreVertical, Pencil, Plus, RotateCcw, Search, Sparkles, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Exercise, Rotation } from "../lib/types";
@@ -20,6 +20,7 @@ export function RotationsPage() {
   const [draftMemberIds, setDraftMemberIds] = useState<number[]>([]);
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [choosingExerciseFor, setChoosingExerciseFor] = useState<number | null>(null);
+  const [exerciseQuery, setExerciseQuery] = useState("");
   const [lookbacks, setLookbacks] = useState<Record<number, string>>({});
   const [historyMessages, setHistoryMessages] = useState<Record<number, string>>({});
   const [loadingRecommendations, setLoadingRecommendations] = useState<Record<number, boolean>>({});
@@ -167,6 +168,7 @@ export function RotationsPage() {
     ? memberIds.map((id, index) => ({ exercise: exercises.find((exercise) => exercise.id === id) ?? selectedRotation.members.find((member) => member.exercise.id === id)?.exercise, position: index })).filter((member): member is { exercise: Exercise; position: number } => Boolean(member.exercise))
     : selectedRotation?.members ?? [];
   const labels = occurrenceLabels(memberIds);
+  const memberCountLabel = `${memberIds.length} ${memberIds.length === 1 ? "exercise" : "exercises"}`;
   const selectedFirst = selectedRotation ? firstIds[selectedRotation.id] ?? "" : "";
 
   return <main className="page rotations-page">
@@ -197,9 +199,9 @@ export function RotationsPage() {
         setEditing(false);
       } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not save rotation."); }
     })()}><Check /></button> : <div className="rotation-detail-header-actions">{!selectedIsArchived && <button className="icon-button" aria-label={`Edit ${selectedRotation.name}`} title="Edit rotation" onClick={() => openDetails(selectedRotation, true)}><Pencil /></button>}{rotationMenu(selectedRotation, selectedIsArchived)}</div>}>
-      {!editing && <h2 className="rotation-detail-title">{selectedRotation.name}</h2>}
+      {!editing && <h2 className="rotation-detail-title">{selectedRotation.name}<span className="rotation-count-badge">{memberCountLabel}</span></h2>}
       {editing && !selectedIsArchived && <>
-        <label className="rotation-name-field">Rotation name<input value={editingName} maxLength={100} onChange={(event) => setEditingName(event.target.value)} /></label>
+        <label className="rotation-name-field"><span>Rotation name<span className="rotation-count-badge">{memberCountLabel}</span></span><input value={editingName} maxLength={100} onChange={(event) => setEditingName(event.target.value)} /></label>
         {memberIds.length === 0 && <div className="rotation-recommendations">
           <h3><Sparkles /> Build from recent exercises</h3>
           <div className="rotation-lookback"><label>Look back (days)<input type="number" min="1" step="1" aria-label={`Look back days for ${selectedRotation.name}`} value={lookbacks[selectedRotation.id] ?? "7"} onChange={(event) => setLookbacks((current) => ({ ...current, [selectedRotation.id]: event.target.value }))} /></label>
@@ -250,20 +252,22 @@ export function RotationsPage() {
         })()}>Deactivate</button>}
       </div>}
       {editing && !selectedIsArchived && <>
-      <button className="rotation-add-trigger" aria-label={`Add exercise to ${selectedRotation.name}`} onClick={() => setChoosingExerciseFor(selectedRotation.id)}><Plus /><span>Add exercise</span></button>
+      <button className="rotation-add-trigger" aria-label={`Add exercise to ${selectedRotation.name}`} onClick={() => { setExerciseQuery(""); setChoosingExerciseFor(selectedRotation.id); }}><Plus /><span>Add exercise</span></button>
       </>}
       {rotationActionSuccess && <div className={`rotation-activation-success ${rotationActionSuccess}`} role="status" aria-live="polite"><div className="rotation-activation-check"><Check /></div><strong>{selectedRotation.name} {rotationActionSuccess}</strong></div>}
     </Modal>}
-    {choosingExerciseFor !== null && selectedRotation?.id === choosingExerciseFor && <Modal title={`Add to ${selectedRotation.name}`} onClose={() => setChoosingExerciseFor(null)} wide>
+    {choosingExerciseFor !== null && selectedRotation?.id === choosingExerciseFor && <Modal title={`Add to ${selectedRotation.name}`} onClose={() => { setChoosingExerciseFor(null); setExerciseQuery(""); }} wide>
       <div className="rotation-exercise-picker">
-        <div className="exercise-results">{exercises.map((exercise) => {
+        <label className="search-box rotation-picker-search"><Search /><span className="sr-only">Search exercises</span><input type="search" placeholder="Search exercises" value={exerciseQuery} onChange={(event) => setExerciseQuery(event.target.value)} autoFocus /></label>
+        <div className="exercise-results">{exercises.filter((exercise) => `${exercise.name} ${exerciseMuscleLabel(exercise)}`.toLocaleLowerCase().includes(exerciseQuery.trim().toLocaleLowerCase())).map((exercise) => {
           const muscles = exerciseMuscleLabel(exercise);
           return <button key={exercise.id} className="exercise-result" aria-label={`Add ${exercise.name} to ${selectedRotation.name}`} onClick={() => {
             setDraftMemberIds((current) => [...current, exercise.id]);
             setChoosingExerciseFor(null);
+            setExerciseQuery("");
           }}><ExerciseImage imageKey={exercise.imageKey} name={exercise.name} /><span><strong>{exercise.name}</strong>{muscles && <small>{muscles}</small>}</span></button>;
-        })}</div>
-        <button className="primary rotation-picker-new" onClick={() => { setChoosingExerciseFor(null); setCreatingExerciseFor(selectedRotation.id); }}><Plus />Create New Exercise</button>
+        })}{!exercises.some((exercise) => `${exercise.name} ${exerciseMuscleLabel(exercise)}`.toLocaleLowerCase().includes(exerciseQuery.trim().toLocaleLowerCase())) && <p className="empty-copy">No exercises match your search.</p>}</div>
+        <button className="primary rotation-picker-new" onClick={() => { setChoosingExerciseFor(null); setExerciseQuery(""); setCreatingExerciseFor(selectedRotation.id); }}><Plus />Create New Exercise</button>
       </div>
     </Modal>}
     {creatingExerciseFor !== null && <Modal title="New exercise" onClose={() => setCreatingExerciseFor(null)} wide><ExerciseEditor onCancel={() => setCreatingExerciseFor(null)} onSaved={(exercise) => {

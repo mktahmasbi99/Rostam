@@ -376,6 +376,7 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .rotation-save-button { width: 44px; min-width: 44px; height: 44px; border: 1px solid #438d5a; border-radius: 12px; color: #8fe0a4; background: rgba(31, 101, 57, .35); display: inline-flex; align-items: center; justify-content: center; }
 .rotation-save-button svg { width: 22px; height: 22px; stroke-width: 3; }
 .rotation-name-field { display: grid; gap: 5px; margin-bottom: 16px; }
+.rotation-name-field > span { display: flex; align-items: center; gap: 8px; }
 .exercise-library-row { gap: 10px; }
 .exercise-row-main { flex: 1; min-width: 0; min-height: 62px; justify-content: flex-start; padding: 6px 0; border: 0; background: transparent; color: inherit; text-align: left; box-shadow: none; }
 .exercise-row-main:hover { background: transparent; box-shadow: none; }
@@ -410,6 +411,7 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .rotation-add-trigger svg { width: 28px; height: 28px; }
 .rotation-add-trigger span { font-weight: 750; }
 .rotation-picker-new { width: 100%; margin-top: 14px; }
+.rotation-picker-search { display: block; margin-bottom: 8px; }
 .rotation-badge { display: inline-block; border-radius: 99px; padding: 3px 9px; background: var(--accent-soft); color: var(--accent-dark); font-size: .76rem; font-style: normal; font-weight: 700; }
 .rotation-result.due { background: var(--accent-soft); border-radius: 12px; padding: 11px; }
 .rotation-result.muted { background: var(--surface); }
