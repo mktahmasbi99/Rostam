@@ -183,7 +183,7 @@ export function RotationsPage() {
 
     {creating && <Modal title="Create rotation" onClose={() => setCreating(false)}>
       <form className="rotation-create-form" onSubmit={(event) => void createRotation(event)}>
-        <label>Rotation name<input className="rotation-name-input" autoFocus required value={name} maxLength={100} onChange={(event) => setName(event.target.value)} placeholder="For example, Morning" /></label>
+        <label>Rotation name<input autoFocus required value={name} maxLength={100} onChange={(event) => setName(event.target.value)} placeholder="For example, Morning" /></label>
         <div className="draft-actions"><button type="button" className="secondary" onClick={() => setCreating(false)}>Cancel</button><button className="primary" disabled={!name.trim()} type="submit">Create</button></div>
       </form>
     </Modal>}
