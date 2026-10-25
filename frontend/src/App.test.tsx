@@ -82,7 +82,7 @@ describe("Rostam shell", () => {
     render(<App />);
 
     await screen.findByRole("heading", { name: "Today" });
-    expect(screen.getByRole("button", { name: "Next day" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Next day" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Previous day" }));
     await waitFor(() => expect(api.day).toHaveBeenLastCalledWith("2026-09-12", expect.any(AbortSignal)));

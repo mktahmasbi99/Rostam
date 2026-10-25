@@ -350,6 +350,7 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .rotation-create, .rotation-add, .rotation-activate, .rotation-heading, .rotation-skip { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .rotation-create-form, .rotation-rename-form { display: grid; gap: 14px; }
 .rotation-create-form label, .rotation-rename-form label { display: grid; gap: 5px; }
+.rotation-name-input:focus-visible { outline: none; }
 .rotation-rename-form { grid-template-columns: minmax(0, 1fr) auto; align-items: end; margin-bottom: 16px; }
 .rotation-card { margin-bottom: 24px; }
 .rotation-summary-card { position: relative; padding-bottom: 12px; }

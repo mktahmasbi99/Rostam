@@ -84,7 +84,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       <header className="day-header">
         <button className="day-navigation" aria-label="Previous day" title="Previous day" onClick={onPreviousDay}><ChevronLeft /></button>
         <div><h1><button className="day-title" aria-label="Choose a day" onClick={onOpenCalendar}>{formatDay(day, today)}</button></h1></div>
-        <button className="day-navigation" aria-label="Next day" title="Next day" disabled={day >= today} onClick={onNextDay}><ChevronRight /></button>
+        {day < today && <button className="day-navigation" aria-label="Next day" title="Next day" onClick={onNextDay}><ChevronRight /></button>}
       </header>
 
       <div className="day-actions">
