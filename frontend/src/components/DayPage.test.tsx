@@ -54,7 +54,6 @@ describe("DayPage exercise notes", () => {
       ],
     });
     vi.mocked(api.deleteActivity).mockResolvedValue(undefined);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
 
     const cards = await screen.findAllByRole("article");
@@ -69,7 +68,8 @@ describe("DayPage exercise notes", () => {
     expect(deleteAction).toHaveClass("activity-delete-option");
     await user.click(deleteAction);
 
-    expect(window.confirm).toHaveBeenCalledWith("Delete the BJJ – No Gi session from 2026-09-17? This cannot be undone.");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Delete session" }));
     await waitFor(() => expect(api.deleteActivity).toHaveBeenCalledWith(1));
   });
 

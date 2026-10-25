@@ -33,17 +33,28 @@ describe("ActivityEntryCard", () => {
     const user = userEvent.setup();
     const onChanged = vi.fn();
     vi.mocked(api.deleteActivity).mockResolvedValue(undefined);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     render(<ActivityEntryCard entry={entry} timezone="Europe/Warsaw" onChanged={onChanged} />);
     await user.click(screen.getByRole("button", { name: "BJJ – No Gi options" }));
     await user.click(screen.getByRole("menuitem", { name: "Delete session" }));
 
-    expect(window.confirm).toHaveBeenCalledWith(
-      "Delete the BJJ – No Gi session from 2026-10-19? This cannot be undone.",
-    );
+    expect(screen.getByRole("heading", { name: "Delete BJJ – No Gi session?" })).toBeInTheDocument();
+    expect(screen.getByText("Delete the BJJ – No Gi session from 2026-10-19? This cannot be undone.")).toBeInTheDocument();
+    expect(api.deleteActivity).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Delete session" }));
     await waitFor(() => expect(api.deleteActivity).toHaveBeenCalledWith(entry.id));
     expect(onChanged).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the activity session when delete confirmation is cancelled", async () => {
+    const user = userEvent.setup();
+    render(<ActivityEntryCard entry={entry} timezone="Europe/Warsaw" onChanged={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "BJJ – No Gi options" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete session" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(api.deleteActivity).not.toHaveBeenCalled();
   });
 
   it("saves a session note from the note icon so it appears on the day card", async () => {
