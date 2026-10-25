@@ -63,6 +63,11 @@ export function ExerciseEditor({ exercise, onSaved, onCancel }: Props) {
 
   async function uploadPicture(file?: File) {
     if (!file) return;
+    if (file.size > 50 * 1024 * 1024) {
+      setPictureError("Exercise pictures must be 50 MiB or smaller.");
+      if (pictureInput.current) pictureInput.current.value = "";
+      return;
+    }
     setUploadingPicture(true);
     setPictureError("");
     try {

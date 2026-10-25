@@ -16,7 +16,13 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
 from .config import load_settings
-from .database import DomainError, RostamDatabase
+from .database import (
+    MAX_PHOTO_BYTES,
+    MAX_PHOTO_UPLOAD_TOTAL_BYTES,
+    MAX_PHOTOS_PER_DAY,
+    DomainError,
+    RostamDatabase,
+)
 from .schemas import (
     ActivityCreate,
     ActivityDelete,
@@ -329,8 +335,24 @@ def list_daily_notes(
 
 @app.post("/api/days/{day}/photos", status_code=201)
 async def upload_daily_photos(day: str, files: list[UploadFile] = File()):  # noqa: B008
+    if not files:
+        raise DomainError("Choose at least one photo.")
+    if len(files) > MAX_PHOTOS_PER_DAY:
+        raise DomainError(f"Choose no more than {MAX_PHOTOS_PER_DAY} photos per upload.")
     try:
-        return database.add_daily_photos(day, [await file.read() for file in files])
+        uploads: list[bytes] = []
+        total = 0
+        for file in files:
+            source = bytearray()
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if len(source) + len(chunk) > MAX_PHOTO_BYTES:
+                    raise DomainError("Each source photo must be 50 MiB or smaller.")
+                if total > MAX_PHOTO_UPLOAD_TOTAL_BYTES:
+                    raise DomainError("Photos in one upload must total 100 MiB or less.")
+                source.extend(chunk)
+            uploads.append(bytes(source))
+        return await asyncio.to_thread(database.add_daily_photos, day, uploads)
     finally:
         for file in files:
             await file.close()
@@ -361,10 +383,13 @@ def get_photo_thumbnail(photo_id: int) -> Response:
 @app.post("/api/exercise-images", status_code=201)
 async def upload_exercise_image(file: UploadFile = File()):  # noqa: B008
     try:
-        source = await file.read(50 * 1024 * 1024 + 1)
-        if len(source) > 50 * 1024 * 1024:
-            raise DomainError("Exercise pictures must be 50 MB or smaller.")
-        return {"imageKey": database.store_exercise_image(source)}
+        source = bytearray()
+        while chunk := await file.read(1024 * 1024):
+            if len(source) + len(chunk) > MAX_PHOTO_BYTES:
+                raise DomainError("Exercise pictures must be 50 MiB or smaller.")
+            source.extend(chunk)
+        image_key = await asyncio.to_thread(database.store_exercise_image, bytes(source))
+        return {"imageKey": image_key}
     finally:
         await file.close()
 

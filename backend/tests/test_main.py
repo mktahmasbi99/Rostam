@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+from io import BytesIO
+from threading import Event
+from time import sleep
 from types import SimpleNamespace
 
+import httpx
+import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app import main
 
@@ -127,6 +134,105 @@ def test_exercise_api_generates_title_and_rejects_immutable_updates(database, mo
         },
     )
     assert rejected.status_code == 422
+
+
+def test_photo_upload_rejects_excessive_file_count_before_reading(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    client = TestClient(main.app)
+
+    response = client.post(
+        f"/api/days/{database.today().isoformat()}/photos",
+        files=[("files", (f"{index}.png", b"x", "image/png")) for index in range(11)],
+    )
+
+    assert response.status_code == 400
+    assert "no more than 10 photos" in response.json()["detail"]
+
+
+def test_photo_upload_stream_enforces_source_size_cap(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    monkeypatch.setattr(main, "MAX_PHOTO_BYTES", 4)
+    client = TestClient(main.app)
+
+    response = client.post(
+        f"/api/days/{database.today().isoformat()}/photos",
+        files=[("files", ("large.png", b"12345", "image/png"))],
+    )
+
+    assert response.status_code == 400
+    assert "50 MiB or smaller" in response.json()["detail"]
+
+
+def test_photo_upload_stream_enforces_aggregate_size_cap(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    monkeypatch.setattr(main, "MAX_PHOTO_UPLOAD_TOTAL_BYTES", 4)
+    client = TestClient(main.app)
+
+    response = client.post(
+        f"/api/days/{database.today().isoformat()}/photos",
+        files=[
+            ("files", ("first.png", b"123", "image/png")),
+            ("files", ("second.png", b"456", "image/png")),
+        ],
+    )
+
+    assert response.status_code == 400
+    assert "100 MiB or less" in response.json()["detail"]
+
+
+def test_photo_processing_does_not_block_health_requests(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    processing_started = Event()
+    original = database._process_photo
+
+    def slow_process(source, **kwargs):
+        processing_started.set()
+        sleep(0.2)
+        return original(source, **kwargs)
+
+    monkeypatch.setattr(database, "_process_photo", slow_process)
+    output = BytesIO()
+    Image.new("RGB", (8, 8), "#995c12").save(output, format="PNG")
+    source = output.getvalue()
+
+    async def exercise_requests():
+        transport = httpx.ASGITransport(app=main.app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            upload = asyncio.create_task(
+                client.post(
+                    f"/api/days/{database.today().isoformat()}/photos",
+                    files=[("files", ("photo.png", source, "image/png"))],
+                )
+            )
+            assert await asyncio.to_thread(processing_started.wait, 2)
+            health = await client.get("/api/health")
+            assert health.status_code == 200
+            result = await upload
+            assert result.status_code == 201
+
+    asyncio.run(exercise_requests())
+
+
+def test_interrupted_photo_stream_leaves_the_day_unchanged(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    image = BytesIO()
+    Image.new("RGB", (8, 8), "#995c12").save(image, format="PNG")
+
+    class InterruptedRead(BytesIO):
+        def read(self, size=-1):
+            if self.tell():
+                raise OSError("simulated interrupted upload")
+            return super().read(size)
+
+    upload = main.UploadFile(filename="photo.png", file=InterruptedRead(image.getvalue()))
+
+    async def interrupt():
+        await main.upload_daily_photos(database.today().isoformat(), [upload])
+
+    with pytest.raises(OSError, match="interrupted"):
+        asyncio.run(interrupt())
+
+    assert database.list_daily_photos(database.today().isoformat()) == []
 
 
 def test_set_api_rejects_client_supplied_equipment(database, monkeypatch):
