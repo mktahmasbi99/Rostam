@@ -60,6 +60,8 @@ describe("ExercisesPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "Band pull-aparts" });
     expect(within(dialog).getByText("Back (Shoulders)")).toBeInTheDocument();
     expect(within(dialog).getByText("Resistance band")).toBeInTheDocument();
+    expect(dialog.querySelector(".modal-header-actions button[aria-label='Edit Band pull-aparts']")).toBeInTheDocument();
+    expect(dialog.querySelector(".modal-header-actions button[aria-label='Close Band pull-aparts']")).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Edit Band pull-aparts" }));
     expect(await screen.findByRole("textbox", { name: "Exercise name" })).toHaveValue("Band pull-aparts");
   });

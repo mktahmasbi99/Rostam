@@ -10,9 +10,10 @@ interface Props {
   closePositionLeft?: boolean;
   titleHidden?: boolean;
   headerAction?: ReactNode;
+  groupHeaderActionWithClose?: boolean;
 }
 
-export function Modal({ title, children, onClose, wide = false, fullScreen = false, closePositionLeft = false, titleHidden = false, headerAction }: Props) {
+export function Modal({ title, children, onClose, wide = false, fullScreen = false, closePositionLeft = false, titleHidden = false, headerAction, groupHeaderActionWithClose = false }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
 
@@ -39,8 +40,9 @@ export function Modal({ title, children, onClose, wide = false, fullScreen = fal
         <div className="modal-header">
           {closePositionLeft && <button className="icon-button modal-close-framed" onClick={onClose} aria-label={`Close ${title}`}><X /></button>}
           {!titleHidden && <h2>{title}</h2>}
-          {headerAction}
-          {!closePositionLeft && <button className="icon-button modal-close-framed" onClick={onClose} aria-label={`Close ${title}`}><X /></button>}
+          {!closePositionLeft && groupHeaderActionWithClose
+            ? <div className="modal-header-actions">{headerAction}<button className="icon-button modal-close-framed" onClick={onClose} aria-label={`Close ${title}`}><X /></button></div>
+            : <>{headerAction}{!closePositionLeft && <button className="icon-button modal-close-framed" onClick={onClose} aria-label={`Close ${title}`}><X /></button>}</>}
         </div>
         <div className="modal-content">{children}</div>
       </div>
