@@ -1,13 +1,17 @@
 import type { Activity, ActivityEntry, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPayload, Config, DailyNote, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, PhotoGroup, Profile, ProfilePayload, RestoreResult, Rotation, RotationRecommendation, SetPayload } from "./types";
+import { trackWrite } from "./restartSafety";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
+async function request<T>(path: string, init?: RequestInit, options: { clearDraftOnSuccess?: boolean } = {}): Promise<T> {
+  const operation = () => fetch(path, {
     ...init,
     headers: init?.body && !(init.body instanceof FormData)
       ? { "Content-Type": "application/json", ...init.headers }
       : init?.headers,
     cache: "no-store",
   });
+  const response = init?.method && !["GET", "HEAD"].includes(init.method.toUpperCase())
+    ? await trackWrite(operation, options.clearDraftOnSuccess !== false)
+    : await operation();
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed (${response.status})`);
@@ -82,7 +86,7 @@ export const api = {
   uploadExerciseImage: (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    return request<{ imageKey: string }>("/api/exercise-images", { method: "POST", body: form });
+    return request<{ imageKey: string }>("/api/exercise-images", { method: "POST", body: form }, { clearDraftOnSuccess: false });
   },
   updateRecommendationPause: (id: number, period: "week" | "month" | "six_months" | "year" | "forever" | "resume") =>
     request<Exercise>(`/api/exercises/${id}/recommendation-pause`, json("PUT", { period })),

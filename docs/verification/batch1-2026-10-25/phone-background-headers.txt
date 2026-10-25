@@ -1,0 +1,9 @@
+HTTP/2 200
+accept-ranges: bytes
+cache-control: public, max-age=31536000, immutable
+content-type: image/webp
+date: Sun, 25 Oct 2026 14:17:33 GMT
+etag: "56c9bed76e0d92c6bbdf5216843c4ab3"
+last-modified: Sun, 25 Oct 2026 14:07:01 GMT
+server: uvicorn
+content-length: 157136

@@ -1,0 +1,6 @@
+HTTP/2 200
+cache-control: no-store
+content-type: application/json
+date: Sun, 25 Oct 2026 14:14:52 GMT
+server: uvicorn
+content-length: 67

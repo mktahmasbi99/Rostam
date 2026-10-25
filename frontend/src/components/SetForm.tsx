@@ -156,7 +156,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, firstSet =
   if (loading) return <div className="set-draft skeleton">Loading previous set…</div>;
 
   return (
-    <form className="set-draft" onSubmit={(event) => { event.preventDefault(); void save(); }}>
+    <form className="set-draft" data-update-dirty="set-entry" data-update-dirty-label="Set entry" onSubmit={(event) => { event.preventDefault(); void save(); }}>
       <div className="set-form-grid">
         <label>Time<input type="time" value={time} onChange={(event) => { setTime(event.target.value); setTimeEdited(true); }} onBlur={() => void refreshPrefill(time)} required /></label>
         {exercise.equipment && exercise.allowBodyweight && <fieldset>

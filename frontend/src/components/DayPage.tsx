@@ -1,18 +1,19 @@
 import { ChevronLeft, ChevronRight, Clock3, Plus } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { artwork } from "../artwork";
 import { formatDay, formatExerciseTotal } from "../lib/format";
 import type { DayData, Exercise, ExerciseSet } from "../lib/types";
 import { ExerciseImage } from "./ExerciseImage";
-import { ExerciseNote } from "./ExerciseNote";
-import { DailyJournal } from "./DailyJournal";
-import { ExercisePicker } from "./ExercisePicker";
-import { SetForm } from "./SetForm";
 import { SetRow } from "./SetRow";
-import { ExerciseHistory } from "./ExerciseHistory";
-import { ActivityPicker } from "./ActivityPicker";
 import { ActivityEntryCard } from "./ActivityEntry";
+
+const ExerciseNote = lazy(() => import("./ExerciseNote").then((module) => ({ default: module.ExerciseNote })));
+const DailyJournal = lazy(() => import("./DailyJournal").then((module) => ({ default: module.DailyJournal })));
+const ExercisePicker = lazy(() => import("./ExercisePicker").then((module) => ({ default: module.ExercisePicker })));
+const SetForm = lazy(() => import("./SetForm").then((module) => ({ default: module.SetForm })));
+const ExerciseHistory = lazy(() => import("./ExerciseHistory").then((module) => ({ default: module.ExerciseHistory })));
+const ActivityPicker = lazy(() => import("./ActivityPicker").then((module) => ({ default: module.ActivityPicker })));
 
 interface Props {
   day: string;
@@ -88,7 +89,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       </header>
 
       <div className="day-actions">
-        {!loading && !error && <DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} />}
+        {!loading && !error && <Suspense fallback={<span className="deferred-loading" role="status">Loading journal…</span>}><DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} /></Suspense>}
         <div className="day-add-actions"><button className="secondary" onClick={() => setActivityPickerOpen(true)}><Clock3 />Add activity</button><button className="add-exercise" aria-label="Add exercise" title="Add exercise" onClick={() => setPickerOpen(true)}><Plus /></button></div>
       </div>
 
@@ -100,18 +101,18 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
 
       <div className="exercise-sections">
         {data.sections.map((section) => <section className="exercise-card" key={`${day}-${section.exercise.id}`}>
-          <header className="exercise-card-header"><ExerciseImage imageKey={section.exercise.imageKey} name={section.exercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2>{section.exercise.name}</h2><ExerciseHistory exercise={section.exercise} day={day} onChooseDay={onChooseDay} /></div><strong className="daily-total">{formatExerciseTotal(section.exercise, section.total, section.sets)}</strong></div></header>
-          <ExerciseNote exercise={section.exercise} />
+          <header className="exercise-card-header"><ExerciseImage imageKey={section.exercise.imageKey} name={section.exercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2>{section.exercise.name}</h2><Suspense fallback={null}><ExerciseHistory exercise={section.exercise} day={day} onChooseDay={onChooseDay} /></Suspense></div><strong className="daily-total">{formatExerciseTotal(section.exercise, section.total, section.sets)}</strong></div></header>
+          <Suspense fallback={null}><ExerciseNote exercise={section.exercise} /></Suspense>
           <div className="set-list">
-            {section.sets.map((set, index) => editingSet?.id === set.id ? <SetForm key={set.id} exercise={section.exercise} day={day} existing={set} onSaved={() => void saved()} onCancel={() => setEditingSet(null)} /> : <SetRow key={set.id} set={set} index={index} onEdit={() => { setAddingTo(null); setEditingSet(set); }} onDelete={() => void removeSet(section.exercise, set)} />)}
+            {section.sets.map((set, index) => editingSet?.id === set.id ? <Suspense key={set.id} fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} existing={set} onSaved={() => void saved()} onCancel={() => setEditingSet(null)} /></Suspense> : <SetRow key={set.id} set={set} index={index} onEdit={() => { setAddingTo(null); setEditingSet(set); }} onDelete={() => void removeSet(section.exercise, set)} />)}
           </div>
-          {addingTo === section.exercise.id ? <SetForm exercise={section.exercise} day={day} onSaved={() => void saved()} onCancel={() => setAddingTo(null)} /> : <button className="add-set" aria-label="Add set" title="Add set" onClick={() => { setEditingSet(null); setAddingTo(section.exercise.id); }}><Plus /></button>}
+          {addingTo === section.exercise.id ? <Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} onSaved={() => void saved()} onCancel={() => setAddingTo(null)} /></Suspense> : <button className="add-set" aria-label="Add set" title="Add set" onClick={() => { setEditingSet(null); setAddingTo(section.exercise.id); }}><Plus /></button>}
         </section>)}
 
-        {pendingExercise && <section className="exercise-card pending-card"><header className="exercise-card-header"><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2>{pendingExercise.name}</h2><ExerciseHistory exercise={pendingExercise} day={day} onChooseDay={onChooseDay} /></div><span className="daily-total">New today</span></div></header><ExerciseNote exercise={pendingExercise} /><SetForm exercise={pendingExercise} day={day} firstSet onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></section>}
+        {pendingExercise && <section className="exercise-card pending-card"><header className="exercise-card-header"><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2>{pendingExercise.name}</h2><Suspense fallback={null}><ExerciseHistory exercise={pendingExercise} day={day} onChooseDay={onChooseDay} /></Suspense></div><span className="daily-total">New today</span></div></header><Suspense fallback={null}><ExerciseNote exercise={pendingExercise} /></Suspense><Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={pendingExercise} day={day} firstSet onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></Suspense></section>}
       </div>
-      {pickerOpen && <ExercisePicker day={day} today={today} presentIds={[...presentIds, ...(pendingExercise ? [pendingExercise.id] : [])]} onClose={() => setPickerOpen(false)} onChoose={(exercise) => { setPickerOpen(false); setPendingExercise(exercise); setAddingTo(null); setEditingSet(null); }} />}
-      {activityPickerOpen && <ActivityPicker day={day} timezone={timezone} onClose={() => setActivityPickerOpen(false)} onStarted={() => { setActivityPickerOpen(false); void load(); }} />}
+      {pickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading exercise picker…</div>}><ExercisePicker day={day} today={today} presentIds={[...presentIds, ...(pendingExercise ? [pendingExercise.id] : [])]} onClose={() => setPickerOpen(false)} onChoose={(exercise) => { setPickerOpen(false); setPendingExercise(exercise); setAddingTo(null); setEditingSet(null); }} /></Suspense>}
+      {activityPickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading activity picker…</div>}><ActivityPicker day={day} timezone={timezone} onClose={() => setActivityPickerOpen(false)} onStarted={() => { setActivityPickerOpen(false); void load(); }} /></Suspense>}
     </main>
   );
 }

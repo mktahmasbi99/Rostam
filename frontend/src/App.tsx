@@ -1,13 +1,15 @@
 import { Dumbbell, Images, ListChecks, NotebookPen, RotateCw, Ruler, Settings } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { CalendarPage } from "./components/CalendarPage";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { DayPage } from "./components/DayPage";
-import { ExercisesPage } from "./components/ExercisesPage";
-import { SettingsPage } from "./components/SettingsPage";
-import { NotesPage } from "./components/NotesPage";
-import { PhotosPage } from "./components/PhotosPage";
-import { MeasurementsPage } from "./components/MeasurementsPage";
-import { RotationsPage } from "./components/RotationsPage";
+import { DeferredBoundary } from "./components/DeferredBoundary";
+import { UpdateBanner } from "./components/UpdateBanner";
+const ExercisesPage = lazy(() => import("./components/ExercisesPage").then((module) => ({ default: module.ExercisesPage })));
+const SettingsPage = lazy(() => import("./components/SettingsPage").then((module) => ({ default: module.SettingsPage })));
+const NotesPage = lazy(() => import("./components/NotesPage").then((module) => ({ default: module.NotesPage })));
+const PhotosPage = lazy(() => import("./components/PhotosPage").then((module) => ({ default: module.PhotosPage })));
+const MeasurementsPage = lazy(() => import("./components/MeasurementsPage").then((module) => ({ default: module.MeasurementsPage })));
+const RotationsPage = lazy(() => import("./components/RotationsPage").then((module) => ({ default: module.RotationsPage })));
+const CalendarPage = lazy(() => import("./components/CalendarPage").then((module) => ({ default: module.CalendarPage })));
 import { usePwaInstall } from "./hooks/usePwaInstall";
 import { api } from "./lib/api";
 import type { Config } from "./lib/types";
@@ -76,10 +78,12 @@ export default function App() {
     setCalendarOpen(false);
   };
 
-  return <><Backdrop /><div className="app-shell">
+  return <><Backdrop /><div data-rostam-app className="app-shell">
+    <UpdateBanner />
     <div className="brand"><button className="brand-home" aria-label="Go to Today" title="Go to Today" onClick={goToToday}><Logo className="app-logo brand-logo" sizes="44px" /></button></div>
     <div className="content">
-      {tab === "today" && <DayPage
+      <DeferredBoundary key={tab}><Suspense fallback={<div className="deferred-loading" role="status">Loading page…</div>}>
+      {tab === "today" && <DayPage key={selectedDay}
         day={selectedDay}
         today={config.today}
         timezone={config.timezone}
@@ -94,8 +98,9 @@ export default function App() {
       {tab === "exercises" && <ExercisesPage />}
       {tab === "rotations" && <RotationsPage />}
       {tab === "settings" && <SettingsPage config={config} pwaInstall={pwaInstall} />}
+      </Suspense></DeferredBoundary>
     </div>
-    {calendarOpen && <CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} />}
+    {calendarOpen && <DeferredBoundary key="calendar"><Suspense fallback={<div className="deferred-loading" role="status">Loading calendar…</div>}><CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} /></Suspense></DeferredBoundary>}
     <nav className="bottom-nav" aria-label="Primary navigation">
       <button aria-label="Today" title="Today" className={tab === "today" ? "active" : ""} onClick={goToToday}><ListChecks /></button>
       <button aria-label="Exercises" title="Exercises" className={tab === "exercises" ? "active" : ""} onClick={() => { setTab("exercises"); setCalendarOpen(false); }}><Dumbbell /></button>

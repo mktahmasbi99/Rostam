@@ -13,5 +13,6 @@ frontend/dist/
 frontend/public/exercise-assets/
 frontend/public/icons/
 frontend/src/generated/artwork/
+frontend/src/generated/*.json
 frontend/test-results/
 frontend/playwright-report/
