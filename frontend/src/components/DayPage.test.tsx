@@ -54,7 +54,6 @@ describe("DayPage exercise notes", () => {
       ],
     });
     vi.mocked(api.deleteActivity).mockResolvedValue(undefined);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
 
     const cards = await screen.findAllByRole("article");
@@ -69,7 +68,8 @@ describe("DayPage exercise notes", () => {
     expect(deleteAction).toHaveClass("activity-delete-option");
     await user.click(deleteAction);
 
-    expect(window.confirm).toHaveBeenCalledWith("Delete the BJJ – No Gi session from 2026-09-17? This cannot be undone.");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Delete session" }));
     await waitFor(() => expect(api.deleteActivity).toHaveBeenCalledWith(1));
   });
 
@@ -106,10 +106,59 @@ describe("DayPage exercise notes", () => {
     vi.mocked(api.exercises).mockResolvedValue([exercise]);
     render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
 
-    await user.click((await screen.findAllByRole("button", { name: "Add exercise" }))[0]);
+    await user.click(await screen.findByRole("button", { name: "Add to day" }));
+    await user.click(screen.getByRole("menuitem", { name: /Add exercise/ }));
     await user.click(await screen.findByRole("button", { name: /Push-ups/ }));
 
     expect(screen.getByRole("button", { name: "Add exercise note" })).toBeInTheDocument();
+  });
+
+  it("opens the add menu with keyboard navigation and restores focus on Escape", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.day).mockResolvedValue({ date: "2026-09-17", sections: [] });
+    render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
+
+    const trigger = await screen.findByRole("button", { name: "Add to day" });
+    await user.click(trigger);
+    const exerciseItem = screen.getByRole("menuitem", { name: /Add exercise/ });
+    const activityItem = screen.getByRole("menuitem", { name: /Add activity/ });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(exerciseItem).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(activityItem).toHaveFocus();
+    await user.keyboard("{Home}");
+    expect(exerciseItem).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(activityItem).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveFocus();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("toggles the add menu and dismisses it after an outside click", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.day).mockResolvedValue({ date: "2026-09-17", sections: [] });
+    render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
+
+    const trigger = await screen.findByRole("button", { name: "Add to day" });
+    await user.click(trigger);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await user.click(trigger);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    await user.click(trigger);
+    await user.click(screen.getByRole("button", { name: "Choose a day" }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("opens the existing activity picker from the add menu", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.day).mockResolvedValue({ date: "2026-09-17", sections: [] });
+    render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: "Add to day" }));
+    await user.click(screen.getByRole("menuitem", { name: /Add activity/ }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 
   it("shows timed repetition totals without collapsing varied holds", async () => {

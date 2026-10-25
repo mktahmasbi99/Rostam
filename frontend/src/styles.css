@@ -87,11 +87,18 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .day-title { display: inline; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; box-shadow: none; font: inherit; cursor: pointer; }
 .day-title:hover:not(:disabled), .day-title:active:not(:disabled) { transform: none; box-shadow: none; }
 .day-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; min-height: 58px; margin: 0 2px 20px; }
-.day-add-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
-.day-add-actions .secondary { min-height: 48px; }
+.day-add-actions { position: relative; display: flex; align-items: center; margin-left: auto; }
 .add-exercise, .journal-actions button { width: 52px; min-width: 52px; height: 52px; min-height: 52px; padding: 0; border-radius: 50%; }
 .add-exercise { border: 0; background: linear-gradient(135deg, #ffd35d, #e7a421); color: #382504; box-shadow: 0 7px 16px rgba(117, 76, 8, .32); }
 .add-exercise svg { width: 27px; height: 27px; stroke-width: 3; }
+.day-add-menu { position: absolute; z-index: 12; top: calc(100% + 8px); right: 0; display: grid; width: min(320px, calc(100vw - 40px)); padding: 6px; border: 1px solid var(--line); border-radius: 15px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.day-add-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 12px; border: 0; border-radius: 10px; background: transparent; color: inherit; text-align: left; box-shadow: none; }
+.day-add-menu-item:hover:not(:disabled) { background: var(--accent-soft); box-shadow: none; transform: none; }
+.day-add-menu-item:active:not(:disabled) { background: var(--accent-soft); box-shadow: none; transform: none; }
+.day-add-menu-item > svg { flex: 0 0 auto; width: 21px; height: 21px; color: var(--accent-dark); }
+.day-add-menu-item > span { display: grid; gap: 2px; }
+.day-add-menu-item strong { font-weight: 750; }
+.day-add-menu-item small { color: var(--muted); font-size: .8rem; }
 
 .exercise-sections { display: grid; gap: 18px; }
 .activity-card { margin-bottom: 18px; }
