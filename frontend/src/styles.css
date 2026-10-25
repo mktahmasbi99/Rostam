@@ -410,6 +410,7 @@ textarea { padding-top: 11px; padding-bottom: 11px; line-height: 1.45; resize: v
 .rotation-add-trigger svg { width: 28px; height: 28px; }
 .rotation-add-trigger span { font-weight: 750; }
 .rotation-picker-new { width: 100%; margin-top: 14px; }
+.rotation-picker-search { display: block; margin-bottom: 8px; }
 .rotation-badge { display: inline-block; border-radius: 99px; padding: 3px 9px; background: var(--accent-soft); color: var(--accent-dark); font-size: .76rem; font-style: normal; font-weight: 700; }
 .rotation-result.due { background: var(--accent-soft); border-radius: 12px; padding: 11px; }
 .rotation-result.muted { background: var(--surface); }

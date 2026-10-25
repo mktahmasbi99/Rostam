@@ -18,6 +18,11 @@ const squat: Exercise = {
   equipment: null, customEquipment: null, allowBodyweight: true, imageKey: null,
   exerciseNote: null, archivedAt: null, hasHistory: true, primaryMuscle: "quadriceps", secondaryMuscles: [],
 };
+const bicepCurl: Exercise = {
+  id: 4, name: "Bicep curls", baseName: "Bicep curls", measurementType: "repetitions",
+  equipment: null, customEquipment: null, allowBodyweight: true, imageKey: null,
+  exerciseNote: null, archivedAt: null, hasHistory: true, primaryMuscle: "biceps", secondaryMuscles: ["forearms"],
+};
 
 const rotation = (members: Rotation["members"]): Rotation => ({
   id: 1, name: "Morning", active: false, dueExerciseId: null, duePosition: null,
@@ -90,6 +95,7 @@ describe("RotationsPage", () => {
   it("opens the exercise chooser from the plus button and shows muscle groups", async () => {
     const withOne = rotation([{ exercise: squat, position: 0, lastDoneDate: null, daysSinceLastDone: null }]);
     vi.mocked(api.rotations).mockImplementation(async (status) => status === "archived" ? [] : [withOne]);
+    vi.mocked(api.exercises).mockResolvedValue([squat, bicepCurl]);
     const user = userEvent.setup();
     render(<RotationsPage />);
     await user.click(await screen.findByRole("button", { name: "Open Morning" }));
@@ -97,6 +103,11 @@ describe("RotationsPage", () => {
     expect(screen.getAllByText("Quadriceps").length).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Add exercise to Morning" }));
     expect(await screen.findByRole("dialog", { name: "Add to Morning" })).toBeInTheDocument();
+    const search = screen.getByRole("searchbox", { name: "Search exercises" });
+    await user.type(search, "BICEP");
+    expect(screen.getByRole("button", { name: "Add Bicep curls to Morning" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add Squats to Morning" })).not.toBeInTheDocument();
+    await user.clear(search);
     expect(screen.getByRole("button", { name: "Add Squats to Morning" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Create New Exercise" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add Squats to Morning" }));
