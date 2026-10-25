@@ -24,6 +24,10 @@ Status: verified locally; not merged or deployed.
 - Component tests cover initial focus, forward and reverse Tab wrap, inert background, topmost nested-dialog Escape handling, body scroll lock, and focus/scroll restoration.
 - Screenshots were visually inspected at 390px in light and dark themes, for the light and dark calendar, and at 320px with 200% text. All screenshots are stored alongside this report.
 
+## Follow-up after PR check failure
+
+The first GitHub Actions run exposed regressions from portaling dialogs outside the app fieldset: modal inputs did not inherit connection-based disabling, and the modal backdrop blocked the update banner. Global update and connection banners now sit outside the inert app area, the dialog stack sits below those banners, and a shared context disables controls inside portaled dialogs when the server is unavailable or a write result is uncertain. The full local Chromium E2E suite then passed: 15/15, including the Batch 2 update coordination tests, Batch 3 disconnect/save reconciliation tests, and Batch 4 responsive/dialog tests. The R5 enlarged-text scenario also passed in this full run. GitHub Actions rerun for the corrective commit is pending.
+
 ## Remaining acceptance
 
 - The browser checks ran in desktop Chromium. Installed iOS/Android behavior and real device text scaling remain part of final acceptance.

@@ -3,6 +3,7 @@ import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore 
 import { DayPage } from "./components/DayPage";
 import { DeferredBoundary } from "./components/DeferredBoundary";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { DialogControlsContext } from "./components/dialogContext";
 const ExercisesPage = lazy(() => import("./components/ExercisesPage").then((module) => ({ default: module.ExercisesPage })));
 const SettingsPage = lazy(() => import("./components/SettingsPage").then((module) => ({ default: module.SettingsPage })));
 const NotesPage = lazy(() => import("./components/NotesPage").then((module) => ({ default: module.NotesPage })));
@@ -49,6 +50,7 @@ export default function App() {
   const reachability = useSyncExternalStore(subscribeServerReachability, getServerReachability, getServerReachability);
   const uncertainWrite = useSyncExternalStore(subscribeServerReachability, getWriteOutcomeUncertain, getWriteOutcomeUncertain);
   const pwaInstall = usePwaInstall();
+  const dialogControlsDisabled = reachability !== "reachable" || uncertainWrite;
 
   const loadConfig = useCallback(async () => {
     try {
@@ -82,9 +84,9 @@ export default function App() {
     setCalendarOpen(false);
   };
 
-  return <><Backdrop /><div data-rostam-app className="app-shell">
-    <UpdateBanner />
+  return <DialogControlsContext.Provider value={dialogControlsDisabled}><><Backdrop /><UpdateBanner />
     {(reachability !== "reachable" || uncertainWrite) && <div className="connection-banner" role="alert"><span>{uncertainWrite ? "A save result is uncertain. Rostam is locked until you reload and reconcile the server data." : reachability === "unknown" ? "Confirming connection to Rostam…" : "Rostam is disconnected. Editing and saves are paused."}</span>{reachability !== "reachable" && <button className="secondary" onClick={() => void loadConfig()}>Check connection</button>}{uncertainWrite && <button className="secondary" onClick={() => window.location.reload()}>Reload to reconcile</button>}</div>}
+    <div data-rostam-app className="app-shell">
     <div className="brand"><button className="brand-home" aria-label="Go to Today" title="Go to Today" onClick={goToToday}><Logo className="app-logo brand-logo" sizes="44px" /></button></div>
     <fieldset className="app-content-controls" disabled={reachability !== "reachable" || uncertainWrite}>
     <div className="content">
@@ -117,5 +119,6 @@ export default function App() {
       <button aria-label="Measurements" title="Measurements" className={tab === "measurements" ? "active" : ""} onClick={() => { setTab("measurements"); setCalendarOpen(false); }}><Ruler /></button>
       <button aria-label="Settings" title="Settings" className={tab === "settings" ? "active" : ""} onClick={() => { setTab("settings"); setCalendarOpen(false); }}><Settings /></button>
     </nav>
-  </div></>;
+    </div>
+  </></DialogControlsContext.Provider>;
 }

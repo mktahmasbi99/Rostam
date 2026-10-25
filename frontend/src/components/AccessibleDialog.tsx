@@ -1,5 +1,6 @@
 import { createContext, type ReactNode, useContext, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { DialogControlsContext } from "./dialogContext";
 
 interface Props {
   children: ReactNode;
@@ -30,6 +31,7 @@ function focusableWithin(panel: HTMLElement): HTMLElement[] {
 
 export function AccessibleDialog({ children, className, backdropClassName, labelledBy, label, onClose, testId, panelClassName = "" }: Props) {
   const parentDepth = useContext(DialogDepth);
+  const controlsDisabled = useContext(DialogControlsContext);
   const depth = parentDepth + 1;
   const layerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -82,10 +84,10 @@ export function AccessibleDialog({ children, className, backdropClassName, label
   return (
     <DialogDepth.Provider value={depth}>
       {createPortal(
-        <div ref={layerRef} className="dialog-layer" data-dialog-depth={depth} style={{ zIndex: 100 + depth }}>
+        <div ref={layerRef} className="dialog-layer" data-dialog-depth={depth} style={{ zIndex: 50 + depth }}>
           <div className={`${backdropClassName} ${className}`} data-testid={testId} onMouseDown={(event) => { if (event.target === event.currentTarget && layers.at(-1) === layerRef.current) onCloseRef.current(); }}>
             <section ref={panelRef} className={panelClassName} role="dialog" aria-modal="true" aria-labelledby={labelledBy} aria-label={label} tabIndex={-1}>
-              {children}
+              <fieldset className="dialog-content-controls" disabled={controlsDisabled}>{children}</fieldset>
             </section>
           </div>
         </div>,
