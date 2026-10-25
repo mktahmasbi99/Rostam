@@ -40,7 +40,7 @@ describe("SetForm", () => {
     await user.type(screen.getByLabelText("Reps"), "8");
     await user.click(screen.getByRole("button", { name: "Save set" }));
     await waitFor(() => expect(api.addSet).toHaveBeenCalled());
-    expect(api.addSet.mock.calls[0][2]).not.toHaveProperty("enrollInRotation");
+    expect(vi.mocked(api.addSet).mock.calls[0][2]).not.toHaveProperty("enrollInRotation");
   });
 
   it("uses fixed equipment without presenting an equipment picker", async () => {
