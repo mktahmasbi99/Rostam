@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Clock3, Dumbbell, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, Dumbbell, Plus, X } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { api } from "../lib/api";
 import { artwork } from "../artwork";
@@ -185,16 +185,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
         {day < today && <button className="day-navigation" aria-label="Next day" title="Next day" onClick={onNextDay}><ChevronRight /></button>}
       </header>
 
-      <div className="day-actions">
-        {loaded && <Suspense fallback={<span className="deferred-loading" role="status">Loading journal…</span>}><DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} /></Suspense>}
-        <div className="day-add-actions" ref={addMenuRef} onKeyDown={handleAddMenuKeyDown}>
-          <button ref={addTriggerRef} className="add-exercise" aria-label="Add to day" aria-haspopup="menu" aria-expanded={addMenuOpen} aria-controls="day-add-menu" onClick={() => setAddMenuOpen((open) => !open)}><Plus /></button>
-          {addMenuOpen && <div id="day-add-menu" className="day-add-menu" role="menu" aria-label="Add to day">
-            <button className="day-add-menu-item" role="menuitem" onClick={openExercisePicker}><Dumbbell /><span><strong>Add exercise</strong><small>Sets throughout the day</small></span></button>
-            <button className="day-add-menu-item" role="menuitem" onClick={openActivityPicker}><Clock3 /><span><strong>Add activity</strong><small>BJJ, walking, and other activities</small></span></button>
-          </div>}
-        </div>
-      </div>
+      {loaded && <div className="day-journal-actions"><Suspense fallback={<span className="deferred-loading" role="status">Loading journal…</span>}><DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} /></Suspense></div>}
 
       <ReadState loading={loading} error={error} hasData={loaded} onRetry={() => void load()} loadingText="Loading sets…" />
       {loaded && !loading && !error && data.sections.length === 0 && !(data.activities?.length) && !pendingExercise && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise or start a timed activity.</p></div>}
@@ -217,6 +208,13 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       {rotationPrompt && <Suspense fallback={null}><Modal title="Add this exercise to your active rotation?" onClose={() => { if (!rotationPromptBusy) setRotationPrompt(null); }}><div className="rotation-choice-dialog"><p>{rotationPrompt.exercise.name}</p>{rotationPromptError && <p className="error" role="alert">{rotationPromptError}</p>}<div className="draft-actions"><button type="button" disabled={rotationPromptBusy} onClick={() => { setPendingExercise(rotationPrompt.exercise); setRotationPrompt(null); }}>Just record it</button><button type="button" className="primary" disabled={rotationPromptBusy} onClick={() => void addExerciseToRotation()}>{rotationPromptBusy ? "Adding…" : "Add to rotation"}</button></div></div></Modal></Suspense>}
       {pickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading exercise picker…</div>}><ExercisePicker day={day} today={today} presentIds={[...presentIds, ...(pendingExercise ? [pendingExercise.id] : [])]} onClose={() => { setPickerOpen(false); addTriggerRef.current?.focus(); }} onChoose={(exercise) => void chooseExercise(exercise)} /></Suspense>}
       {activityPickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading activity picker…</div>}><ActivityPicker day={day} timezone={timezone} onClose={() => { setActivityPickerOpen(false); addTriggerRef.current?.focus(); }} onStarted={() => { setActivityPickerOpen(false); addTriggerRef.current?.focus(); void load(); }} /></Suspense>}
+      <div className="day-add-actions floating-create-action" ref={addMenuRef} onKeyDown={handleAddMenuKeyDown}>
+        {addMenuOpen && <div id="day-add-menu" className="day-add-menu" role="menu" aria-label="Add to day">
+          <button className="day-add-menu-item" role="menuitem" onClick={openActivityPicker}><Clock3 /><span><strong>Add activity</strong><small>BJJ, walking, and other activities</small></span></button>
+          <button className="day-add-menu-item" role="menuitem" onClick={openExercisePicker}><Dumbbell /><span><strong>Add exercise</strong><small>Sets throughout the day</small></span></button>
+        </div>}
+        <button ref={addTriggerRef} className="add-exercise" aria-label={addMenuOpen ? "Close add menu" : "Add to day"} aria-haspopup="menu" aria-expanded={addMenuOpen} aria-controls="day-add-menu" onClick={() => setAddMenuOpen((open) => !open)}>{addMenuOpen ? <X /> : <Plus />}</button>
+      </div>
     </main>
   );
 }
