@@ -69,12 +69,12 @@ describe("NotesPage", () => {
     await user.click(await screen.findByRole("button", { name: /Drills/ }));
     await user.click(await screen.findByRole("button", { name: /Practice/ }));
     await user.click(screen.getByRole("button", { name: "Note options" }));
-    await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete note" }));
     expect(await screen.findByRole("dialog", { name: "Delete note?" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByText("Practice")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Note options" }));
-    await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete note" }));
     await user.click(screen.getByRole("button", { name: "Delete note" }));
     await waitFor(() => expect(api.updateActivityNote).toHaveBeenCalledWith(1, ""));
     expect(await screen.findByText("No activity notes yet.")).toBeInTheDocument();

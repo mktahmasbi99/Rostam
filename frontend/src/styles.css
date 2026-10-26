@@ -184,10 +184,9 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .notes-page .section-title { position: relative; }
 .notes-preview { position: relative; padding: 1px; border-radius: 16px; cursor: pointer; }
 .notes-preview .journal-list { gap: 8px; }
-.notes-preview.has-more { overflow: hidden; max-height: 390px; }
-.notes-preview.has-more::after { position: absolute; inset: 220px 0 0; content: ""; background: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--surface) 55%, transparent) 42%, color-mix(in srgb, var(--surface) 94%, transparent) 100%); backdrop-filter: blur(2px); pointer-events: none; }
-.notes-preview.has-more:has(.notes-view-all)::after { bottom: 44px; }
-.notes-view-all { position: relative; z-index: 2; width: 100%; min-height: 44px; margin-top: 3px; background: var(--surface); color: var(--accent-dark); font-weight: 750; }
+.notes-preview.has-more { box-sizing: border-box; overflow: hidden; max-height: 390px; padding-bottom: 48px; }
+.notes-preview.has-more::after { position: absolute; inset: 220px 0 0; content: ""; background: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--surface) 32%, transparent) 32%, color-mix(in srgb, var(--surface) 88%, transparent) 100%); backdrop-filter: blur(2px); pointer-events: none; }
+.notes-view-all { position: absolute; z-index: 2; right: 0; bottom: 0; left: 0; width: 100%; min-height: 48px; margin: 0; border-radius: 0 0 15px 15px; background: var(--surface); color: var(--accent-dark); font-weight: 750; }
 .activity-note-groups { display: grid; gap: 10px; }
 .activity-note-group { width: 100%; min-height: 72px; justify-content: flex-start; gap: 14px; padding: 14px; text-align: left; background: var(--surface); }
 .activity-note-group > svg { flex: 0 0 auto; color: var(--accent-dark); }
@@ -200,6 +199,7 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .notes-kebab-menu { display: none; position: absolute; z-index: 4; top: calc(100% + 5px); right: 0; min-width: 150px; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
 .notes-kebab-menu.open { display: grid; }
 .notes-kebab-menu button { justify-content: flex-start; background: transparent; box-shadow: none; }
+.notes-kebab-menu .notes-delete-menu-item { justify-content: center; color: var(--danger); }
 .notes-reader { max-width: 780px; margin: 0 auto; }
 .notes-reader h1 { margin: 0; font-size: clamp(2rem, 8vw, 3.5rem); letter-spacing: .015em; overflow-wrap: anywhere; }
 .notes-reader time { display: block; margin: 5px 0 14px; color: var(--muted); font-weight: 600; }

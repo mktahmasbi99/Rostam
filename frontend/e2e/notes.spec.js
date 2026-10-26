@@ -39,7 +39,7 @@ test("notes are grouped, readable, editable, and deletable on narrow and wide sc
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByText("Updated after practice")).toBeVisible();
   await page.getByRole("button", { name: "Note options" }).click();
-  await page.getByRole("menuitem", { name: "Delete" }).click();
+  await page.getByRole("menuitem", { name: "Delete note" }).click();
   await expect(page.getByRole("dialog", { name: "Delete note?" })).toBeVisible();
   await page.getByRole("button", { name: "Delete note", exact: true }).click();
   await expect(page.getByText("No activity notes yet.")).toBeVisible();
