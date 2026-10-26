@@ -93,13 +93,14 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .add-exercise svg { width: 27px; height: 27px; stroke-width: 3; transition: transform .2s ease; }
 .add-exercise.menu-open svg { transform: rotate(45deg); }
 .day-add-menu { position: absolute; z-index: 12; bottom: calc(100% + 12px); right: 0; display: grid; gap: 10px; width: min(320px, calc(100vw - 40px)); }
-.day-add-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: inherit; text-align: left; box-shadow: var(--shadow); }
+.day-add-menu-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: inherit; text-align: left; box-shadow: var(--shadow); animation: day-add-card-expand .24s cubic-bezier(.2, 0, 0, 1) both; }
 .day-add-menu-item:hover:not(:disabled) { background: var(--surface); box-shadow: var(--shadow); transform: translateY(-2px); }
 .day-add-menu-item:active:not(:disabled) { background: var(--surface); box-shadow: var(--shadow); transform: none; }
 .day-add-menu-item > svg { flex: 0 0 auto; width: 21px; height: 21px; color: var(--accent-dark); }
 .day-add-menu-item > span { display: grid; gap: 2px; }
 .day-add-menu-item strong { font-weight: 750; }
 .day-add-menu-item small { color: var(--muted); font-size: .8rem; }
+@keyframes day-add-card-expand { from { clip-path: inset(0 0 0 100%); opacity: .7; } to { clip-path: inset(0); opacity: 1; } }
 
 .exercise-sections { display: grid; gap: 18px; }
 .activity-card { margin-bottom: 18px; }
@@ -477,7 +478,7 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
 .rotation-activation-success.deactivated .rotation-activation-check { border-color: #aeb9c5; color: #c3ccd5; background: rgba(143, 157, 172, .18); }
 @keyframes activation-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes activation-check-pop { from { opacity: 0; transform: scale(.35) rotate(-18deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
-@media (prefers-reduced-motion: reduce) { .rotation-activation-success, .rotation-activation-check { animation-duration: .01ms; } .add-exercise svg { transition-duration: .01ms; } }
+@media (prefers-reduced-motion: reduce) { .rotation-activation-success, .rotation-activation-check, .day-add-menu-item { animation-duration: .01ms; } .add-exercise svg { transition-duration: .01ms; } }
 .rotation-offer { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
 .rotation-offer legend { font-weight: 700; margin-bottom: 7px; }
 .rotation-offer label { display: flex; align-items: center; gap: 5px; }
