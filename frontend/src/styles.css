@@ -181,6 +181,33 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .journal-list { display: grid; gap: 10px; }
 .journal-list button { min-height: 0; display: grid; justify-content: start; align-items: start; gap: 4px; padding: 14px; text-align: left; background: var(--surface); }
 .journal-list button span { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.notes-page .section-title { position: relative; }
+.notes-preview { position: relative; padding: 1px; border-radius: 16px; cursor: pointer; }
+.notes-preview .journal-list { gap: 8px; }
+.notes-preview.has-more { overflow: hidden; max-height: 390px; }
+.notes-preview.has-more::after { position: absolute; inset: 220px 0 0; content: ""; background: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--surface) 55%, transparent) 42%, color-mix(in srgb, var(--surface) 94%, transparent) 100%); backdrop-filter: blur(2px); pointer-events: none; }
+.notes-preview.has-more:has(.notes-view-all)::after { bottom: 44px; }
+.notes-view-all { position: relative; z-index: 2; width: 100%; min-height: 44px; margin-top: 3px; background: var(--surface); color: var(--accent-dark); font-weight: 750; }
+.activity-note-groups { display: grid; gap: 10px; }
+.activity-note-group { width: 100%; min-height: 72px; justify-content: flex-start; gap: 14px; padding: 14px; text-align: left; background: var(--surface); }
+.activity-note-group > svg { flex: 0 0 auto; color: var(--accent-dark); }
+.activity-note-group > span { min-width: 0; display: grid; gap: 3px; }
+.activity-note-group small { color: var(--muted); }
+.notes-detail-page { min-height: calc(100dvh - 32px); }
+.notes-reader-toolbar { display: flex; align-items: center; justify-content: space-between; min-height: 58px; margin: -4px 0 24px; }
+.notes-reader-actions, .notes-edit-actions { display: flex; align-items: center; gap: 8px; }
+.notes-kebab { position: relative; }
+.notes-kebab-menu { display: none; position: absolute; z-index: 4; top: calc(100% + 5px); right: 0; min-width: 150px; padding: 5px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+.notes-kebab-menu.open { display: grid; }
+.notes-kebab-menu button { justify-content: flex-start; background: transparent; box-shadow: none; }
+.notes-reader { max-width: 780px; margin: 0 auto; }
+.notes-reader h1 { margin: 0; font-size: clamp(2rem, 8vw, 3.5rem); letter-spacing: .015em; overflow-wrap: anywhere; }
+.notes-reader time { display: block; margin: 5px 0 14px; color: var(--muted); font-weight: 600; }
+.notes-reader-body, .notes-reader-editor { box-sizing: border-box; width: 100%; min-height: min(48vh, 500px); padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); font: inherit; font-size: 1rem; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: var(--shadow); }
+.notes-reader-editor { resize: vertical; }
+.notes-character-count { display: block; margin-top: 6px; color: var(--muted); text-align: right; }
+.notes-back { position: absolute; left: 0; top: -4px; }
+.notes-back + h1 { margin-left: 54px; }
 .photo-history { margin-bottom: 22px; }
 .photo-date { min-height: 34px; padding: 0; background: transparent; box-shadow: none; color: var(--accent-dark); font-weight: 800; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

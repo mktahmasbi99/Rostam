@@ -440,6 +440,59 @@ def test_timed_activity_entries_allow_repeats_and_keep_notes_in_order(database, 
     assert client.delete(f"/api/activity-entries/{first['id']}").status_code == 204
 
 
+def test_activity_note_groups_and_filtered_pagination(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    client = TestClient(main.app)
+    walk = client.post("/api/activities", json={"name": "Walk"}).json()
+    stretch = client.post("/api/activities", json={"name": "Stretch"}).json()
+
+    def add_note(activity_id, started_at, text):
+        entry = client.post(
+            f"/api/activities/{activity_id}/entries", json={"startedAt": started_at}
+        ).json()
+        date_part, time_part = started_at.split("T")
+        hour, minute = (int(part) for part in time_part[:5].split(":"))
+        end = f"{date_part}T{hour:02d}:{minute + 30:02d}:00+02:00"
+        return client.patch(
+            f"/api/activity-entries/{entry['id']}",
+            json={"startedAt": started_at, "endedAt": end, "note": text},
+        ).json()
+
+    add_note(walk["id"], "2026-09-17T10:00:00+02:00", "Walk one")
+    add_note(walk["id"], "2026-09-17T11:00:00+02:00", "Walk two")
+    archived_note = add_note(stretch["id"], "2026-09-18T10:00:00+02:00", "Stretch one")
+    assert client.post(f"/api/activities/{stretch['id']}/archive").status_code == 200
+
+    groups = client.get("/api/activity-note-groups").json()
+    assert [(item["activityId"], item["noteCount"]) for item in groups] == [
+        (stretch["id"], 1),
+        (walk["id"], 2),
+    ]
+    filtered = client.get(f"/api/activity-notes?activityId={walk['id']}&limit=1").json()
+    assert [item["note"] for item in filtered["items"]] == ["Walk two"]
+    older = client.get(
+        f"/api/activity-notes?activityId={walk['id']}&limit=1"
+        f"&beforeStartedAt={filtered['nextBeforeStartedAt']}&beforeId={filtered['nextBeforeId']}"
+    ).json()
+    assert [item["note"] for item in older["items"]] == ["Walk one"]
+    assert [item["note"] for item in client.get("/api/activity-notes").json()["items"]] == [
+        "Stretch one",
+        "Walk two",
+        "Walk one",
+    ]
+    assert (
+        client.put(
+            f"/api/activity-entries/{archived_note['id']}/note", json={"note": ""}
+        ).status_code
+        == 200
+    )
+    assert database.day("2026-09-18")["activities"][0]["id"] == archived_note["id"]
+    assert all(
+        item["activityId"] != stretch["id"]
+        for item in client.get("/api/activity-note-groups").json()
+    )
+
+
 def test_restore_backup_endpoint(database, monkeypatch):
     monkeypatch.setattr(main, "database", database)
     source = database.create_backup("on-demand")

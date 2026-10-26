@@ -116,7 +116,7 @@ export default function App() {
         onNextDay={() => setSelectedDay(shiftDay(selectedDay, 1))}
         onChooseDay={(day) => setSelectedDay(day)}
       />}
-      {tab === "notes" && <NotesPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
+      {tab === "notes" && <NotesPage />}
       {tab === "photos" && <PhotosPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "measurements" && <MeasurementsPage today={config.today} />}
       {tab === "exercises" && <ExercisesPage />}

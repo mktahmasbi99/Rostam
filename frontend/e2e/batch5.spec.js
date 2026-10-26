@@ -12,7 +12,8 @@ async function installArchiveApi(page) {
     if (path === "/api/config") return route.fulfill({ json: { today: day, timezone: "Europe/Warsaw", version: "1.0.0" } });
     if (path === "/api/profile") return route.fulfill({ json: { heightCm: null, dateOfBirth: null, age: null } });
     if (path === "/api/notes") return route.fulfill({ json: url.searchParams.has("beforeDate") ? { items: [{ date: oldDay, body: "Older daily note", createdAt: "", updatedAt: "" }], nextBeforeDate: null } : { items: [{ date: day, body: "Recent daily note", createdAt: "", updatedAt: "" }], nextBeforeDate: oldDay } });
-    if (path === "/api/activity-notes") return route.fulfill({ json: url.searchParams.has("beforeStartedAt") ? { items: [], nextBeforeStartedAt: null, nextBeforeId: null } : { items: [{ id: 1, activityId: 1, activityName: "Drills", date: day, startedAt: `${day}T10:00:00+02:00`, endedAt: null, durationSeconds: null, note: "Recent activity note", createdAt: "" }], nextBeforeStartedAt: `${oldDay}T10:00:00+02:00`, nextBeforeId: 2 } });
+    if (path === "/api/activity-note-groups") return route.fulfill({ json: [{ activityId: 1, activityName: "Drills", noteCount: 2, latestStartedAt: `${day}T10:00:00+02:00` }] });
+    if (path === "/api/activity-notes") return route.fulfill({ json: url.searchParams.has("beforeStartedAt") ? { items: [{ id: 2, activityId: 1, activityName: "Drills", date: oldDay, startedAt: `${oldDay}T10:00:00+02:00`, endedAt: null, durationSeconds: null, note: "Older activity note", createdAt: "" }], nextBeforeStartedAt: null, nextBeforeId: null } : { items: [{ id: 1, activityId: 1, activityName: "Drills", date: day, startedAt: `${day}T10:00:00+02:00`, endedAt: null, durationSeconds: null, note: "Recent activity note", createdAt: "" }], nextBeforeStartedAt: `${oldDay}T10:00:00+02:00`, nextBeforeId: 2 } });
     if (path === "/api/photos") return route.fulfill({ json: url.searchParams.has("beforeDate") ? { items: [{ date: oldDay, photos: [] }], nextBeforeDate: null } : { items: [{ date: day, photos: [{ id: 5, date: day, displayOrder: 1, width: 1, height: 1, createdAt: "", thumbnailUrl: "/api/photos/5/thumbnail", url: "/api/photos/5" }] }], nextBeforeDate: oldDay } });
     if (path === "/api/photos/5/thumbnail") return route.fulfill({ status: 200, contentType: "image/jpeg", body: Buffer.from("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/AI//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/AI//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/AI//2Q==", "base64") });
     if (path === "/api/body-measurements") return route.fulfill({ json: url.searchParams.has("beforeDate") ? { items: [measurement(2, oldDay, "81", null)], nextBeforeDate: null, nextBeforeId: null } : { items: [measurement(1, day, "80", null)], nextBeforeDate: oldDay, nextBeforeId: 2 } });
@@ -26,9 +27,13 @@ test("archive pages load older photos, notes, and measurements only when request
   await page.goto("/");
   await page.getByRole("button", { name: "Notes" }).click();
   await expect(page.getByText("Recent daily note")).toBeVisible();
-  await page.getByRole("button", { name: "Load older daily notes" }).click();
+  await page.getByRole("button", { name: "View all daily notes" }).click();
+  await page.getByRole("button", { name: "Load older notes" }).click();
   await expect(page.getByText("Older daily note")).toBeVisible();
-  await page.getByRole("button", { name: "Load older activity notes" }).click();
+  await page.getByRole("button", { name: "Back to Notes" }).click();
+  await page.getByRole("button", { name: /Drills/ }).click();
+  await page.getByRole("button", { name: "Load older notes" }).click();
+  await expect(page.getByText("Older activity note")).toBeVisible();
   await expect(page.getByText("Recent activity note")).toBeVisible();
 
   await page.getByRole("button", { name: "Photos" }).click();
