@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Clock3, Dumbbell, Plus, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Clock3, Dumbbell, Plus } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { api } from "../lib/api";
 import { artwork } from "../artwork";
@@ -213,7 +213,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
           <button className="day-add-menu-item" role="menuitem" onClick={openActivityPicker}><Clock3 /><span><strong>Add activity</strong><small>BJJ, walking, and other activities</small></span></button>
           <button className="day-add-menu-item" role="menuitem" onClick={openExercisePicker}><Dumbbell /><span><strong>Add exercise</strong><small>Sets throughout the day</small></span></button>
         </div>}
-        <button ref={addTriggerRef} className="add-exercise" aria-label={addMenuOpen ? "Close add menu" : "Add to day"} aria-haspopup="menu" aria-expanded={addMenuOpen} aria-controls="day-add-menu" onClick={() => setAddMenuOpen((open) => !open)}>{addMenuOpen ? <X /> : <Plus />}</button>
+        <button ref={addTriggerRef} className={`add-exercise ${addMenuOpen ? "menu-open" : ""}`} aria-label={addMenuOpen ? "Close add menu" : "Add to day"} aria-haspopup="menu" aria-expanded={addMenuOpen} aria-controls="day-add-menu" onClick={() => setAddMenuOpen((open) => !open)}><Plus /></button>
       </div>
     </main>
   );
