@@ -185,6 +185,7 @@ export function RotationsPage() {
     <header className="section-title card-heading">
       <div><h1>Rotations</h1><p>Arrange exercises in the order you want to revisit them.</p></div>
     </header>
+    <div className="page-create-action"><button className="rotation-create-icon" aria-label="Create rotation" title="Create rotation" onClick={() => { setCreating(true); setName(""); }}><Plus /></button></div>
     <ReadState loading={loading} error={error} hasData={loaded} onRetry={() => setLoadRetry((value) => value + 1)} loadingText="Loading rotations…" />
     {loaded && rotations.length === 0 && !loading && !error && <p className="empty-copy">Create a rotation to keep an ordered list of exercises.</p>}
     {loaded && rotations.map((rotation) => rotationCard(rotation))}
@@ -286,6 +287,5 @@ export function RotationsPage() {
       if (rotation) setDraftMemberIds((current) => [...current, exercise.id]);
       else void load();
     }} /></Modal>}
-    <div className="page-create-action floating-create-action"><button className="rotation-create-icon" aria-label="Create rotation" title="Create rotation" onClick={() => { setCreating(true); setName(""); }}><Plus /></button></div>
   </main>;
 }
