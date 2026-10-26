@@ -214,9 +214,15 @@ def delete_activity(activity_id: int, payload: ActivityDelete) -> None:
 def activity_notes(
     before_started_at: Annotated[str | None, Query(alias="beforeStartedAt")] = None,
     before_id: Annotated[int | None, Query(alias="beforeId")] = None,
+    activity_id: Annotated[int | None, Query(alias="activityId")] = None,
     limit: int = 30,
 ) -> dict:
-    return database.activity_notes(before_started_at, before_id, limit)
+    return database.activity_notes(before_started_at, before_id, limit, activity_id)
+
+
+@app.get("/api/activity-note-groups")
+def activity_note_groups() -> list[dict]:
+    return database.activity_note_groups()
 
 
 @app.post("/api/activities/{activity_id}/entries", status_code=201)

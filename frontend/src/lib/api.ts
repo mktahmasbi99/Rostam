@@ -1,4 +1,4 @@
-import type { Activity, ActivityEntry, ActivityNotePage, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPage, BodyMeasurementPayload, Config, DailyNotePage, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, MeasurementTrends, PhotoPage, Profile, ProfilePayload, RestoreResult, Rotation, RotationRecommendation, SetPayload } from "./types";
+import type { Activity, ActivityEntry, ActivityNoteGroup, ActivityNotePage, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPage, BodyMeasurementPayload, Config, DailyNotePage, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, MeasurementTrends, PhotoPage, Profile, ProfilePayload, RestoreResult, Rotation, RotationRecommendation, SetPayload } from "./types";
 import { trackWrite } from "./restartSafety";
 import { reportServerReachability, reportUncertainWrite, requireReachableServer, ServerConnectionError } from "./connectivity";
 
@@ -79,11 +79,12 @@ export const api = {
   updateActivity: (id: number, startedAt: string, endedAt: string, note: string) => request<ActivityEntry>(`/api/activity-entries/${id}`, json("PUT", { startedAt, endedAt, note })),
   updateActivityNote: (id: number, note: string) => request<ActivityEntry>(`/api/activity-entries/${id}/note`, json("PUT", { note })),
   deleteActivity: (id: number) => request<void>(`/api/activity-entries/${id}`, { method: "DELETE" }),
-  activityNotes: (options: { beforeStartedAt?: string; beforeId?: number; limit?: number } = {}) => {
+  activityNotes: (options: { beforeStartedAt?: string; beforeId?: number; limit?: number; activityId?: number } = {}) => {
     const params = new URLSearchParams();
     Object.entries(options).forEach(([key, value]) => { if (value !== undefined) params.set(key, String(value)); });
     return request<ActivityNotePage>(`/api/activity-notes?${params}`);
   },
+  activityNoteGroups: () => request<ActivityNoteGroup[]>("/api/activity-note-groups"),
   calendar: (month: string, signal?: AbortSignal) =>
     request<{ month: string; activeDates: string[] }>(`/api/calendar/${month}`, { signal }),
   exerciseHistory: (id: number, options: { beforeDate?: string; limit?: number } = {}, signal?: AbortSignal) => {

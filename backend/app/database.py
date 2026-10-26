@@ -2257,24 +2257,29 @@ class RostamDatabase:
             return self._serialize_activity_entry(row)
 
     def activity_notes(
-        self, before_started_at: str | None = None, before_id: int | None = None, limit: int = 30
+        self,
+        before_started_at: str | None = None,
+        before_id: int | None = None,
+        limit: int = 30,
+        activity_id: int | None = None,
     ) -> dict:
         limit = self._bounded_limit(limit, 100)
         if (before_started_at is None) != (before_id is None):
             raise DomainError("Both activity note cursor values are required.")
-        where = (
-            "AND (x.started_at < ? OR (x.started_at = ? AND x.id < ?))" if before_started_at else ""
-        )
-        params = (
-            (before_started_at, before_started_at, before_id, limit + 1)
-            if before_started_at
-            else (limit + 1,)
-        )
+        filters = ["x.note != ''"]
+        values: list[object] = []
+        if activity_id is not None:
+            filters.append("x.activity_id = ?")
+            values.append(activity_id)
+        if before_started_at:
+            filters.append("(x.started_at < ? OR (x.started_at = ? AND x.id < ?))")
+            values.extend((before_started_at, before_started_at, before_id))
+        values.append(limit + 1)
         with self.connect() as connection:
             rows = connection.execute(
                 f"SELECT x.*, a.name FROM activity_entries x JOIN activities a ON a.id=x.activity_id "
-                f"WHERE x.note != '' {where} ORDER BY x.started_at DESC, x.id DESC LIMIT ?",
-                params,
+                f"WHERE {' AND '.join(filters)} ORDER BY x.started_at DESC, x.id DESC LIMIT ?",
+                values,
             ).fetchall()
         has_more = len(rows) > limit
         items = [self._serialize_activity_entry(row) for row in rows[:limit]]
@@ -2284,6 +2289,25 @@ class RostamDatabase:
             "nextBeforeStartedAt": last["started_at"] if last else None,
             "nextBeforeId": last["id"] if last else None,
         }
+
+    def activity_note_groups(self) -> list[dict]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT a.id AS activity_id, a.name AS activity_name, COUNT(*) AS note_count,
+                MAX(x.started_at) AS latest_started_at
+                FROM activities a JOIN activity_entries x ON x.activity_id = a.id
+                WHERE x.note != '' GROUP BY a.id, a.name
+                ORDER BY latest_started_at DESC, a.id"""
+            ).fetchall()
+        return [
+            {
+                "activityId": row["activity_id"],
+                "activityName": row["activity_name"],
+                "noteCount": row["note_count"],
+                "latestStartedAt": row["latest_started_at"],
+            }
+            for row in rows
+        ]
 
     def calendar(self, month: str) -> dict:
         if not re.fullmatch(r"\d{4}-\d{2}", month):

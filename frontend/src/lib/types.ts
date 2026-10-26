@@ -142,6 +142,7 @@ export interface DailyPhoto { id: number; date: string; displayOrder: number; wi
 export interface PhotoGroup { date: string; photos: DailyPhoto[]; }
 export interface PhotoPage { items: PhotoGroup[]; nextBeforeDate: string | null; }
 export interface ActivityNotePage { items: ActivityEntry[]; nextBeforeStartedAt: string | null; nextBeforeId: number | null; }
+export interface ActivityNoteGroup { activityId: number; activityName: string; noteCount: number; latestStartedAt: string; }
 
 export interface SetPayload {
   time: string | null;
