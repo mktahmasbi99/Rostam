@@ -123,13 +123,13 @@ describe("DayPage exercise notes", () => {
     const exerciseItem = screen.getByRole("menuitem", { name: /Add exercise/ });
     const activityItem = screen.getByRole("menuitem", { name: /Add activity/ });
     expect(trigger).toHaveAttribute("aria-expanded", "true");
-    expect(exerciseItem).toHaveFocus();
+    expect(activityItem).toHaveFocus();
     await user.keyboard("{ArrowDown}");
-    expect(activityItem).toHaveFocus();
-    await user.keyboard("{Home}");
     expect(exerciseItem).toHaveFocus();
-    await user.keyboard("{End}");
+    await user.keyboard("{Home}");
     expect(activityItem).toHaveFocus();
+    await user.keyboard("{End}");
+    expect(exerciseItem).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(trigger).toHaveFocus();
     expect(trigger).toHaveAttribute("aria-expanded", "false");

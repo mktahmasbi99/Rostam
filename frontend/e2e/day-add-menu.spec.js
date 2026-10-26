@@ -21,8 +21,15 @@ test("day add menu opens its existing pickers and stays visible on a narrow scre
       const menuBox = await menu.boundingBox();
       expect(menuBox.x).toBeGreaterThanOrEqual(0);
       expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(width);
-      const menuBackground = await menu.evaluate((element) => getComputedStyle(element).backgroundColor);
-      expect(menuBackground).not.toBe("rgba(0, 0, 0, 0)");
+      const items = menu.getByRole("menuitem");
+      await expect(items).toHaveCount(2);
+      for (const item of await items.all()) {
+        const itemBackground = await item.evaluate((element) => getComputedStyle(element).backgroundColor);
+        expect(itemBackground).not.toBe("rgba(0, 0, 0, 0)");
+      }
+      const firstItemBox = await items.nth(0).boundingBox();
+      const secondItemBox = await items.nth(1).boundingBox();
+      expect(secondItemBox.y).toBeGreaterThan(firstItemBox.y + firstItemBox.height);
       await page.keyboard.press("Escape");
       await expect(menu).toBeHidden();
     }
@@ -31,7 +38,7 @@ test("day add menu opens its existing pickers and stays visible on a narrow scre
   await page.emulateMedia({ colorScheme: "light" });
   await trigger.click();
   const menu = page.getByRole("menu", { name: "Add to day" });
-  await page.keyboard.press("End");
+  await page.keyboard.press("Home");
   await expect(page.getByRole("menuitem", { name: /Add activity/ })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toBeVisible();
