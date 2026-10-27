@@ -1,10 +1,11 @@
-import { Dumbbell, Images, ListChecks, NotebookPen, RotateCw, Ruler, Settings } from "lucide-react";
+import { Activity, Dumbbell, Images, ListChecks, NotebookPen, RotateCw, Ruler, Settings } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { DayPage } from "./components/DayPage";
 import { DeferredBoundary } from "./components/DeferredBoundary";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { DialogControlsContext } from "./components/dialogContext";
 const ExercisesPage = lazy(() => import("./components/ExercisesPage").then((module) => ({ default: module.ExercisesPage })));
+const ActivitiesPage = lazy(() => import("./components/ActivitiesPage").then((module) => ({ default: module.ActivitiesPage })));
 const SettingsPage = lazy(() => import("./components/SettingsPage").then((module) => ({ default: module.SettingsPage })));
 const NotesPage = lazy(() => import("./components/NotesPage").then((module) => ({ default: module.NotesPage })));
 const PhotosPage = lazy(() => import("./components/PhotosPage").then((module) => ({ default: module.PhotosPage })));
@@ -18,7 +19,7 @@ import { artwork } from "./artwork";
 import { getServerReachability, getWriteOutcomeUncertain, reportServerReachability, subscribeServerReachability } from "./lib/connectivity";
 import { applyThemePreference, readThemePreference, saveThemePreference, systemThemeQuery, type ThemePreference } from "./lib/theme";
 
-type Tab = "today" | "notes" | "photos" | "measurements" | "exercises" | "rotations" | "settings";
+type Tab = "today" | "notes" | "photos" | "measurements" | "exercises" | "activities" | "rotations" | "settings";
 
 function Backdrop() {
   return <picture className="site-backdrop">
@@ -120,6 +121,7 @@ export default function App() {
       {tab === "photos" && <PhotosPage onChooseDay={(day) => { setSelectedDay(day); setTab("today"); }} />}
       {tab === "measurements" && <MeasurementsPage today={config.today} />}
       {tab === "exercises" && <ExercisesPage />}
+      {tab === "activities" && <ActivitiesPage />}
       {tab === "rotations" && <RotationsPage />}
       {tab === "settings" && <SettingsPage config={config} pwaInstall={pwaInstall} themePreference={themePreference} onThemePreferenceChange={changeThemePreference} />}
       </Suspense></DeferredBoundary>
@@ -129,6 +131,7 @@ export default function App() {
     <nav className="bottom-nav" aria-label="Primary navigation">
       <button aria-label="Today" title="Today" className={tab === "today" ? "active" : ""} onClick={goToToday}><ListChecks /></button>
       <button aria-label="Exercises" title="Exercises" className={tab === "exercises" ? "active" : ""} onClick={() => { setTab("exercises"); setCalendarOpen(false); }}><Dumbbell /></button>
+      <button aria-label="Activities" title="Activities" className={tab === "activities" ? "active" : ""} onClick={() => { setTab("activities"); setCalendarOpen(false); }}><Activity /></button>
       <button aria-label="Rotations" title="Rotations" className={tab === "rotations" ? "active" : ""} onClick={() => { setTab("rotations"); setCalendarOpen(false); }}><RotateCw /></button>
       <button aria-label="Notes" title="Notes" className={tab === "notes" ? "active" : ""} onClick={() => { setTab("notes"); setCalendarOpen(false); }}><NotebookPen /></button>
       <button aria-label="Photos" title="Photos" className={tab === "photos" ? "active" : ""} onClick={() => { setTab("photos"); setCalendarOpen(false); }}><Images /></button>

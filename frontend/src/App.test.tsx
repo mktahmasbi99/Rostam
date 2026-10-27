@@ -10,6 +10,8 @@ vi.mock("./lib/api", () => ({
     day: vi.fn(),
     calendar: vi.fn(),
     exercises: vi.fn(),
+    activities: vi.fn(),
+    updateActivityDefinition: vi.fn(),
     rotations: vi.fn(),
     backups: vi.fn(),
   },
@@ -21,6 +23,7 @@ describe("Rostam shell", () => {
     vi.mocked(api.day).mockResolvedValue({ date: "2026-09-13", sections: [] });
     vi.mocked(api.calendar).mockResolvedValue({ month: "2026-09", activeDates: ["2026-09-13"] });
     vi.mocked(api.exercises).mockResolvedValue([]);
+    vi.mocked(api.activities).mockResolvedValue([]);
     vi.mocked(api.rotations).mockResolvedValue([]);
     vi.mocked(api.backups).mockResolvedValue([]);
   });
@@ -44,6 +47,15 @@ describe("Rostam shell", () => {
     await user.click(await screen.findByRole("button", { name: "Rotations" }));
     expect(await screen.findByRole("heading", { name: "Rotations" })).toBeInTheDocument();
     expect(api.rotations).toHaveBeenCalled();
+  });
+
+  it("opens Activities after the exercise library", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Activities" }));
+    expect(await screen.findByRole("heading", { name: "Activities" })).toBeInTheDocument();
+    expect(api.activities).toHaveBeenCalledWith("active");
+    expect(api.activities).toHaveBeenCalledWith("archived");
   });
 
   it("opens the calendar from the day heading and returns through the standard ledger", async () => {

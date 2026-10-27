@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { activityTime } from "../lib/activityTime";
 import { useOutsideClick } from "../lib/useOutsideClick";
 import type { Activity } from "../lib/types";
+import { ActivityDefinitionActionDialog, type ActivityDefinitionAction } from "./ActivityDefinitionActionDialog";
 import { Modal } from "./Modal";
 import { TimeWheelField } from "./TimeWheelField";
 import { ReadState } from "./ReadState";
@@ -33,6 +34,7 @@ export function ActivityPicker({ day, timezone, onClose, onStarted }: { day: str
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [pendingAction, setPendingAction] = useState<{ activity: Activity; action: ActivityDefinitionAction } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -85,27 +87,12 @@ export function ActivityPicker({ day, timezone, onClose, onStarted }: { day: str
     } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not update activity."); }
   }
 
-  async function changeArchiveState(activity: Activity, archivedActivity: boolean) {
+  async function confirmActivityAction(activity: Activity, action: ActivityDefinitionAction) {
     setError("");
-    try {
-      if (archivedActivity) await api.restoreActivity(activity.id);
-      else await api.archiveActivity(activity.id);
-      setOpenMenuId(null);
-      await load();
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not update activity."); }
-  }
-
-  async function remove(activity: Activity) {
-    const confirmation = window.prompt(
-      `Permanently delete ${activity.name}? This also deletes all session history. Archiving keeps its history. Type DELETE to continue.`,
-    );
-    if (confirmation !== "DELETE") return;
-    setError("");
-    try {
-      await api.deleteActivityDefinition(activity.id, confirmation);
-      setOpenMenuId(null);
-      await load();
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not delete activity."); }
+    if (action === "archive") await api.archiveActivity(activity.id);
+    else if (action === "restore") await api.restoreActivity(activity.id);
+    else await api.deleteActivityDefinition(activity.id, "DELETE");
+    await load();
   }
 
   function activityRow(activity: Activity, archivedActivity = false) {
@@ -124,8 +111,8 @@ export function ActivityPicker({ day, timezone, onClose, onStarted }: { day: str
         <div className="exercise-actions-menu" ref={isMenuOpen ? menuRef : null}>
           <button className="icon-button" aria-label={`More actions for ${activity.name}`} aria-haspopup="menu" aria-expanded={isMenuOpen} onClick={() => setOpenMenuId(isMenuOpen ? null : activity.id)}><MoreVertical /></button>
           {isMenuOpen && <div className="exercise-actions-popover" role="menu">
-            {archivedActivity ? <button className="icon-button" aria-label={`Restore ${activity.name}`} title="Restore" role="menuitem" onClick={() => void changeArchiveState(activity, true)}><RotateCcw /></button> : <button className="icon-button" aria-label={`Archive ${activity.name}`} title="Archive" role="menuitem" onClick={() => void changeArchiveState(activity, false)}><Archive /></button>}
-            <button className="icon-button danger" aria-label={`Delete ${activity.name} permanently`} title="Delete permanently" role="menuitem" onClick={() => void remove(activity)}><Trash2 /></button>
+            <button className="icon-button" aria-label={`${archivedActivity ? "Restore" : "Archive"} ${activity.name}`} title={archivedActivity ? "Restore" : "Archive"} role="menuitem" onClick={() => { setOpenMenuId(null); setPendingAction({ activity, action: archivedActivity ? "restore" : "archive" }); }}>{archivedActivity ? <RotateCcw /> : <Archive />}</button>
+            <button className="icon-button danger" aria-label={`Delete ${activity.name} permanently`} title="Delete permanently" role="menuitem" onClick={() => { setOpenMenuId(null); setPendingAction({ activity, action: "delete" }); }}><Trash2 /></button>
           </div>}
         </div>
       </div>}
@@ -137,6 +124,6 @@ export function ActivityPicker({ day, timezone, onClose, onStarted }: { day: str
       {!creating ? <button className="secondary icon-only-action" aria-label="New activity" title="New activity" onClick={() => setCreating(true)}><Plus /></button> : <div className="activity-create"><label>Activity name<input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="BJJ – No Gi" maxLength={100} /></label><button className="primary" disabled={!name.trim()} onClick={() => void create()}>Create</button></div>}
       <ReadState loading={loading} error={error} hasData={loaded} onRetry={() => setLoadRetry((value) => value + 1)} loadingText="Loading activities…" />
       <div className="exercise-results">{loaded && activities.map((activity) => activityRow(activity))}{loaded && !loading && activities.length === 0 && !error && <p className="empty-copy">Create an activity to get started.</p>}{loaded && archived.length > 0 && <details className="archived-activity-results"><summary>Archived activities<ChevronDown aria-hidden="true" /></summary><div>{archived.map((activity) => activityRow(activity, true))}</div></details>}</div>
-    </div>
+    </div>{pendingAction && <ActivityDefinitionActionDialog activityName={pendingAction.activity.name} action={pendingAction.action} onClose={() => setPendingAction(null)} onConfirm={() => confirmActivityAction(pendingAction.activity, pendingAction.action)} />}
   </Modal>;
 }

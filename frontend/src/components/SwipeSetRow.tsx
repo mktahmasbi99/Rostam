@@ -23,7 +23,7 @@ export function SwipeSetRow({ onDelete, disabled = false, error, children }: Pro
     {onDelete && <button type="button" className="set-swipe-delete" style={{ width: Math.max(72, -offset), visibility: offset < 0 ? "visible" : "hidden" }} tabIndex={offset < 0 ? 0 : -1} aria-hidden={offset === 0} disabled={disabled || offset === 0} onClick={() => void remove()}>Delete</button>}
     <div className={`set-swipe-content${swiping ? " swiping" : ""}`} style={{ transform: `translateX(${offset}px)` }} onFocusCapture={() => { if (distance.current) move(0); }} onPointerDown={(event) => {
       if (!onDelete || disabled || event.button !== 0 || !event.isPrimary) return;
-      if ((event.target as Element).closest("input, button, a, textarea, select, label, .set-actions-menu, [role=menu], [role=checkbox]")) { move(0); return; }
+      if ((event.target as Element).closest("input, button, a, textarea, select, label, [role=menu], [role=checkbox]")) { move(0); return; }
       gesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY, initial: distance.current, locked: false };
     }} onPointerMove={(event) => {
       const current = gesture.current;

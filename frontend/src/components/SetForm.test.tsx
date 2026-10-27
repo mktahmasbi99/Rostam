@@ -279,7 +279,7 @@ it("rejects an invalid combined hold before writing and keeps edits during prefi
   expect(screen.getByLabelText("Reps")).toHaveValue(12);
 });
 
-it("maps zero kg to bodyweight and cancels without saving", async () => {
+it("maps zero kg to bodyweight and removes the entry actions menu", async () => {
   const user = userEvent.setup();
   vi.mocked(api.config).mockResolvedValue({ today: "2026-09-16", timezone: "Europe/Warsaw", version: "1" });
   vi.mocked(api.prefill).mockResolvedValue({ source: "previous", time: null, repetitions: 4, durationMinutes: null, durationSeconds: null, holdMinutes: null, holdSeconds: null, resistanceKind: "external", weightKg: "40" });
@@ -290,11 +290,36 @@ it("maps zero kg to bodyweight and cancels without saving", async () => {
   await user.type(kg, "0");
   await user.click(screen.getByRole("checkbox", { name: "Save set" }));
   await waitFor(() => expect(api.addSet).toHaveBeenLastCalledWith("2026-09-16", exercise.id, expect.objectContaining({ resistanceKind: "bodyweight", weightKg: null })));
-  const calls = vi.mocked(api.addSet).mock.calls.length;
-  await user.click(screen.getByRole("button", { name: "Entry actions" }));
-  await user.click(screen.getByRole("menuitem", { name: "Discard entry" }));
+  expect(screen.queryByRole("button", { name: "Entry actions" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("menuitem", { name: "Discard entry" })).not.toBeInTheDocument();
+  expect(cancel).not.toHaveBeenCalled();
+});
+
+it("cancels editing a saved set without deleting it", async () => {
+  const user = userEvent.setup();
+  const cancel = vi.fn();
+  const remove = vi.fn();
+  render(<SetForm exercise={exercise} day="2026-09-16" onSaved={vi.fn()} onCancel={cancel} onDelete={remove} existing={{
+    id: 5,
+    exerciseId: exercise.id,
+    date: "2026-09-16",
+    occurredAt: "2026-09-16T10:00:00+00:00",
+    createdAt: "2026-09-16T10:00:00+00:00",
+    time: "12:00",
+    repetitions: 10,
+    durationMinutes: null,
+    durationSeconds: null,
+    holdMinutes: null,
+    holdSeconds: null,
+    resistanceKind: "bodyweight",
+    weightKg: null,
+    equipment: null,
+    customEquipment: null,
+  }} />);
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
   expect(cancel).toHaveBeenCalledOnce();
-  expect(api.addSet).toHaveBeenCalledTimes(calls);
+  expect(remove).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Entry actions" })).not.toBeInTheDocument();
 });
 
 it("keeps the checkbox unchecked until confirmation and prevents duplicate writes", async () => {

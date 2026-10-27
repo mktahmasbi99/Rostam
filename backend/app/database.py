@@ -2342,7 +2342,11 @@ class RostamDatabase:
             .isoformat()
             for row in activity_rows
         )
-        return {"month": month, "activeDates": sorted(active_dates)}
+        # Future-dated entries can exist (for example, after an imported or
+        # scheduled record), but the calendar marks only days that have passed
+        # or are today as completed activity.
+        today = self.today().isoformat()
+        return {"month": month, "activeDates": sorted(day for day in active_dates if day <= today)}
 
     def exercise_history(self, exercise_id: int, before_date: str | None, limit: int) -> dict:
         if not 1 <= limit <= 50:
