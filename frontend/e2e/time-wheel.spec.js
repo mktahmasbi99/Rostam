@@ -22,11 +22,17 @@ async function swipe(page, speed) {
   const session = await page.context().newCDPSession(page);
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2 + 40;
-  // Let Chromium generate touch events at a fixed speed. RPC round trips make
-  // per-event wall-clock delays unreliable, especially on loaded CI workers.
-  await session.send("Input.synthesizeScrollGesture", {
-    x, y, yDistance: -80, speed, preventFling: false, gestureSourceType: "touch",
-  });
+  // Raw touch events also work in Linux's headless shell. Explicit event times
+  // keep velocity independent of protocol latency and worker scheduling.
+  const steps = 8;
+  const interval = 80 / speed / steps;
+  const startedAt = Date.now() / 1000;
+  await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }], timestamp: startedAt });
+  for (let step = 1; step <= steps; step++) {
+    await page.waitForTimeout(interval * 1000);
+    await session.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y - step * 10 }], timestamp: startedAt + step * interval });
+  }
+  await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [], timestamp: startedAt + (steps + .5) * interval });
   await session.detach();
   await page.waitForTimeout(1500);
   return Number(await wheel.getAttribute("aria-valuenow"));
