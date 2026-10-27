@@ -12,7 +12,7 @@ async function openPicker(page) {
     return route.fulfill({ json: [] });
   });
   await page.goto("/");
-  await page.getByRole("button", { name: "Edit BJJ", exact: true }).click();
+  await page.getByRole("button", { name: "Edit time for BJJ", exact: true }).click();
   await page.getByRole("button", { name: "Start time", exact: true }).click();
 }
 
