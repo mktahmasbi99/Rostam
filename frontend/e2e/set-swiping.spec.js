@@ -128,10 +128,10 @@ test("native horizontal touch deletes only after releasing the full swipe", asyn
   await content.scrollIntoViewIfNeeded();
   const box = await content.boundingBox();
   const session = await page.context().newCDPSession(page);
-  const x = box.x + box.width - 120;
+  const x = box.x + box.width * .6;
   const y = box.y + 3;
   await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
-  for (let step = 1; step <= 8; step++) await session.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x - step * 29, y }] });
+  for (let step = 1; step <= 8; step++) await session.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x - step * 28, y }] });
   expect(state.deletions).toBe(0);
   await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await session.detach();

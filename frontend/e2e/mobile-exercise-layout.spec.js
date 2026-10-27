@@ -30,6 +30,7 @@ for (const measurementType of ["repetitions", "duration", "timed_repetitions"]) 
       });
       await page.goto("/");
       await expect(page.locator(".previous-session")).toContainText("2026");
+      await expect(page.locator(".set-row .set-actions-trigger")).toHaveCount(0);
       await page.getByRole("checkbox", { name: "Saved set 1; uncheck to edit", exact: true }).click();
       await expect(page.getByLabel("Time", { exact: true })).toHaveValue("10:11");
 
@@ -61,8 +62,16 @@ for (const measurementType of ["repetitions", "duration", "timed_repetitions"]) 
               const heading = headerCells[i].getBoundingClientRect();
               for (const cell of [inputs[i], savedCells[i]]) {
                 const box = cell.getBoundingClientRect();
-                if (Math.abs(box.left - heading.left) > 1 || Math.abs(box.width - heading.width) > 1) issues.push("Columns misaligned");
+                if (Math.abs((box.left + box.width / 2) - (heading.left + heading.width / 2)) > 1) issues.push("Columns misaligned");
               }
+            }
+            const checkbox = card.querySelector(".set-form-grid .set-completion").getBoundingClientRect();
+            const savedCheckbox = card.querySelector(".set-row .set-completion").getBoundingClientRect();
+            if (Math.abs((checkbox.left + checkbox.width / 2) - (savedCheckbox.left + savedCheckbox.width / 2)) > 1) issues.push("Checkboxes misaligned");
+            // With just time/reps, columns have ample room to be exactly evenly spaced.
+            if (inputs.length === 2 && inputs[1].getAttribute("aria-label") === "Reps") {
+              const centers = [...inputs.map((input) => { const box = input.getBoundingClientRect(); return box.left + box.width / 2; }), checkbox.left + checkbox.width / 2];
+              if (Math.abs((centers[1] - centers[0]) - (centers[2] - centers[1])) > 1) issues.push("Controls not evenly spaced");
             }
             return issues;
           });
@@ -141,7 +150,8 @@ test("adds, retries, edits and deletes a timed-reps set with combined hold entry
   await page.getByRole("checkbox", { name: "Save set", exact: true }).click();
   await expect(page.locator(".set-row")).toHaveCount(1);
   expect(lastPayload).toMatchObject({ holdMinutes: 1, holdSeconds: 30, resistanceKind: "external", weightKg: "25" });
-  await page.getByRole("button", { name: "Actions for set 1", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Delete set 1", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Saved set 1; uncheck to edit", exact: true }).click();
+  await page.getByRole("button", { name: "Entry actions", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Delete set", exact: true }).click();
   await expect(page.locator(".set-row")).toHaveCount(0);
 });

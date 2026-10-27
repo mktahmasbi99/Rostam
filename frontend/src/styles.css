@@ -233,8 +233,11 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .add-set { width: 100%; min-height: 52px; justify-content: center; border-radius: 0; background: transparent; color: var(--accent-dark); font-weight: 800; }
 
 .set-draft { padding: 0 0 4px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
-.set-form-grid input:not([type="checkbox"]) { min-width: 0; width: 100%; max-width: 100%; padding: 0 3px; text-align: center; font-size: 16px; font-variant-numeric: tabular-nums; }
-.set-form-grid input.duration-input { padding-inline: 1px; }
+.set-form-grid input:not([type="checkbox"]) { min-width: 0; max-width: 100%; justify-self: center; padding: 0 3px; text-align: center; font-size: 16px; font-variant-numeric: tabular-nums; }
+.set-form-grid input[type="time"] { width: var(--set-time-width); }
+.set-form-grid input.set-weight-input { width: var(--set-weight-width); }
+.set-form-grid input[type="number"] { width: var(--set-reps-width); }
+.set-form-grid input.duration-input { width: var(--set-duration-width); padding-inline: 1px; }
 .set-form-grid input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
 .set-form-grid input::-webkit-inner-spin-button, .set-form-grid input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .set-form-grid input[type="time"]::-webkit-calendar-picker-indicator { display: none; }
@@ -242,7 +245,7 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .set-form-grid input[type="time"]::-webkit-datetime-edit { padding: 0; }
 .set-weight-hint { display: block; padding: 0 8px 6px; text-align: center; color: var(--muted); font-size: .72rem; }
 .set-draft > .save-error { padding: 0 8px; }
-.set-completion { width: 44px; height: 44px; justify-self: end; display: grid; place-items: center; cursor: pointer; }
+.set-completion { width: 44px; height: 44px; justify-self: center; display: grid; place-items: center; cursor: pointer; }
 .set-completion .set-checkbox { appearance: auto; width: 22px; height: 22px; min-height: 22px; padding: 0; margin: 0; accent-color: var(--save-surface); cursor: pointer; }
 .set-checkbox:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
 .set-swipe { position: relative; overflow: hidden; }

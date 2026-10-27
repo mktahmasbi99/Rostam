@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import type { Exercise, ExerciseSet } from "../lib/types";
@@ -19,23 +19,14 @@ it("shows shared headers and separate measurements, including mixed bodyweight s
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });
 
-it("opens row actions with keyboard, dismisses with Escape, and invokes edit/delete", async () => {
+it("reopens saved sets with their checkbox without exposing a saved-row menu", async () => {
   const user = userEvent.setup();
   const edit = vi.fn();
   const remove = vi.fn();
   render(<SetTable exercise={exercise} editable><SetRow exercise={exercise} set={set} index={0} onEdit={edit} onDelete={remove} /></SetTable>);
-  const trigger = screen.getByRole("button", { name: "Actions for set 1" });
+  expect(screen.queryByRole("button", { name: "Actions for set 1" })).not.toBeInTheDocument();
   expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
-  trigger.focus();
-  await user.keyboard("{Enter}");
-  const menu = screen.getByRole("menu");
-  expect(within(menu).getByRole("menuitem", { name: "Delete set 1" })).toHaveFocus();
-  await user.keyboard("{Escape}");
-  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-  expect(trigger).toHaveFocus();
   await user.click(screen.getByRole("checkbox", { name: "Saved set 1; uncheck to edit" }));
   expect(edit).toHaveBeenCalledOnce();
-  await user.click(trigger);
-  await user.click(screen.getByRole("menuitem", { name: "Delete set 1" }));
-  expect(remove).toHaveBeenCalledOnce();
+  expect(remove).not.toHaveBeenCalled();
 });

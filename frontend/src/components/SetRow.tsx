@@ -1,7 +1,6 @@
 import { useSetDeletion } from "../lib/useSetDeletion";
 import { durationValue } from "../lib/duration";
 import type { Exercise, ExerciseSet } from "../lib/types";
-import { SetActionsMenu } from "./SetActionsMenu";
 import { SwipeSetRow } from "./SwipeSetRow";
 
 interface Props {
@@ -21,9 +20,6 @@ export function SetRow({ exercise, set, index, onEdit, onDelete }: Props) {
     {exercise.measurementType !== "duration" && <strong aria-label={`${set.repetitions} reps`}>{set.repetitions}</strong>}
     {exercise.measurementType === "duration" && <strong aria-label="Duration">{durationValue(set.durationMinutes, set.durationSeconds)}</strong>}
     {exercise.measurementType === "timed_repetitions" && <strong aria-label="Hold per repetition">{durationValue(set.holdMinutes, set.holdSeconds)}</strong>}
-    {editable && <>
-      <label className="set-completion"><input className="set-checkbox" type="checkbox" aria-label={`Saved set ${index + 1}; uncheck to edit`} checked disabled={deleting} onChange={onEdit} /></label>
-      <SetActionsMenu label={`Actions for set ${index + 1}`} disabled={deleting} actions={[{ label: `Delete set ${index + 1}`, danger: true, onClick: remove }]} />
-    </>}
+    {editable && <label className="set-completion"><input className="set-checkbox" type="checkbox" aria-label={`Saved set ${index + 1}; uncheck to edit`} checked disabled={deleting} onChange={onEdit} /></label>}
   </div></SwipeSetRow>;
 }
