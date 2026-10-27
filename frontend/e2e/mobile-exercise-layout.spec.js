@@ -96,8 +96,8 @@ for (const measurementType of ["repetitions", "duration", "timed_repetitions"]) 
         await expect(kg).toHaveValue("1234.5");
         expect((await kg.boundingBox()).width).toBeLessThanOrEqual(48);
       }
-      await page.getByRole("button", { name: "Entry actions", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Discard changes", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(page.locator(".set-row")).toHaveCount(2);
       if (weighted) await expect(page.locator(".set-row").nth(1)).toContainText("BW");
       await page.getByRole("button", { name: "History for Deadlifts (Resistance Bands)", exact: true }).click();
@@ -150,9 +150,15 @@ test("adds, retries, edits and deletes a timed-reps set with combined hold entry
   await page.getByRole("checkbox", { name: "Save set", exact: true }).click();
   await expect(page.locator(".set-row")).toHaveCount(1);
   expect(lastPayload).toMatchObject({ holdMinutes: 1, holdSeconds: 30, resistanceKind: "external", weightKg: "25" });
-  await page.getByRole("checkbox", { name: "Saved set 1; uncheck to edit", exact: true }).click();
-  await page.getByRole("button", { name: "Entry actions", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Delete set", exact: true }).click();
+  const savedRow = page.locator(".set-swipe").filter({ has: page.locator(".set-row") }).first();
+  const swipeArea = savedRow.locator(".set-swipe-content");
+  const box = await swipeArea.boundingBox();
+  const x = box.x + box.width - 3;
+  const y = box.y + 3;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x - 260, y, { steps: 8 });
+  await page.mouse.up();
   await expect(page.locator(".set-row")).toHaveCount(0);
 });
 

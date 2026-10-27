@@ -61,7 +61,7 @@ test("a full swipe deletes on release and preserves a failed deletion", async ({
   expect(state.deletions).toBe(2);
 });
 
-test("cancellation and vertical intent never delete; editing and new drafts can be discarded", async ({ page }) => {
+test("cancellation and vertical intent never delete; edits cancel and new drafts swipe away", async ({ page }) => {
   const state = await setup(page);
   const content = page.locator(".set-swipe-content").first();
   await drag(page, content, -260, 0, false);
@@ -72,8 +72,7 @@ test("cancellation and vertical intent never delete; editing and new drafts can 
   expect(state.deletions).toBe(0);
   await page.getByRole("checkbox", { name: "Saved set 1; uncheck to edit", exact: true }).click();
   await page.getByLabel("Reps", { exact: true }).fill("99");
-  await page.getByRole("button", { name: "Entry actions" }).click();
-  await page.getByRole("menuitem", { name: "Discard changes" }).click();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator(".set-row").first()).toContainText("12");
   await page.getByRole("button", { name: "Add set", exact: true }).click();
   await expect(page.getByRole("checkbox", { name: "Save set", exact: true })).not.toBeChecked();

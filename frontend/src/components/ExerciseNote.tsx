@@ -1,4 +1,4 @@
-import { Pencil } from "lucide-react";
+import { NotebookPen, Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
@@ -84,7 +84,7 @@ export function ExerciseNote({ exercise }: Props) {
   }
 
   if (!body) {
-    return <button className="add-exercise-note" onClick={() => { setDraft(""); setEditing(true); }}>Add exercise note</button>;
+    return <button className="add-exercise-note" onClick={() => { setDraft(""); setEditing(true); }}><NotebookPen aria-hidden="true" /><span>Add exercise note</span></button>;
   }
 
   return <section className="exercise-note" aria-label={`Exercise note for ${exercise.name}`}>

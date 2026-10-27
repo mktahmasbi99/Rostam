@@ -59,13 +59,13 @@ describe("DayPage exercise notes", () => {
     const cards = await screen.findAllByRole("article");
     expect(cards).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Stop BJJ – No Gi" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Edit BJJ – No Gi" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Edit time for BJJ – No Gi" })).toHaveLength(1);
     const optionsButtons = screen.getAllByRole("button", { name: "BJJ – No Gi options" });
     expect(optionsButtons).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Timed activity options" })).not.toBeInTheDocument();
     await user.click(optionsButtons[0]);
     const deleteAction = screen.getByRole("menuitem", { name: "Delete session" });
-    expect(deleteAction).toHaveClass("activity-delete-option");
+    expect(deleteAction).toHaveClass("activity-menu-item", "danger-text");
     await user.click(deleteAction);
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();

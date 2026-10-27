@@ -30,6 +30,8 @@ export function ActivityEntryCard({ entry, activities = [], onChanged, timezone 
   const [finishing, setFinishing] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editingNote, setEditingNote] = useState(false);
+  const [renamingActivity, setRenamingActivity] = useState(false);
+  const [activityNameDraft, setActivityNameDraft] = useState(entry.activityName);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const optionsRef = useRef<HTMLDivElement>(null);
@@ -58,6 +60,9 @@ export function ActivityEntryCard({ entry, activities = [], onChanged, timezone 
   const blockedEndIntervals = blockedIntervals
     .filter((interval) => startMinute < interval.startMinute && startMinute < interval.endMinute)
     .map((interval) => ({ startMinute: interval.startMinute + 1, endMinute: 24 * 60 }));
+  useEffect(() => {
+    setNote(entry.note);
+  }, [entry.id, entry.note]);
   useEffect(() => {
     if (!active) return;
     setNow(Date.now());
@@ -90,6 +95,18 @@ export function ActivityEntryCard({ entry, activities = [], onChanged, timezone 
       setError(caught instanceof Error ? caught.message : "Could not delete activity.");
     }
   }
+  async function saveActivityName() {
+    const nextName = activityNameDraft.trim();
+    if (!nextName || nextName === entry.activityName) return;
+    setError("");
+    try {
+      await api.updateActivityDefinition(entry.activityId, nextName);
+      setRenamingActivity(false);
+      onChanged();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not rename activity.");
+    }
+  }
   async function saveNote() {
     setError("");
     try {
@@ -103,15 +120,15 @@ export function ActivityEntryCard({ entry, activities = [], onChanged, timezone 
   }
   return <article className="activity-entry">
     <div className="activity-entry-heading"><strong>{entry.activityName}</strong><div className="row-actions">
-      <button className="icon-button" aria-label={`${entry.note ? "Edit" : "Add"} note for ${entry.activityName}`} title={entry.note ? "Edit session note" : "Add session note"} onClick={() => { setNote(entry.note); setEditingNote(true); }}><NotebookPen /></button>
-      {active ? <button className="activity-stop-button" aria-label={`Stop ${entry.activityName}`} title="Stop session" disabled={!canStop} onClick={() => { const startTime = activityTimeOnly(entry.startedAt); setStart(startTime); setEnd(suggestedEnd(entry.startedAt, timezone)); setFinishing(true); }}><Square /></button> : <button className="icon-button" aria-label={`Edit ${entry.activityName}`} onClick={() => { setStart(activityTimeOnly(entry.startedAt)); setEnd(activityTimeOnly(entry.endedAt!)); setNote(entry.note); setEditing(true); }}><Pencil /></button>}
-      <div className="activity-options" ref={optionsRef}><button className="icon-button" aria-label={`${entry.activityName} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><MoreVertical /></button>{menuOpen && <div className="activity-options-menu" role="menu"><button className="activity-delete-option" aria-label="Delete session" title="Delete session" role="menuitem" onClick={() => { setMenuOpen(false); setConfirmDelete(true); }}><Trash2 /></button></div>}</div>
+      {active && <button className="activity-stop-button" aria-label={`Stop ${entry.activityName}`} title="Stop session" disabled={!canStop} onClick={() => { const startTime = activityTimeOnly(entry.startedAt); setStart(startTime); setEnd(suggestedEnd(entry.startedAt, timezone)); setFinishing(true); }}><Square /></button>}
+      <div className="activity-options" ref={optionsRef}><button className="icon-button" aria-label={`${entry.activityName} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><MoreVertical /></button>{menuOpen && <div className="activity-options-menu" role="menu"><button type="button" className="activity-menu-item" role="menuitem" onClick={() => { setMenuOpen(false); setActivityNameDraft(entry.activityName); setError(""); setRenamingActivity(true); }}><Pencil />Rename activity</button><button type="button" className="activity-menu-item danger-text" role="menuitem" onClick={() => { setMenuOpen(false); setError(""); setConfirmDelete(true); }}><Trash2 />Delete session</button></div>}</div>
     </div></div>
-    <div className="activity-entry-time">{entry.startedAt.slice(11, 16)}{entry.endedAt ? `–${entry.endedAt.slice(11, 16)} · ${durationLabel(entry.durationSeconds ?? 0)}` : ` · ${canStop ? durationLabel(Math.floor((now - started) / 1000)) : `Starts at ${entry.startedAt.slice(11, 16)}`}`}</div>
-    {entry.note && <p className="activity-entry-note">{entry.note}</p>}
-    {error && !finishing && !editing && !editingNote && !confirmDelete && <p className="error" role="alert">{error}</p>}
+    {active ? <div className="activity-entry-time">{entry.startedAt.slice(11, 16)} · {canStop ? durationLabel(Math.floor((now - started) / 1000)) : `Starts at ${entry.startedAt.slice(11, 16)}`}</div> : <button type="button" className="activity-entry-time activity-time-trigger" aria-label={`Edit time for ${entry.activityName}`} onClick={() => { setStart(activityTimeOnly(entry.startedAt)); setEnd(activityTimeOnly(entry.endedAt!)); setNote(entry.note); setError(""); setEditing(true); }}>{entry.startedAt.slice(11, 16)}–{entry.endedAt!.slice(11, 16)} · {durationLabel(entry.durationSeconds ?? 0)}</button>}
+    {note ? <section className="activity-note" aria-label={`Activity note for ${entry.activityName}`}><div className="exercise-note-heading"><strong>Activity note</strong><button type="button" className="icon-button" aria-label="Edit activity note" onClick={() => { setNote(note); setEditingNote(true); }}><Pencil /></button></div><p className="activity-note-body">{note}</p></section> : <button type="button" className="activity-add-note" onClick={() => { setNote(""); setEditingNote(true); }}><NotebookPen aria-hidden="true" /><span>Add activity note</span></button>}
+    {error && !finishing && !editing && !editingNote && !renamingActivity && !confirmDelete && <p className="error" role="alert">{error}</p>}
     {confirmDelete && <Modal title={`Delete ${entry.activityName} session?`} onClose={() => setConfirmDelete(false)}><div className="stack"><p>Delete the {entry.activityName} session from {entry.date}? This cannot be undone.</p>{error && <p className="error" role="alert">{error}</p>}<div className="form-actions"><button className="secondary" onClick={() => setConfirmDelete(false)}>Cancel</button><button className="danger-button" onClick={() => void deleteEntry()}><Trash2 />Delete session</button></div></div></Modal>}
-    {editingNote && <Modal title={`${entry.note ? "Edit" : "Add"} note · ${entry.activityName}`} onClose={() => setEditingNote(false)} dirtyLabel="Activity note"><div className="stack"><label>Session note<textarea autoFocus rows={5} maxLength={20000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Techniques, moves, or an important takeaway" /></label>{error && <p className="error" role="alert">{error}</p>}<div className="form-actions"><button className="secondary" onClick={() => setEditingNote(false)}>Cancel</button><button className="primary" onClick={() => void saveNote()}><Check />Save note</button></div></div></Modal>}
+    {renamingActivity && <Modal title="Rename activity" onClose={() => setRenamingActivity(false)} dirtyLabel="Activity name"><div className="stack"><label>Activity name<input autoFocus maxLength={100} value={activityNameDraft} onChange={(event) => setActivityNameDraft(event.target.value)} /></label><p className="empty-copy">This name is used by past and future sessions.</p>{error && <p className="error" role="alert">{error}</p>}<div className="form-actions"><button className="secondary" onClick={() => setRenamingActivity(false)}>Cancel</button><button className="primary" disabled={!activityNameDraft.trim() || activityNameDraft.trim() === entry.activityName} onClick={() => void saveActivityName()}><Check />Save name</button></div></div></Modal>}
+    {editingNote && <Modal title={`${note ? "Edit" : "Add"} activity note · ${entry.activityName}`} onClose={() => setEditingNote(false)} dirtyLabel="Activity note"><div className="stack"><label>Activity note<textarea autoFocus rows={5} maxLength={20000} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Techniques, moves, or an important takeaway" /></label>{error && <p className="error" role="alert">{error}</p>}<div className="form-actions"><button className="secondary" onClick={() => setEditingNote(false)}>Cancel</button><button className="primary" onClick={() => void saveNote()}><Check />Save note</button></div></div></Modal>}
     {finishing && <Modal title={`Finish ${entry.activityName}`} onClose={() => setFinishing(false)} dirtyLabel="Activity session"><div className="stack"><TimeWheelField label="Start time" value={start} onChange={updateStartTime} max={1438} blockedIntervals={blockedIntervals} /><TimeWheelField label="End time" value={end} onChange={setEnd} min={minuteOfDay(start) + 1} blockedIntervals={blockedEndIntervals} />{error && <p className="error" role="alert">{error}</p>}<div className="form-actions"><button className="secondary" onClick={() => setFinishing(false)}><X />Cancel</button><button className="primary" disabled={minuteOfDay(end) <= minuteOfDay(start)} onClick={() => void saveFinish()}><Check />Save session</button></div></div></Modal>}
     {editing && <Modal title={`Edit ${entry.activityName}`} onClose={() => setEditing(false)} dirtyLabel="Activity session"><div className="stack"><TimeWheelField label="Start time" value={start} onChange={updateStartTime} max={1438} blockedIntervals={blockedIntervals} /><TimeWheelField label="End time" value={end} onChange={setEnd} min={minuteOfDay(start) + 1} blockedIntervals={blockedEndIntervals} />{error && <p className="error" role="alert">{error}</p>}<div className="form-actions"><button className="secondary" onClick={() => setEditing(false)}>Cancel</button><button className="primary" disabled={minuteOfDay(end) <= minuteOfDay(start)} onClick={() => void saveEdit()}><Check />Save changes</button></div></div></Modal>}
   </article>;

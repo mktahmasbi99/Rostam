@@ -748,6 +748,34 @@ def test_calendar_has_only_nonempty_days(database):
     assert database.calendar(today[:7])["activeDates"] == []
 
 
+def test_calendar_hides_future_exercise_records(database, monkeypatch):
+    today = date(2026, 10, 27)
+    monkeypatch.setattr(database, "today", lambda: today)
+    pushups = next(item for item in database.list_exercises("active", "Push", None))
+    activity = database.create_activity("Future walk")
+    future = datetime(2026, 10, 28, 9, tzinfo=database.settings.timezone).astimezone(
+        ZoneInfo("UTC")
+    )
+    now = datetime.now(ZoneInfo("UTC")).isoformat()
+    with database.connect() as connection:
+        connection.execute(
+            """INSERT INTO exercise_sets (
+            exercise_id, entry_date, occurred_at, repetitions, resistance_kind,
+            created_at, updated_at
+            ) VALUES (?, ?, ?, 12, 'bodyweight', ?, ?)""",
+            (pushups["id"], (today + timedelta(days=1)).isoformat(), future.isoformat(), now, now),
+        )
+        connection.execute(
+            """INSERT INTO activity_entries (
+            activity_id, started_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?)""",
+            (activity["id"], future.isoformat(), now, now),
+        )
+        connection.commit()
+
+    assert database.calendar("2026-10")["activeDates"] == []
+
+
 def test_exercise_note_is_global_unrestricted_and_clearable(database):
     today = database.today().isoformat()
     pushups = next(item for item in database.list_exercises("active", "Push", None))

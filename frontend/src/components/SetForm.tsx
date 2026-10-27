@@ -5,7 +5,6 @@ import { api } from "../lib/api";
 import type { Exercise, ExerciseSet, SetPayload } from "../lib/types";
 import { durationValue, parseDurationValue } from "../lib/duration";
 import { DurationInput } from "./DurationInput";
-import { SetActionsMenu } from "./SetActionsMenu";
 import { SwipeSetRow } from "./SwipeSetRow";
 
 interface Props {
@@ -162,8 +161,8 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete }
         {exercise.measurementType === "duration" && <DurationInput label="Duration" inputRef={firstMeasurementInput} value={duration} suggested={suggested.duration} onChange={(value) => editMeasurement("duration", value, setDuration)} invalid={invalidDuration} autoFocus />}
         {exercise.measurementType === "timed_repetitions" && <DurationInput label="Hold per repetition" value={hold} suggested={suggested.hold} onChange={(value) => editMeasurement("hold", value, setHold)} invalid={invalidDuration} />}
         <label className="set-completion"><input type="checkbox" className="set-checkbox" aria-label="Save set" checked={false} disabled={saving || deleting} onChange={() => form.current?.requestSubmit()} /></label>
-        <SetActionsMenu label="Entry actions" disabled={saving || deleting} actions={existing ? [{ label: "Discard changes", onClick: onCancel }, ...(onDelete ? [{ label: "Delete set", danger: true, onClick: remove }] : [])] : [{ label: "Discard entry", danger: true, onClick: remove }]} />
       </div>
+      {existing && <div className="set-edit-actions"><button type="button" className="secondary" disabled={saving || deleting} onClick={onCancel}>Cancel</button></div>}
       {exercise.equipment && exercise.allowBodyweight && <small className="set-weight-hint" id={hintId}>0 = BW</small>}
       {readError && <div className="save-error" role="alert"><span>{readError}</span><button type="button" onClick={() => setPrefillRetry((value) => value + 1)}><RotateCcw />Retry previous set</button></div>}
       {error && <div className="save-error" role="alert"><span>{error} Your values remain unsaved on this page.</span><button type="button" disabled={saving || deleting} onClick={() => void save()}><RotateCcw />Retry</button></div>}

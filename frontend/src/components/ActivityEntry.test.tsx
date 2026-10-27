@@ -11,6 +11,7 @@ vi.mock("../lib/api", () => ({
     finishActivity: vi.fn(),
     updateActivityNote: vi.fn(),
     updateActivity: vi.fn(),
+    updateActivityDefinition: vi.fn(),
   },
 }));
 
@@ -57,17 +58,63 @@ describe("ActivityEntryCard", () => {
     expect(api.deleteActivity).not.toHaveBeenCalled();
   });
 
-  it("saves a session note from the note icon so it appears on the day card", async () => {
+  it("adds an activity note from the labeled note control", async () => {
     const user = userEvent.setup();
     const onChanged = vi.fn();
     vi.mocked(api.updateActivityNote).mockResolvedValue({ ...entry, note: "Arm drags" });
 
     render(<ActivityEntryCard entry={{ ...entry, note: "" }} timezone="Europe/Warsaw" onChanged={onChanged} />);
-    await user.click(screen.getByRole("button", { name: "Add note for BJJ – No Gi" }));
-    await user.type(screen.getByRole("textbox", { name: "Session note" }), "Arm drags");
+    await user.click(screen.getByRole("button", { name: "Add activity note" }));
+    await user.type(screen.getByRole("textbox", { name: "Activity note" }), "Arm drags");
     await user.click(screen.getByRole("button", { name: "Save note" }));
 
     await waitFor(() => expect(api.updateActivityNote).toHaveBeenCalledWith(entry.id, "Arm drags"));
+    expect(onChanged).toHaveBeenCalledOnce();
+    expect(await screen.findByText("Arm drags")).toBeInTheDocument();
+    expect(screen.getByText("Activity note")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit activity note" })).toBeInTheDocument();
+    expect(document.querySelectorAll(".activity-note svg")).toHaveLength(1);
+  });
+
+  it("edits a saved activity note from its pencil control", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.updateActivityNote).mockResolvedValue({ ...entry, note: "Arm drags" });
+    render(<ActivityEntryCard entry={entry} timezone="Europe/Warsaw" onChanged={vi.fn()} />);
+
+    await user.click(screen.getByText("Guard retention"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit activity note" }));
+    const note = screen.getByRole("textbox", { name: "Activity note" });
+    expect(note).toHaveValue("Guard retention");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(api.updateActivityNote).not.toHaveBeenCalled();
+    expect(screen.getByText("Guard retention")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit activity note" }));
+    const reopenedNote = screen.getByRole("textbox", { name: "Activity note" });
+    expect(reopenedNote).toHaveValue("Guard retention");
+    await user.clear(reopenedNote);
+    await user.type(reopenedNote, "Arm drags");
+    await user.click(screen.getByRole("button", { name: "Save note" }));
+    await waitFor(() => expect(api.updateActivityNote).toHaveBeenCalledWith(entry.id, "Arm drags"));
+  });
+
+  it("keeps an empty activity note as an add control and retains failed drafts", async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn();
+    vi.mocked(api.updateActivityNote).mockResolvedValueOnce({ ...entry, note: "" }).mockRejectedValueOnce(new Error("Network unavailable"));
+    render(<ActivityEntryCard entry={{ ...entry, note: "" }} timezone="Europe/Warsaw" onChanged={onChanged} />);
+
+    await user.click(screen.getByRole("button", { name: "Add activity note" }));
+    await user.click(screen.getByRole("button", { name: "Save note" }));
+    await waitFor(() => expect(api.updateActivityNote).toHaveBeenCalledWith(entry.id, ""));
+    expect(await screen.findByRole("button", { name: "Add activity note" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Add activity note" }));
+    const note = screen.getByRole("textbox", { name: "Activity note" });
+    await user.type(note, "Keep this draft");
+    await user.click(screen.getByRole("button", { name: "Save note" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Network unavailable");
+    expect(screen.getByRole("textbox", { name: "Activity note" })).toHaveValue("Keep this draft");
     expect(onChanged).toHaveBeenCalledOnce();
   });
 
@@ -80,7 +127,7 @@ describe("ActivityEntryCard", () => {
     await user.click(await screen.findByRole("button", { name: "Stop BJJ – No Gi" }));
 
     expect(screen.getByRole("heading", { name: "Finish BJJ – No Gi" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Session note")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Activity note")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Start time" })).toHaveTextContent("17:45");
     expect(screen.getByRole("button", { name: "End time" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
@@ -107,12 +154,31 @@ describe("ActivityEntryCard", () => {
     expect(api.finishActivity).not.toHaveBeenCalled();
   });
 
-  it("keeps the note out of the edit dialog", async () => {
+  it("opens the time editor from the displayed session time", async () => {
     const user = userEvent.setup();
     render(<ActivityEntryCard entry={entry} timezone="Europe/Warsaw" onChanged={vi.fn()} />);
-    await user.click(screen.getByRole("button", { name: "Edit BJJ – No Gi" }));
+    await user.click(screen.getByRole("button", { name: "Edit time for BJJ – No Gi" }));
 
     expect(screen.getByRole("heading", { name: "Edit BJJ – No Gi" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Session note")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start time" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "End time" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Activity note")).not.toBeInTheDocument();
+  });
+
+  it("renames the shared activity definition from the session actions menu", async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn();
+    vi.mocked(api.updateActivityDefinition).mockResolvedValue({ id: entry.activityId, name: "Walking" });
+    render(<ActivityEntryCard entry={entry} timezone="Europe/Warsaw" onChanged={onChanged} />);
+
+    await user.click(screen.getByRole("button", { name: "BJJ – No Gi options" }));
+    await user.click(screen.getByRole("menuitem", { name: "Rename activity" }));
+    expect(screen.getByRole("heading", { name: "Rename activity" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Activity name" })).toHaveValue("BJJ – No Gi");
+    await user.clear(screen.getByRole("textbox", { name: "Activity name" }));
+    await user.type(screen.getByRole("textbox", { name: "Activity name" }), "Walking");
+    await user.click(screen.getByRole("button", { name: "Save name" }));
+    await waitFor(() => expect(api.updateActivityDefinition).toHaveBeenCalledWith(entry.activityId, "Walking"));
+    expect(onChanged).toHaveBeenCalledOnce();
   });
 });

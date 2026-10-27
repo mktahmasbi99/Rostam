@@ -55,7 +55,7 @@ test("renders responsive light and dark states with custom photo colors intact",
       await expect(page.getByRole("heading", { name: "Custom photo" })).toBeVisible();
       await expect(page.getByText("Loading journal…")).toHaveCount(0);
       const imageFilters = await page.locator(".exercise-image img").evaluateAll((images) => images.map((image) => getComputedStyle(image).filter));
-      expect(imageFilters[0]).toBe(colorScheme === "dark" ? "invert(1)" : "none");
+      expect(imageFilters[0]).toBe(colorScheme === "light" ? "invert(1)" : "none");
       expect(imageFilters[1]).toBe("none");
       await expect(page.locator("body")).toHaveJSProperty("scrollWidth", await page.evaluate(() => document.documentElement.clientWidth));
       await page.screenshot({ path: resolve(evidence, `today-${colorScheme}-${width}.png`), fullPage: true });
