@@ -1,5 +1,5 @@
 import { Check, Clock3, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 const ROW_HEIGHT = 36;
 const MAX_MINUTE = 23 * 60 + 59;
@@ -13,7 +13,28 @@ function formatTime(minutes: number) {
 }
 
 function Wheel({ label, values, selected, onSelect, disabledValues = [] }: { label: string; values: number[]; selected: number; onSelect: (value: number) => void; disabledValues?: number[] }) {
-  const [dragStart, setDragStart] = useState<{ y: number; value: number } | null>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const lastSelection = useRef(selected);
+  const mouseDrag = useRef<{ y: number; top: number; moved: boolean } | null>(null);
+  const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const valuesKey = values.join(",");
+  useLayoutEffect(() => {
+    // Only external changes reposition the wheel; its own scroll updates must
+    // leave the browser's touch momentum uninterrupted.
+    clearTimeout(settleTimer.current);
+    if (scroller.current) scroller.current.scrollTop = values.indexOf(selected) * ROW_HEIGHT;
+    lastSelection.current = selected;
+    // The range can change when the other wheel changes hour.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valuesKey]);
+  useLayoutEffect(() => {
+    if (selected !== lastSelection.current && scroller.current) {
+      clearTimeout(settleTimer.current);
+      scroller.current.scrollTop = values.indexOf(selected) * ROW_HEIGHT;
+      lastSelection.current = selected;
+    }
+  }, [selected, values]);
+  useEffect(() => () => clearTimeout(settleTimer.current), []);
   const disabled = new Set(disabledValues);
   const moveToEnabled = (target: number, direction: number) => {
     let next = Math.max(0, Math.min(values.length - 1, target));
@@ -30,19 +51,69 @@ function Wheel({ label, values, selected, onSelect, disabledValues = [] }: { lab
     const next = moveToEnabled(index + amount, direction);
     if (next !== undefined) onSelect(next);
   };
+  useEffect(() => {
+    const element = scroller.current?.parentElement;
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      if (event.deltaY !== 0) step(event.deltaY > 0 ? 1 : -1);
+    };
+    element?.addEventListener("wheel", handleWheel, { passive: false });
+    return () => element?.removeEventListener("wheel", handleWheel);
+  });
+  const handleScroll = () => {
+    const element = scroller.current;
+    if (!element) return;
+    const index = Math.round(element.scrollTop / ROW_HEIGHT);
+    const direction = index < values.indexOf(lastSelection.current) ? -1 : 1;
+    const next = moveToEnabled(index, direction);
+    if (next !== undefined && next !== lastSelection.current) {
+      lastSelection.current = next;
+      onSelect(next);
+    }
+    clearTimeout(settleTimer.current);
+    // Scroll events keep this pending throughout native inertia. Once it stops,
+    // align any unavailable value to the nearest permitted row.
+    settleTimer.current = setTimeout(() => {
+      if (next !== undefined && Math.abs(element.scrollTop - values.indexOf(next) * ROW_HEIGHT) > 1) {
+        element.scrollTo({ top: values.indexOf(next) * ROW_HEIGHT, behavior: "smooth" });
+      }
+    }, 160);
+  };
   return <div className="time-wheel-column">
     <span className="time-wheel-label">{label}</span>
     <div className="time-wheel" role="spinbutton" aria-label={label} aria-valuenow={selected} aria-valuemin={values[0]} aria-valuemax={values.at(-1)} tabIndex={0}
-      onKeyDown={(event) => { if (event.key === "ArrowUp" || event.key === "ArrowRight") { event.preventDefault(); step(1); } else if (event.key === "ArrowDown" || event.key === "ArrowLeft") { event.preventDefault(); step(-1); } else if (event.key === "Home") { event.preventDefault(); const next = moveToEnabled(0, 1); if (next !== undefined) onSelect(next); } else if (event.key === "End") { event.preventDefault(); const next = moveToEnabled(values.length - 1, -1); if (next !== undefined) onSelect(next); } }}
-      onWheel={(event) => { event.preventDefault(); step(event.deltaY > 0 ? 1 : -1); }}
-      onPointerDown={(event) => { if ("setPointerCapture" in event.currentTarget) event.currentTarget.setPointerCapture(event.pointerId); setDragStart({ y: event.clientY, value: selected }); }}
-      onPointerUp={(event) => { if (!dragStart) return; const moved = Math.round((dragStart.y - event.clientY) / ROW_HEIGHT); const origin = values.indexOf(dragStart.value); const direction = moved < 0 ? -1 : 1; const next = moveToEnabled(origin + moved, direction); if (next !== undefined) onSelect(next); setDragStart(null); }}>
+      onKeyDown={(event) => { if (event.key === "ArrowUp" || event.key === "ArrowRight") { event.preventDefault(); step(1); } else if (event.key === "ArrowDown" || event.key === "ArrowLeft") { event.preventDefault(); step(-1); } else if (event.key === "Home") { event.preventDefault(); const next = moveToEnabled(0, 1); if (next !== undefined) onSelect(next); } else if (event.key === "End") { event.preventDefault(); const next = moveToEnabled(values.length - 1, -1); if (next !== undefined) onSelect(next); } }}>
       <div className="time-wheel-fade" />
-      {[-2, -1, 0, 1, 2].map((offset) => {
-        const index = values.indexOf(selected) + offset;
-        const value = values[index];
-        return <button type="button" tabIndex={-1} aria-hidden="true" disabled={value !== undefined && disabled.has(value)} key={`${offset}-${value ?? "empty"}`} className={`time-wheel-option ${offset === 0 ? "selected" : ""} ${value !== undefined && disabled.has(value) ? "disabled" : ""}`} style={{ transform: `translateY(${offset * ROW_HEIGHT}px)` }} onClick={() => value !== undefined && !disabled.has(value) && onSelect(value)}>{value === undefined ? "" : String(value).padStart(2, "0")}</button>;
-      })}
+      <div className="time-wheel-scroll" ref={scroller} onScroll={handleScroll}
+        onPointerDown={(event) => {
+          if (event.pointerType !== "mouse" || event.button !== 0) return;
+          clearTimeout(settleTimer.current);
+          mouseDrag.current = { y: event.clientY, top: event.currentTarget.scrollTop, moved: false };
+        }}
+        onPointerMove={(event) => {
+          const drag = mouseDrag.current;
+          if (!drag || event.pointerType !== "mouse" || !(event.buttons & 1)) return;
+          const distance = drag.y - event.clientY;
+          if (Math.abs(distance) > 4) {
+            drag.moved = true;
+            event.currentTarget.style.scrollSnapType = "none";
+            event.currentTarget.setPointerCapture(event.pointerId);
+            event.currentTarget.scrollTop = drag.top + distance;
+          }
+        }}
+        onPointerUp={(event) => {
+          if (event.pointerType !== "mouse") return;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+          event.currentTarget.style.scrollSnapType = "";
+          handleScroll();
+        }}
+        onPointerCancel={(event) => { mouseDrag.current = null; event.currentTarget.style.scrollSnapType = ""; }}
+        onClickCapture={(event) => {
+          if (mouseDrag.current?.moved) { event.preventDefault(); event.stopPropagation(); }
+          mouseDrag.current = null;
+        }}>
+        {values.map((value) => <button type="button" tabIndex={-1} aria-hidden="true" disabled={disabled.has(value)} key={value} className={`time-wheel-option ${value === selected ? "selected" : ""} ${disabled.has(value) ? "disabled" : ""}`} onClick={() => onSelect(value)}>{String(value).padStart(2, "0")}</button>)}
+      </div>
     </div>
   </div>;
 }

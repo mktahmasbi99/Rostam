@@ -27,4 +27,34 @@ describe("TimeWheelField", () => {
     await user.click(screen.getByRole("button", { name: "Set time" }));
     expect(onChange).toHaveBeenCalledWith("17:06");
   });
+  it("updates throughout scrolling without resetting the native scroll position", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<TimeWheelField label="Start time" value="12:20" onChange={onChange} />);
+    await user.click(screen.getByRole("button", { name: "Start time" }));
+    const wheel = screen.getByRole("spinbutton", { name: "Minute" });
+    const scroller = wheel.querySelector(".time-wheel-scroll")!;
+    expect(scroller.scrollTop).toBe(20 * 36);
+    fireEvent.scroll(scroller, { target: { scrollTop: 23 * 36 + 8 } });
+    expect(wheel).toHaveAttribute("aria-valuenow", "23");
+    expect(scroller.scrollTop).toBe(23 * 36 + 8);
+    fireEvent.scroll(scroller, { target: { scrollTop: 30 * 36 } });
+    expect(wheel).toHaveAttribute("aria-valuenow", "30");
+    await user.click(screen.getByRole("button", { name: "Set time" }));
+    expect(onChange).toHaveBeenCalledWith("12:30");
+  });
+
+  it("skips blocked times during scrolling and realigns for keyboard input", async () => {
+    const user = userEvent.setup();
+    render(<TimeWheelField label="Start time" value="12:20" onChange={vi.fn()} blockedIntervals={[{ startMinute: 12 * 60 + 21, endMinute: 12 * 60 + 25 }]} />);
+    await user.click(screen.getByRole("button", { name: "Start time" }));
+    const wheel = screen.getByRole("spinbutton", { name: "Minute" });
+    const scroller = wheel.querySelector(".time-wheel-scroll")!;
+    fireEvent.scroll(scroller, { target: { scrollTop: 22 * 36 } });
+    expect(wheel).toHaveAttribute("aria-valuenow", "25");
+    fireEvent.keyDown(wheel, { key: "ArrowDown" });
+    expect(wheel).toHaveAttribute("aria-valuenow", "20");
+    expect(scroller.scrollTop).toBe(20 * 36);
+  });
+
 });

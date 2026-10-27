@@ -128,11 +128,13 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .time-wheel-popover { position: relative; z-index: 5; padding: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface-2); box-shadow: var(--shadow); }
 .time-wheel-columns { display: flex; justify-content: center; align-items: end; gap: 12px; }
 .time-wheel-column { display: grid; justify-items: center; gap: 5px; }
-.time-wheel { position: relative; width: 82px; height: 180px; overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--input); touch-action: none; user-select: none; cursor: ns-resize; }
+.time-wheel { position: relative; width: 82px; height: 180px; overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--input); touch-action: pan-y; user-select: none; cursor: ns-resize; }
 .time-wheel:focus-visible { outline: none; border-color: color-mix(in srgb, var(--ink) 58%, var(--line)); }
+.time-wheel-scroll { height: 100%; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-type: y mandatory; scrollbar-width: none; padding-block: 71px; -webkit-overflow-scrolling: touch; }
+.time-wheel-scroll::-webkit-scrollbar { display: none; }
 .time-wheel-fade { position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(to bottom, var(--input) 0%, transparent 35%, transparent 65%, var(--input) 100%); opacity: .7; }
 .time-wheel::after { content: ""; position: absolute; top: 72px; left: 5px; right: 5px; height: 34px; border: 1px solid var(--accent); border-radius: 9px; background: var(--accent-soft); pointer-events: none; }
-.time-wheel-option { position: absolute; top: 72px; left: 0; width: 100%; min-height: 36px; height: 36px; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 700; }
+.time-wheel-option { position: relative; display: block; flex-shrink: 0; scroll-snap-align: center; width: 100%; min-height: 36px; height: 36px; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 700; }
 .time-wheel-option:hover:not(:disabled), .time-wheel-option:active:not(:disabled) { transform: none; box-shadow: none; }
 .time-wheel-option.selected { z-index: 2; color: var(--ink); font-size: 1.15rem; font-weight: 900; }
 .time-wheel-option.disabled, .time-wheel-option.selected.disabled { color: var(--muted); opacity: .32; cursor: not-allowed; }
