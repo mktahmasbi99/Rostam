@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import { formatExerciseTotal } from "../lib/format";
 import type { Exercise, ExerciseHistorySession } from "../lib/types";
 import { Modal } from "./Modal";
+import { SetTable } from "./SetTable";
 import { SetRow } from "./SetRow";
 import { ReadState } from "./ReadState";
 
@@ -17,7 +18,7 @@ function weightLabel(session: ExerciseHistorySession): string {
   return bodyweight ? `Bodyweight + ${value}` : value;
 }
 function SessionBlock({ session, exercise, onChooseDay }: { session: ExerciseHistorySession; exercise: Exercise; onChooseDay?: (day: string) => void }) {
-  return <section className="history-session"><header className="history-session-header"><button className="history-date" onClick={() => onChooseDay?.(session.date)}>{dateLabel(session.date)}</button><strong>{formatExerciseTotal(exercise, session.total, session.sets)}{weightLabel(session) ? ` · ${weightLabel(session)}` : ""}</strong></header><div className="set-list history-set-list">{session.sets.map((set, index) => <SetRow key={set.id} set={set} index={index} />)}</div></section>;
+  return <section className="history-session"><header className="history-session-header"><button className="history-date" onClick={() => onChooseDay?.(session.date)}>{dateLabel(session.date)}</button><strong>{formatExerciseTotal(exercise, session.total, session.sets)}{weightLabel(session) ? ` · ${weightLabel(session)}` : ""}</strong></header><SetTable exercise={exercise}>{session.sets.map((set, index) => <SetRow key={set.id} exercise={exercise} set={set} index={index} />)}</SetTable></section>;
 }
 
 export function ExerciseHistoryDialog({ exercise, onClose, onChooseDay }: { exercise: Exercise; onClose: () => void; onChooseDay?: (day: string) => void }) {
