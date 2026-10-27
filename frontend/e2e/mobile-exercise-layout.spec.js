@@ -155,3 +155,45 @@ test("adds, retries, edits and deletes a timed-reps set with combined hold entry
   await page.getByRole("menuitem", { name: "Delete set", exact: true }).click();
   await expect(page.locator(".set-row")).toHaveCount(0);
 });
+
+test("history buttons stay at the card's top right with short/long titles and no prior day", async ({ page }) => {
+  const exercises = ["Squats", "timed-test", "Very long exercise name (Resistance Bands)"].map((name, index) => ({ id: index + 1, name, measurementType: "repetitions", equipment: null, allowBodyweight: true, hasHistory: true, imageKey: null, exerciseNote: null }));
+  const set = { id: 1, time: "14:43", repetitions: 10, resistanceKind: "bodyweight", weightKg: null };
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/config") return route.fulfill({ json: { today: "2026-10-27", timezone: "Europe/Warsaw", version: "1" } });
+    if (path === "/api/days/2026-10-27") return route.fulfill({ json: { date: "2026-10-27", sections: exercises.map((exercise) => ({ exercise, sets: [{ ...set, exerciseId: exercise.id }], total: 10 })), activities: [] } });
+    if (path.endsWith("/history")) return route.fulfill({ json: { sessions: path.includes("/2/") ? [] : [{ date: "2026-10-22", sets: [set], total: 10 }], nextBeforeDate: null } });
+    return route.fulfill({ json: [] });
+  });
+  await page.goto("/");
+  await expect(page.locator(".history-button")).toHaveCount(3);
+  await expect(page.locator(".previous-session")).toHaveCount(2);
+  for (const width of [320, 393, 430, 907, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    for (const fontSize of ["100%", "125%"]) {
+      await page.evaluate((size) => { document.documentElement.style.fontSize = size; }, fontSize);
+      const issues = await page.locator(".exercise-card").evaluateAll((cards) => cards.flatMap((card) => {
+        const box = card.getBoundingClientRect();
+        const button = card.querySelector(".history-button").getBoundingClientRect();
+        const title = card.querySelector("h2").getBoundingClientRect();
+        const previous = card.querySelector(".previous-session")?.getBoundingClientRect();
+        const errors = [];
+        const firstCard = cards[0].getBoundingClientRect();
+        const firstButton = cards[0].querySelector(".history-button").getBoundingClientRect();
+        if (Math.abs((button.top - box.top) - (firstButton.top - firstCard.top)) > 1 || Math.abs((box.right - button.right) - (firstCard.right - firstButton.right)) > 1) errors.push("History position differs between cards");
+        if (button.top < box.top || button.right > box.right || button.top - box.top > button.height || box.right - button.right > button.width) errors.push("History is not at the top-right corner");
+        if (title.right > button.left && title.top < button.bottom && title.bottom > button.top) errors.push("Title overlaps history");
+        if (previous && previous.top < title.bottom) errors.push("Last session is not below the title");
+        return errors;
+      }));
+      expect(issues, `${width}px, text ${fontSize}`).toEqual([]);
+    }
+  }
+  await page.setViewportSize({ width: 430, height: 1000 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.screenshot({ path: "/tmp/rostam-history-corners-430.png", fullPage: true });
+  await page.getByRole("button", { name: "History for timed-test", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "timed-test history", exact: true })).toBeVisible();
+});
