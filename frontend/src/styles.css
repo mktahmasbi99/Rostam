@@ -148,13 +148,13 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .exercise-card-header { display: flex; align-items: center; gap: 14px; padding: 16px 18px 12px; }
 .exercise-card-header h2 { font-size: 1.35rem; margin: 0 0 3px; letter-spacing: -.025em; }
 .exercise-card-main { min-width: 0; flex: 1; }
-.exercise-card-title-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.exercise-card-title-row h2 { min-width: 0; }
+.exercise-card-title-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; }
+.exercise-card-title-row h2 { min-width: 0; flex: 1 1 200px; overflow-wrap: anywhere; }
 .daily-total { color: var(--accent-dark); font-size: .92rem; }
-.exercise-history-summary { min-width: 0; margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
-.history-button { width: 38px; min-width: 38px; min-height: 34px; padding: 0; color: var(--accent-dark); background: transparent; box-shadow: none; }
+.exercise-history-summary { min-width: 0; max-width: 100%; margin-left: auto; display: flex; align-items: center; justify-content: flex-end; gap: 7px; }
+.history-button { flex: 0 0 38px; width: 38px; min-width: 38px; min-height: 34px; padding: 0; color: var(--accent-dark); background: transparent; box-shadow: none; }
 .history-button svg { width: 16px; height: 16px; }
-.previous-session { display: block; min-width: 0; color: var(--muted); font-size: .78rem; white-space: nowrap; }
+.previous-session { display: block; min-width: 0; color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
 .exercise-image { flex: 0 0 auto; width: 52px; height: 52px; border-radius: 15px; background: var(--surface-2); overflow: hidden; display: grid; place-items: center; }
 .exercise-image.large { width: 68px; height: 68px; border-radius: 19px; }
 .exercise-image img { width: 100%; height: 100%; object-fit: contain; }
@@ -217,16 +217,18 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .set-list { border-top: 1px solid var(--line); }
 .set-row { min-height: 62px; display: grid; grid-template-columns: 50px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: .89rem; }
 .set-row time { font-variant-numeric: tabular-nums; color: var(--muted); }
-.set-row > strong { text-align: center; }
+.set-row > strong { min-width: 0; text-align: center; overflow-wrap: anywhere; }
 .row-actions { margin-left: auto; display: flex; gap: 3px; }
 .row-actions .icon-button { min-width: 39px; min-height: 39px; }
 .row-actions svg { width: 18px; }
 .add-set { width: 100%; min-height: 52px; justify-content: center; border-radius: 0; background: transparent; color: var(--accent-dark); font-weight: 800; }
 
-.set-draft { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 12px; padding: 15px; border-top: 1px solid var(--line); background: var(--surface-2); }
+.set-draft { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); align-items: end; gap: 12px; padding: 15px; border-top: 1px solid var(--line); background: var(--surface-2); }
 .set-form-grid { display: contents; }
 .set-form-grid > label, .set-form-grid > fieldset, .duration-fields { min-width: 0; }
 .set-form-grid fieldset { border: 0; padding: 0; margin: 0; }
+.set-form-grid input { min-width: 0; max-width: 100%; }
+.set-draft > .draft-actions, .set-draft > .save-error { grid-column: 1 / -1; }
 label, legend, .field-label { color: var(--label); font-size: .82rem; font-weight: 750; display: grid; gap: 6px; }
 input, select, textarea { width: 100%; min-height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--input); color: var(--ink); font-size: 16px; }
 input.suggested-value { color: color-mix(in srgb, var(--ink) 42%, var(--input)); }
@@ -582,9 +584,11 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
 }
 
 @media (max-width: 479px) {
-  .set-draft { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 12px; }
-  .draft-actions { gap: 4px; }
-  .draft-actions .icon-button, .save-set { min-width: 38px; padding: 0 8px; }
+  .exercise-card-title-row { flex-direction: column; align-items: stretch; }
+  .exercise-card-title-row h2 { flex: none; }
+  .exercise-history-summary { margin-left: 0; justify-content: flex-start; }
+  .set-draft { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; }
+  .set-form-grid > .duration-fields { grid-column: 1 / -1; }
   .appearance-settings { grid-template-columns: minmax(0, 1fr); gap: 12px; }
 }
 
