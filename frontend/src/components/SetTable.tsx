@@ -4,7 +4,7 @@ import type { Exercise } from "../lib/types";
 
 export function SetTable({ exercise, children, editable = false }: { exercise: Exercise; children: ReactNode; editable?: boolean }) {
   const measurements = exercise.measurementType === "timed_repetitions" ? ["Reps", "Hold"] : [exercise.measurementType === "duration" ? "Duration" : "Reps"];
-  const columns = ["minmax(72px, 1.15fr)", ...(exercise.equipment ? ["minmax(0, 1fr)"] : []), ...measurements.map((label) => label === "Reps" ? "minmax(0, 1fr)" : "minmax(64px, 1fr)"), ...(editable ? ["32px"] : [])].join(" ");
+  const columns = ["var(--set-time-width)", ...(exercise.equipment ? ["var(--set-weight-width)"] : []), ...measurements.map((label) => label === "Reps" ? "var(--set-reps-width)" : "var(--set-duration-width)"), ...(editable ? ["minmax(44px, 1fr)", "var(--set-menu-width)"] : [])].join(" ");
   return <div className="set-table" role="group" aria-label={`Sets for ${exercise.name}`} style={{ "--set-columns": columns } as CSSProperties}>
     <div className="set-table-header set-cells">
       <span className="set-time-heading" title="Time"><Clock aria-hidden="true" /><span className="visually-hidden">Time</span></span>

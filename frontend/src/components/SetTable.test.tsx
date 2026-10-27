@@ -29,14 +29,11 @@ it("opens row actions with keyboard, dismisses with Escape, and invokes edit/del
   trigger.focus();
   await user.keyboard("{Enter}");
   const menu = screen.getByRole("menu");
-  expect(within(menu).getByRole("menuitem", { name: "Edit set 1" })).toHaveFocus();
-  await user.keyboard("{ArrowDown}");
   expect(within(menu).getByRole("menuitem", { name: "Delete set 1" })).toHaveFocus();
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();
-  await user.click(trigger);
-  await user.click(screen.getByRole("menuitem", { name: "Edit set 1" }));
+  await user.click(screen.getByRole("checkbox", { name: "Saved set 1; uncheck to edit" }));
   expect(edit).toHaveBeenCalledOnce();
   await user.click(trigger);
   await user.click(screen.getByRole("menuitem", { name: "Delete set 1" }));

@@ -166,14 +166,9 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
     }
   }
 
-  async function removeSet(exercise: Exercise, set: ExerciseSet) {
-    if (!window.confirm(`Delete the ${exercise.name} set recorded at ${set.time}? This cannot be undone.`)) return;
-    try {
-      await api.deleteSet(set.id);
-      await load();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not delete set.");
-    }
+  async function removeSet(set: ExerciseSet) {
+    await api.deleteSet(set.id);
+    await load();
   }
 
   const presentIds = data.sections.map((section) => section.exercise.id);
@@ -198,7 +193,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
           <header className="exercise-card-header"><ExerciseImage imageKey={section.exercise.imageKey} name={section.exercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2>{section.exercise.name}</h2><Suspense fallback={null}><ExerciseHistory exercise={section.exercise} day={day} onChooseDay={onChooseDay} /></Suspense></div><strong className="daily-total">{formatExerciseTotal(section.exercise, section.total, section.sets)}</strong></div></header>
           <Suspense fallback={null}><ExerciseNote exercise={section.exercise} /></Suspense>
           <SetTable exercise={section.exercise} editable>
-            {section.sets.map((set, index) => editingSet?.id === set.id ? <Suspense key={set.id} fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} existing={set} onSaved={() => void saved()} onCancel={() => setEditingSet(null)} /></Suspense> : <SetRow key={set.id} exercise={section.exercise} set={set} index={index} onEdit={() => { setAddingTo(null); setEditingSet(set); }} onDelete={() => void removeSet(section.exercise, set)} />)}
+            {section.sets.map((set, index) => editingSet?.id === set.id ? <Suspense key={set.id} fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} existing={set} onDelete={() => removeSet(set)} onSaved={() => void saved()} onCancel={() => setEditingSet(null)} /></Suspense> : <SetRow key={set.id} exercise={section.exercise} set={set} index={index} onEdit={() => { setAddingTo(null); setEditingSet(set); }} onDelete={() => removeSet(set)} />)}
           {addingTo === section.exercise.id ? <Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} onSaved={() => void saved()} onCancel={() => setAddingTo(null)} /></Suspense> : <button className="add-set" aria-label="Add set" title="Add set" onClick={() => { setEditingSet(null); setAddingTo(section.exercise.id); }}><Plus /></button>}
           </SetTable>
         </section>)}

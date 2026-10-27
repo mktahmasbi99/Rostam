@@ -16,18 +16,17 @@ async function openPicker(page) {
   await page.getByRole("button", { name: "Start time", exact: true }).click();
 }
 
-async function swipe(page, delay) {
+async function swipe(page, speed) {
   const wheel = page.getByRole("spinbutton", { name: "Minute", exact: true });
   const box = await wheel.boundingBox();
   const session = await page.context().newCDPSession(page);
   const x = box.x + box.width / 2;
   const y = box.y + box.height / 2 + 40;
-  await session.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
-  for (let step = 1; step <= 8; step++) {
-    await page.waitForTimeout(delay);
-    await session.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y - step * 10 }] });
-  }
-  await session.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  // Let Chromium generate touch events at a fixed speed. RPC round trips make
+  // per-event wall-clock delays unreliable, especially on loaded CI workers.
+  await session.send("Input.synthesizeScrollGesture", {
+    x, y, yDistance: -80, speed, preventFling: false, gestureSourceType: "touch",
+  });
   await session.detach();
   await page.waitForTimeout(1500);
   return Number(await wheel.getAttribute("aria-valuenow"));
@@ -35,10 +34,10 @@ async function swipe(page, delay) {
 
 test("native touch momentum travels farther for a fast flick and settles on a row", async ({ page }) => {
   await openPicker(page);
-  const slow = await swipe(page, 90);
+  const slow = await swipe(page, 100);
   await page.getByRole("button", { name: "Set time", exact: true }).locator("..").getByRole("button", { name: "Cancel" }).click();
   await page.getByRole("button", { name: "Start time", exact: true }).click();
-  const fast = await swipe(page, 5);
+  const fast = await swipe(page, 2000);
   expect(slow).toBeGreaterThan(30);
   expect(fast).toBeGreaterThan(slow);
   const wheel = page.getByRole("spinbutton", { name: "Minute", exact: true });

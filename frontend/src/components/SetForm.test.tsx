@@ -38,9 +38,9 @@ describe("SetForm", () => {
     render(<SetForm exercise={exercise} day="2026-09-16" onSaved={vi.fn()} onCancel={vi.fn()} />);
     await screen.findByLabelText("Reps");
     await user.type(screen.getByLabelText("Reps"), "8");
-    await user.click(screen.getByRole("button", { name: "Save set" }));
+    await user.click(screen.getByRole("checkbox", { name: "Save set" }));
     await waitFor(() => expect(api.addSet).toHaveBeenCalled());
-    expect(vi.mocked(api.addSet).mock.calls[0][2]).not.toHaveProperty("enrollInRotation");
+    expect(vi.mocked(api.addSet).mock.calls[0][2]).toHaveProperty("enrollInRotation", false);
   });
 
   it("uses fixed equipment without presenting an equipment picker", async () => {
@@ -65,7 +65,7 @@ describe("SetForm", () => {
     expect(screen.queryByRole("button", { name: "BW" })).not.toBeInTheDocument();
     expect(screen.getByText("0 = BW")).toBeInTheDocument();
     expect(screen.getByDisplayValue("40")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Save set" }));
+    await user.click(screen.getByRole("checkbox", { name: "Save set" }));
 
     await waitFor(() => expect(api.addSet).toHaveBeenCalled());
     expect(vi.mocked(api.addSet).mock.calls[0][2]).not.toHaveProperty("equipment");
@@ -102,7 +102,7 @@ describe("SetForm", () => {
     await user.clear(screen.getByLabelText("kg"));
     await user.type(screen.getByLabelText("kg"), "0");
     const calls = vi.mocked(api.updateSet).mock.calls.length;
-    await user.click(screen.getByRole("button", { name: "Save set" }));
+    await user.click(screen.getByRole("checkbox", { name: "Save set" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Weight must be greater than zero");
     expect(api.updateSet).toHaveBeenCalledTimes(calls);
   });
@@ -167,9 +167,10 @@ describe("SetForm", () => {
       expect(screen.getByLabelText("Reps")).not.toHaveClass("suggested-value");
       expect(screen.getByLabelText("Hold per repetition")).not.toHaveClass("suggested-value");
     }
-    await user.click(screen.getByRole("button", { name: "Save set" }));
+    await user.click(screen.getByRole("checkbox", { name: "Save set" }));
 
     await waitFor(() => expect(api.addSet).toHaveBeenLastCalledWith("2026-09-16", exercise.id, {
+      enrollInRotation: false,
       time: null,
       repetitions: edited ? 8 : 4,
       durationMinutes: null,
@@ -215,7 +216,7 @@ describe("SetForm", () => {
     expect(screen.getByLabelText("Hold per repetition")).toHaveValue("0:10");
     await user.clear(screen.getByLabelText("Reps"));
     await user.type(screen.getByLabelText("Reps"), "6");
-    await user.click(screen.getByRole("button", { name: "Save set" }));
+    await user.click(screen.getByRole("checkbox", { name: "Save set" }));
 
     await waitFor(() => expect(api.updateSet).toHaveBeenLastCalledWith(4, {
       time: null,
@@ -242,7 +243,7 @@ it.each(["duration", "timed_repetitions"] as const)("round-trips %s through one 
   await user.click(input);
   await user.keyboard("9059");
   expect(input).toHaveValue("90:59");
-  await user.click(screen.getByRole("button", { name: "Save set" }));
+  await user.click(screen.getByRole("checkbox", { name: "Save set" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Server unavailable");
   expect(input).toHaveValue("90:59");
   await user.click(screen.getByRole("button", { name: "Retry" }));
@@ -259,7 +260,7 @@ it("rejects an invalid combined hold before writing and keeps edits during prefi
   await user.click(hold);
   await user.keyboard("160");
   const calls = vi.mocked(api.addSet).mock.calls.length;
-  await user.click(screen.getByRole("button", { name: "Save set" }));
+  await user.click(screen.getByRole("checkbox", { name: "Save set" }));
   expect(screen.getByRole("alert")).toHaveTextContent("seconds between 00 and 59");
   expect(hold).toHaveValue("1:60");
   expect(api.addSet).toHaveBeenCalledTimes(calls);
@@ -287,10 +288,46 @@ it("maps zero kg to bodyweight and cancels without saving", async () => {
   const kg = await screen.findByLabelText("kg");
   await user.clear(kg);
   await user.type(kg, "0");
-  await user.click(screen.getByRole("button", { name: "Save set" }));
+  await user.click(screen.getByRole("checkbox", { name: "Save set" }));
   await waitFor(() => expect(api.addSet).toHaveBeenLastCalledWith("2026-09-16", exercise.id, expect.objectContaining({ resistanceKind: "bodyweight", weightKg: null })));
   const calls = vi.mocked(api.addSet).mock.calls.length;
-  await user.click(screen.getByRole("button", { name: "Cancel set" }));
+  await user.click(screen.getByRole("button", { name: "Entry actions" }));
+  await user.click(screen.getByRole("menuitem", { name: "Discard entry" }));
   expect(cancel).toHaveBeenCalledOnce();
+  expect(api.addSet).toHaveBeenCalledTimes(calls);
+});
+
+it("keeps the checkbox unchecked until confirmation and prevents duplicate writes", async () => {
+  const user = userEvent.setup();
+  vi.mocked(api.config).mockResolvedValue({ today: "2026-09-16", timezone: "Europe/Warsaw", version: "1" });
+  vi.mocked(api.prefill).mockResolvedValue({ source: "previous", time: null, repetitions: 12, durationMinutes: null, durationSeconds: null, holdMinutes: null, holdSeconds: null, resistanceKind: "bodyweight", weightKg: null });
+  let finish!: (value: unknown) => void;
+  vi.mocked(api.addSet).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  const saved = vi.fn();
+  render(<SetForm exercise={exercise} day="2026-09-16" onSaved={saved} onCancel={vi.fn()} />);
+  const checkbox = await screen.findByRole("checkbox", { name: "Save set" });
+  const calls = vi.mocked(api.addSet).mock.calls.length;
+  await user.click(checkbox);
+  await user.click(checkbox);
+  expect(checkbox).toBeDisabled();
+  expect(checkbox).not.toBeChecked();
+  expect(api.addSet).toHaveBeenCalledTimes(calls + 1);
+  expect(saved).not.toHaveBeenCalled();
+  finish({});
+  await waitFor(() => expect(saved).toHaveBeenCalledOnce());
+});
+
+it("does not save an invalid row when its checkbox is clicked", async () => {
+  const user = userEvent.setup();
+  vi.mocked(api.config).mockResolvedValue({ today: "2026-09-16", timezone: "Europe/Warsaw", version: "1" });
+  vi.mocked(api.prefill).mockResolvedValue({ source: "previous", time: null, repetitions: 12, durationMinutes: null, durationSeconds: null, holdMinutes: null, holdSeconds: null, resistanceKind: "bodyweight", weightKg: null });
+  render(<SetForm exercise={exercise} day="2026-09-16" onSaved={vi.fn()} onCancel={vi.fn()} />);
+  const input = await screen.findByLabelText("Reps");
+  await user.clear(input);
+  const calls = vi.mocked(api.addSet).mock.calls.length;
+  const checkbox = screen.getByRole("checkbox", { name: "Save set" });
+  await user.click(checkbox);
+  expect(checkbox).not.toBeChecked();
+  expect(input).toBeInvalid();
   expect(api.addSet).toHaveBeenCalledTimes(calls);
 });

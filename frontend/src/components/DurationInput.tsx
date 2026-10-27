@@ -39,7 +39,7 @@ export function DurationInput({ label, value, onChange, suggested, inputRef, aut
   return <input
     ref={element}
     aria-label={label} aria-invalid={invalid || undefined}
-    className={suggested ? "suggested-value" : ""}
+    className={`duration-input${suggested ? " suggested-value" : ""}`}
     inputMode="numeric" type="text" placeholder="mm:ss" value={value} autoFocus={autoFocus}
     onFocus={(event) => { if (suggested) event.currentTarget.select(); }}
     onClick={(event) => { if (suggested) event.currentTarget.select(); }}

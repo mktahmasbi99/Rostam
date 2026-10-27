@@ -30,11 +30,10 @@ for (const measurementType of ["repetitions", "duration", "timed_repetitions"]) 
       });
       await page.goto("/");
       await expect(page.locator(".previous-session")).toContainText("2026");
-      await page.getByRole("button", { name: "Actions for set 1", exact: true }).click();
-      await page.getByRole("menuitem", { name: "Edit set 1", exact: true }).click();
+      await page.getByRole("checkbox", { name: "Saved set 1; uncheck to edit", exact: true }).click();
       await expect(page.getByLabel("Time", { exact: true })).toHaveValue("10:11");
 
-      for (const width of [320, 393, 430, 768, 1440]) {
+      for (const width of [320, 360, 393, 430, 768, 907, 1440]) {
         await page.setViewportSize({ width, height: 1000 });
         for (const fontSize of ["100%", "125%"]) {
           await page.evaluate((size) => { document.documentElement.style.fontSize = size; }, fontSize);
@@ -42,11 +41,11 @@ for (const measurementType of ["repetitions", "duration", "timed_repetitions"]) 
           const problems = await page.locator(".exercise-card").evaluate((card) => {
             const issues = [];
             const cardBox = card.getBoundingClientRect();
-            const elements = [...card.querySelectorAll("h2, .previous-session, .history-button, .set-form-grid input, .draft-actions")];
+            const elements = [...card.querySelectorAll("h2, .previous-session, .history-button, .set-form-grid input:not([type=checkbox]), .set-form-grid .set-completion, .set-form-grid .set-actions-menu")];
             const boxes = elements.map((element) => ({ element, box: element.getBoundingClientRect() }));
             for (const { element, box } of boxes) {
               if (box.left < cardBox.left || box.right > cardBox.right) issues.push(`${element.tagName} outside card`);
-              if (element.scrollWidth > element.clientWidth + 1) issues.push(`${element.tagName} content clipped`);
+              if (element.scrollWidth > element.clientWidth + 1) issues.push(`${element.tagName} ${element.getAttribute("aria-label")} content clipped (${element.scrollWidth}/${element.clientWidth})`);
             }
             for (let i = 0; i < boxes.length; i++) {
               for (let j = i + 1; j < boxes.length; j++) {
@@ -56,7 +55,7 @@ for (const measurementType of ["repetitions", "duration", "timed_repetitions"]) 
               }
             }
             const headerCells = [...card.querySelectorAll(".set-table-header > span:not(.visually-hidden)")];
-            const inputs = [...card.querySelectorAll(".set-form-grid input")];
+            const inputs = [...card.querySelectorAll(".set-form-grid input:not([type=checkbox])")];
             const savedCells = [...card.querySelectorAll(".set-row > time, .set-row > strong")];
             for (let i = 0; i < inputs.length; i++) {
               const heading = headerCells[i].getBoundingClientRect();
@@ -74,7 +73,22 @@ for (const measurementType of ["repetitions", "duration", "timed_repetitions"]) 
       await page.emulateMedia({ colorScheme: "dark" });
       await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
       await page.screenshot({ path: `/tmp/rostam-mobile-${measurementType}-${weighted}.png`, fullPage: true });
-      await page.getByRole("button", { name: "Cancel set", exact: true }).click();
+      await page.setViewportSize({ width: 907, height: 954 });
+      await page.screenshot({ path: `/tmp/rostam-compact-${measurementType}-${weighted}-907.png`, fullPage: true });
+      if (measurementType !== "duration") {
+        const reps = page.getByLabel("Reps", { exact: true });
+        await reps.fill("12345");
+        await expect(reps).toHaveValue("12345");
+        expect((await reps.boundingBox()).width).toBeLessThanOrEqual(40);
+      }
+      if (weighted) {
+        const kg = page.getByLabel("kg", { exact: true });
+        await kg.fill("1234.5");
+        await expect(kg).toHaveValue("1234.5");
+        expect((await kg.boundingBox()).width).toBeLessThanOrEqual(48);
+      }
+      await page.getByRole("button", { name: "Entry actions", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Discard changes", exact: true }).click();
       await expect(page.locator(".set-row")).toHaveCount(2);
       if (weighted) await expect(page.locator(".set-row").nth(1)).toContainText("BW");
       await page.getByRole("button", { name: "History for Deadlifts (Resistance Bands)", exact: true }).click();
@@ -114,22 +128,20 @@ test("adds, retries, edits and deletes a timed-reps set with combined hold entry
   await hold.pressSequentially("130");
   await expect(hold).toHaveValue("1:30");
   await page.getByLabel("kg", { exact: true }).fill("0");
-  await page.getByRole("button", { name: "Save set", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Save set", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Please retry this save");
   await expect(hold).toHaveValue("1:30");
   await page.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(page.locator(".set-row")).toHaveCount(1);
   expect(lastPayload).toMatchObject({ holdMinutes: 1, holdSeconds: 30, resistanceKind: "bodyweight", weightKg: null });
   await expect(page.locator(".set-row")).toContainText("BW");
-  await page.getByRole("button", { name: "Actions for set 1", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Edit set 1", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Saved set 1; uncheck to edit", exact: true }).click();
   await expect(hold).toHaveValue("1:30");
   await page.getByLabel("kg", { exact: true }).fill("25");
-  await page.getByRole("button", { name: "Save set", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Save set", exact: true }).click();
   await expect(page.locator(".set-row")).toHaveCount(1);
   expect(lastPayload).toMatchObject({ holdMinutes: 1, holdSeconds: 30, resistanceKind: "external", weightKg: "25" });
   await page.getByRole("button", { name: "Actions for set 1", exact: true }).click();
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("menuitem", { name: "Delete set 1", exact: true }).click();
   await expect(page.locator(".set-row")).toHaveCount(0);
 });
