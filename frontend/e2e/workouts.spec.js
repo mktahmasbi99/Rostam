@@ -110,15 +110,19 @@ for (const width of [390, 1280]) {
   }
 }
 
-test("backfilled workout, live set logging, and confirmed removal", async ({ page, request }) => {
+test("backfilled workout preserves the live workout and supports confirmed removal", async ({ page, request }) => {
+  const live = await (await request.post(`${origin}/api/workouts`, { data: { name: "Live gym" } })).json();
   await page.goto(origin);
   await page.getByRole("button", { name: "Previous day" }).click();
   await page.getByRole("button", { name: "Add to day" }).click();
   await expect(page.getByRole("menuitem", { name: /Start workout/ })).toHaveCount(1);
   await page.getByRole("menuitem", { name: /Start workout/ }).click();
   await page.getByLabel("Workout name").fill("Past gym");
+  const start = await page.getByLabel("Workout start time").inputValue();
+  await page.getByLabel("Workout end time").fill(`${start.slice(0, 10)}T12:00`);
   await page.getByRole("button", { name: "Save workout", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Edit workout time" })).toContainText("– In progress");
+  await expect(page.getByText("Recorded workout", { exact: true })).toBeVisible();
+  expect((await (await request.get(`${origin}/api/workouts/active`)).json()).id).toBe(live.id);
   await expect(page.getByLabel("Workout elapsed time")).toHaveText(/\d{2}:\d{2}:\d{2}/);
   await addExercise(page, "Push-ups");
   await page.getByLabel("Time", { exact: true }).fill("11:00");
@@ -133,7 +137,7 @@ test("backfilled workout, live set logging, and confirmed removal", async ({ pag
   await page.getByRole("button", { name: "Discard workout", exact: true }).click();
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(page.getByRole("heading", { name: "No activity recorded" })).toBeVisible();
-  expect((await (await request.get(`${origin}/api/workouts`)).json()).items).toHaveLength(0);
+  expect((await (await request.get(`${origin}/api/workouts`)).json()).items.map((item) => item.id)).toEqual([live.id]);
 });
 
 test("connection loss retains unsaved set values without retrying", async ({ page, request }) => {

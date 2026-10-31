@@ -14,6 +14,7 @@ const RotationsPage = lazy(() => import("./components/RotationsPage").then((modu
 const CalendarPage = lazy(() => import("./components/CalendarPage").then((module) => ({ default: module.CalendarPage })));
 import { usePwaInstall } from "./hooks/usePwaInstall";
 import { api } from "./lib/api";
+import { getRestartSnapshot } from "./lib/restartSafety";
 import type { Config } from "./lib/types";
 import { artwork } from "./artwork";
 import { getServerReachability, getWriteOutcomeUncertain, reportServerReachability, subscribeServerReachability } from "./lib/connectivity";
@@ -69,7 +70,8 @@ export default function App() {
       const next = await api.config();
       reportServerReachability("reachable");
       setConfig((current) => {
-        if (!selectedDay || selectedDay === current?.today) setSelectedDay(next.today);
+        const { dirty, pendingWrites } = getRestartSnapshot();
+        if (!selectedDay || (selectedDay === current?.today && !dirty.length && !pendingWrites)) setSelectedDay(next.today);
         return next;
       });
       setError("");

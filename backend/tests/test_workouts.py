@@ -246,3 +246,14 @@ def test_workout_api_pagination_validation_and_version(database, clock, monkeypa
     assert client.get("/api/workouts?limit=100").status_code == 400
     assert client.post("/api/workouts", json={"name": "x" * 101}).status_code == 422
     assert client.request("DELETE", f"/api/workouts/{created['id']}", json={}).status_code == 400
+
+
+def test_historical_workout_does_not_replace_or_resume_live_workout(database, clock):
+    live = database.create_workout(WorkoutWrite(name="Live workout"))
+    historical = database.create_workout(
+        WorkoutWrite(name="Past workout", startedAt="2026-10-30T09:00", endedAt="2026-10-30T10:00")
+    )
+    assert historical["id"] != live["id"]
+    assert historical["endedAt"] is not None
+    assert database.active_workout()["id"] == live["id"]
+    assert database.day("2026-10-30")["workouts"][0]["id"] == historical["id"]

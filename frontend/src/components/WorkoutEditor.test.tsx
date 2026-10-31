@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../lib/api";
@@ -58,7 +58,7 @@ describe("WorkoutEditor", () => {
     await user.click(screen.getByRole("button", { name: "Save workout" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("cannot be in the future");
     expect(screen.getByLabelText("Workout name")).toHaveValue("Evening gym");
-    expect(onSave).toHaveBeenCalledWith({ name: "Evening gym", startedAt: "2026-10-30T09:00" });
+    expect(onSave).toHaveBeenCalledWith({ name: "Evening gym", startedAt: "2026-10-30T09:00", endedAt: "2026-10-30T10:00" });
     expect(screen.getByLabelText("Workout name")).toHaveValue("Evening gym");
   });
 
@@ -90,4 +90,17 @@ describe("WorkoutEditor", () => {
     await user.click(screen.getByRole("button", { name: "Save time" }));
     await waitFor(() => expect(api.updateWorkout).toHaveBeenCalledWith(1, { startedAt: "2026-10-30T09:00", endedAt: "2026-10-30T10:00" }));
   });
+});
+
+
+it("submits editable start and end times for a historical workout", async () => {
+  const user = userEvent.setup();
+  const onSave = vi.fn().mockResolvedValue(undefined);
+  render(<WorkoutDetailsForm day="2026-10-30" today="2026-10-31" timezone="Europe/Warsaw" onSave={onSave} onClose={vi.fn()} />);
+  const start = screen.getByLabelText("Workout start time");
+  const end = screen.getByLabelText("Workout end time");
+  fireEvent.change(start, { target: { value: "2026-10-30T18:00" } });
+  fireEvent.change(end, { target: { value: "2026-10-30T19:00" } });
+  await user.click(screen.getByRole("button", { name: "Save workout" }));
+  expect(onSave).toHaveBeenCalledWith({ name: "Workout", startedAt: "2026-10-30T18:00", endedAt: "2026-10-30T19:00" });
 });

@@ -585,27 +585,28 @@ async def restore_uploaded_backup(
     confirmation: str = Form(),
     file: UploadFile = File(),  # noqa: B008
 ) -> dict:
-    database.settings.database_path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        prefix="restore-upload-",
-        suffix=".sqlite3",
-        dir=database.settings.database_path.parent,
-        delete=False,
-    ) as temporary:
-        path = Path(temporary.name)
-        size = 0
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > 100 * 1024 * 1024:
-                raise DomainError("Backup uploads are limited to 100 MiB.")
-            temporary.write(chunk)
     try:
-        if path.stat().st_size == 0:
-            raise DomainError("Choose a SQLite backup file to restore.")
-        return database.restore_path(path, confirmation, source=file.filename or "uploaded backup")
+        database.settings.database_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            prefix="restore-upload-",
+            suffix=".sqlite3",
+            dir=database.settings.database_path.parent,
+        ) as temporary:
+            path = Path(temporary.name)
+            size = 0
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > 100 * 1024 * 1024:
+                    raise DomainError("Backup uploads are limited to 100 MiB.")
+                temporary.write(chunk)
+            temporary.flush()
+            if size == 0:
+                raise DomainError("Choose a SQLite backup file to restore.")
+            return database.restore_path(
+                path, confirmation, source=file.filename or "uploaded backup"
+            )
     finally:
         await file.close()
-        path.unlink(missing_ok=True)
 
 
 @app.get("/api/backups/settings")
@@ -628,23 +629,25 @@ async def import_legacy_database(
     confirmation: str = Form(),
     file: UploadFile = File(),  # noqa: B008
 ) -> dict:
-    with tempfile.NamedTemporaryFile(
-        prefix="legacy-import-", suffix=".sqlite3", dir=database.path.parent, delete=False
-    ) as temporary:
-        path = Path(temporary.name)
-        size = 0
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > 100 * 1024 * 1024:
-                raise DomainError("Import uploads are limited to 100 MiB.")
-            temporary.write(chunk)
     try:
-        if path.stat().st_size == 0:
-            raise DomainError("Choose a legacy SQLite file to import.")
-        return database.import_path(path, confirmation, source=file.filename or "legacy database")
+        with tempfile.NamedTemporaryFile(
+            prefix="legacy-import-", suffix=".sqlite3", dir=database.path.parent
+        ) as temporary:
+            path = Path(temporary.name)
+            size = 0
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > 100 * 1024 * 1024:
+                    raise DomainError("Import uploads are limited to 100 MiB.")
+                temporary.write(chunk)
+            temporary.flush()
+            if size == 0:
+                raise DomainError("Choose a legacy SQLite file to import.")
+            return database.import_path(
+                path, confirmation, source=file.filename or "legacy database"
+            )
     finally:
         await file.close()
-        path.unlink(missing_ok=True)
 
 
 @app.get("/api/backups/{backup_id}/download")
