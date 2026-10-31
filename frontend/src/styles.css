@@ -112,8 +112,8 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .activity-entry-heading .row-actions { margin-left: auto; }
 .icon-only-action { justify-content: center; }
 .activity-options { position: relative; }
-.activity-options-menu { position: absolute; z-index: 4; top: calc(100% + 6px); right: 0; display: grid; min-width: 160px; max-width: min(280px, calc(100vw - 40px)); padding: 6px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow); }
-.activity-options-menu .activity-menu-item { width: 100%; min-height: 40px; justify-content: flex-start; gap: 9px; padding: 0 10px; background: transparent; box-shadow: none; text-align: left; }
+.activity-options-menu { position: absolute; z-index: 4; top: calc(100% + 6px); right: 0; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow); }
+.activity-options-menu .activity-menu-item { width: 44px; min-height: 44px; justify-content: center; padding: 0; background: transparent; box-shadow: none; text-align: left; }
 .activity-options-menu .activity-menu-item:hover { background: var(--surface-2); box-shadow: none; }
 .activity-menu-item svg { width: 17px; height: 17px; flex: 0 0 auto; }
 .activity-menu-item.danger-text { color: var(--danger); }
@@ -126,6 +126,10 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .activity-time-trigger:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .activity-note { margin-top: 8px; padding: 12px; border-radius: 14px; background: var(--surface-2); }
 .activity-note-body { margin: 0; color: var(--ink); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+.activity-note-body.is-collapsed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.activity-note-body.can-expand { cursor: pointer; }
+.activity-note-toggle { display: block; min-height: 44px; margin-top: 2px; padding: 8px 0; border: 0; border-radius: 4px; background: transparent; color: var(--accent-dark); font-weight: 750; text-align: left; box-shadow: none; }
+.activity-note-toggle:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .activity-add-note:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .activity-add-note { width: 100%; min-height: 44px; margin-top: 8px; padding: 9px 11px; border: 1px dashed var(--line); border-radius: 12px; background: var(--surface-2); color: var(--accent-dark); text-align: left; font-weight: 750; }
 .activity-add-note:hover { border-color: var(--focus); background: var(--input); }
