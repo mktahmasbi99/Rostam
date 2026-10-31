@@ -1,4 +1,4 @@
-import { Check, MoreVertical, NotebookPen, Pencil, Square, Trash2, X } from "lucide-react";
+import { Check, Clock3, MoreVertical, NotebookPen, Pencil, Square, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { activityTime, activityTimeOnly, minuteOfDay, timeFromMinuteOfDay } from "../lib/activityTime";
@@ -124,7 +124,7 @@ export function ActivityEntryCard({ entry, activities = [], onChanged, timezone 
     setEditingNote(false);
   }
   return <article className="activity-entry">
-    <div className="activity-entry-heading"><strong>{entry.activityName}</strong><div className="row-actions">
+    <div className="activity-entry-heading"><strong className="entry-kind-title"><Clock3 className="entry-kind-icon" aria-hidden="true" /><span>{entry.activityName}</span></strong><div className="row-actions">
       {active && <button className="activity-stop-button" aria-label={`Stop ${entry.activityName}`} title="Stop session" disabled={!canStop} onClick={() => { const startTime = activityTimeOnly(entry.startedAt); setStart(startTime); setEnd(suggestedEnd(entry.startedAt, timezone)); setFinishing(true); }}><Square /></button>}
       <div className="activity-options" ref={optionsRef}><button className="icon-button" aria-label={`${entry.activityName} options`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><MoreVertical /></button>{menuOpen && <div className="activity-options-menu" role="menu"><button type="button" className="activity-menu-item" role="menuitem" aria-label="Rename activity" title="Rename activity" onClick={() => { setMenuOpen(false); setActivityNameDraft(entry.activityName); setError(""); setRenamingActivity(true); }}><Pencil aria-hidden="true" /></button><button type="button" className="activity-menu-item danger-text" role="menuitem" aria-label="Delete session" title="Delete session" onClick={() => { setMenuOpen(false); setError(""); setConfirmDelete(true); }}><Trash2 aria-hidden="true" /></button></div>}</div>
     </div></div>
