@@ -112,7 +112,7 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .activity-entry-heading .row-actions { margin-left: auto; }
 .icon-only-action { justify-content: center; }
 .activity-options { position: relative; }
-.activity-options-menu { position: absolute; z-index: 4; top: calc(100% + 6px); right: 0; display: flex; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow); }
+.activity-options-menu { position: absolute; z-index: 4; top: calc(100% + 6px); right: 0; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: var(--shadow); }
 .activity-options-menu .activity-menu-item { width: 44px; min-height: 44px; justify-content: center; padding: 0; background: transparent; box-shadow: none; text-align: left; }
 .activity-options-menu .activity-menu-item:hover { background: var(--surface-2); box-shadow: none; }
 .activity-menu-item svg { width: 17px; height: 17px; flex: 0 0 auto; }
