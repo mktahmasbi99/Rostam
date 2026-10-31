@@ -26,7 +26,7 @@ export function WorkoutDetailsForm({ workout, day, timezone, onSave, onClose }: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const saving = useRef(false);
-  return <Modal title={workout ? "Workout details" : "Record past workout"} onClose={() => { if (!busy) onClose(); }}>
+  return <Modal title="Workout details" onClose={() => { if (!busy) onClose(); }}>
     <form className="workout-details" data-update-dirty="workout-details" onSubmit={(event) => {
       event.preventDefault();
       if (saving.current) return;

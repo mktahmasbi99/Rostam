@@ -114,8 +114,8 @@ test("backfilled workout, invalid times, and confirmed removal", async ({ page, 
   await page.goto(origin);
   await page.getByRole("button", { name: "Previous day" }).click();
   await page.getByRole("button", { name: "Add to day" }).click();
-  await expect(page.getByRole("menuitem", { name: /Start workout/ })).toHaveCount(0);
-  await page.getByRole("menuitem", { name: /Record past workout/ }).click();
+  await expect(page.getByRole("menuitem", { name: /Start workout/ })).toHaveCount(1);
+  await page.getByRole("menuitem", { name: /Start workout/ }).click();
   await page.getByLabel("Workout name").fill("Past gym");
   await page.getByRole("button", { name: "Save workout", exact: true }).click();
   await addExercise(page, "Push-ups");

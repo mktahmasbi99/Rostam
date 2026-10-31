@@ -123,11 +123,8 @@ describe("DayPage exercise notes", () => {
     const exerciseItem = screen.getByRole("menuitem", { name: /Add exercise/ });
     const activityItem = screen.getByRole("menuitem", { name: /Add activity/ });
     const workoutItem = screen.getByRole("menuitem", { name: /Start workout/ });
-    const pastWorkoutItem = screen.getByRole("menuitem", { name: /Record past workout/ });
     expect(trigger).toHaveAttribute("aria-expanded", "true");
     expect(workoutItem).toHaveFocus();
-    await user.keyboard("{ArrowDown}");
-    expect(pastWorkoutItem).toHaveFocus();
     await user.keyboard("{ArrowDown}");
     expect(activityItem).toHaveFocus();
     await user.keyboard("{ArrowDown}");

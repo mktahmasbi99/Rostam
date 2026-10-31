@@ -22,7 +22,7 @@ test("day add menu opens its existing pickers and stays visible on a narrow scre
       expect(menuBox.x).toBeGreaterThanOrEqual(0);
       expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(width);
       const items = menu.getByRole("menuitem");
-      await expect(items).toHaveCount(4);
+      await expect(items).toHaveCount(3);
       for (const item of await items.all()) {
         const itemBackground = await item.evaluate((element) => getComputedStyle(element).backgroundColor);
         expect(itemBackground).not.toBe("rgba(0, 0, 0, 0)");

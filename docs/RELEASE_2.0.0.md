@@ -4,7 +4,7 @@ Session workouts add optional gym-style tracking alongside individual sets and t
 
 ## Workouts
 
-Use Today's Plus menu to start a workout or record a completed workout. Past dates offer completed-workout entry. Add exercises from the existing library, save sets with the completion checkbox, reorder exercises, and finish when done. Suggested values remain unsaved until confirmed. Start/end and set times use the server-configured timezone.
+Use the Plus menu to start a workout. Today starts a live workout; choosing a past date opens workout details so the completed workout is recorded on that date. Add exercises from the existing library, save sets with the completion checkbox, reorder exercises, and finish when done. Suggested values remain unsaved until confirmed. Start/end and set times use the server-configured timezone.
 
 There is one active workout at a time. Starting again opens that workout. Saved exercises, ordering, and sets survive refreshes and app restarts; use its Resume card to continue. A resume banner also appears when viewing another date. Unsaved input stays only on the current screen and is never stored or queued offline.
 
