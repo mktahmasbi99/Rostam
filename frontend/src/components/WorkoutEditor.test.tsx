@@ -67,6 +67,8 @@ describe("WorkoutEditor", () => {
     vi.mocked(api.workout).mockResolvedValue(workout);
     vi.mocked(api.updateWorkout).mockResolvedValue({ ...workout, startedAt: "2026-10-30T08:30:00Z" });
     render(<WorkoutEditor id={1} today="2026-10-30" timezone="Europe/Warsaw" onClose={vi.fn()} onChanged={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: "Edit workout time" })).toHaveTextContent(/09:00 AM – In progress/);
+    expect(screen.getByLabelText("Workout elapsed time")).toHaveTextContent(/^\d{2}:\d{2}:\d{2}$/);
     await user.click(await screen.findByRole("button", { name: "Edit workout time" }));
     expect(screen.getByLabelText("Workout start time")).toHaveValue("09:00");
     expect(screen.queryByLabelText("Workout end time")).not.toBeInTheDocument();

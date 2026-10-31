@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { getRestartSnapshot } from "../lib/restartSafety";
 import type { Exercise, ExerciseSet, Workout, WorkoutPayload } from "../lib/types";
-import { workoutLocalTime, workoutRange } from "../lib/workoutTime";
+import { workoutElapsed, workoutLocalTime, workoutTimeRange } from "../lib/workoutTime";
 import { ExerciseHistory } from "./ExerciseHistory";
 import { ExerciseImage } from "./ExerciseImage";
 import { ExerciseNote } from "./ExerciseNote";
@@ -76,6 +76,7 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged }: {
   id: number; today: string; timezone: string; onClose: () => void; onChanged: () => void;
 }) {
   const [workout, setWorkout] = useState<Workout | null>(null);
+  const [clockNow, setClockNow] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -93,6 +94,12 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged }: {
     finally { setLoading(false); }
   }, [id]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!workout || workout.endedAt) return;
+    setClockNow(Date.now());
+    const interval = window.setInterval(() => setClockNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, [workout]);
 
   async function mutate(action: () => Promise<void>) {
     if (writing.current) return;
@@ -137,7 +144,7 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged }: {
     <div className="workout-editor">
       <ReadState loading={loading} error={error} hasData={Boolean(workout)} onRetry={() => void load()} loadingText="Loading workout…" />
       {workout && <>
-        <header className="workout-overview"><div><span className="workout-status">{workout.endedAt ? "Recorded workout" : "Workout in progress"}</span><button type="button" className="workout-time-trigger" aria-label="Edit workout time" disabled={busy} onClick={() => guardDraft(() => { setDraft(null); setEditingTime(true); })}>{workoutRange(workout.startedAt, workout.endedAt, timezone)}</button><strong>{workout.exerciseCount} exercises · {workout.setCount} sets</strong></div><button className="icon-button" aria-label="Edit workout details" disabled={busy} onClick={() => guardDraft(() => { setDraft(null); setDetails(true); })}><Pencil /></button></header>
+        <header className="workout-overview"><div><span className="workout-status">{workout.endedAt ? "Recorded workout" : "Workout in progress"}</span><button type="button" className="workout-time-trigger" aria-label="Edit workout time" disabled={busy} onClick={() => guardDraft(() => { setDraft(null); setEditingTime(true); })}>{workoutTimeRange(workout.startedAt, workout.endedAt, timezone)}</button><span className="workout-elapsed" aria-label="Workout elapsed time">{workoutElapsed(workout.startedAt, workout.endedAt, clockNow)}</span><strong>{workout.exerciseCount} exercises · {workout.setCount} sets</strong></div><button className="icon-button" aria-label="Edit workout details" disabled={busy} onClick={() => guardDraft(() => { setDraft(null); setDetails(true); })}><Pencil /></button></header>
         <div className="workout-exercises">{workout.exercises.map((entry, index) => <section className="exercise-card workout-exercise" id={`workout-exercise-${entry.id}`} key={entry.id}>
           <header className="exercise-card-header"><ExerciseImage imageKey={entry.exercise.imageKey} name={entry.exercise.name} size="large" /><div className="exercise-card-main"><h3>{index + 1}. {entry.exercise.name}</h3><ExerciseHistory exercise={entry.exercise} day={workoutLocalTime(workout.startedAt, timezone).slice(0, 10)} /></div></header>
           <div className="workout-exercise-tools"><span>{entry.sets.length} {entry.sets.length === 1 ? "set" : "sets"}</span><button className="icon-button" aria-label={`Move ${entry.exercise.name} earlier`} disabled={busy || index === 0} onClick={() => void move(index, -1)}><ArrowUp /></button><button className="icon-button" aria-label={`Move ${entry.exercise.name} later`} disabled={busy || index === workout.exercises.length - 1} onClick={() => void move(index, 1)}><ArrowDown /></button><button className="icon-button" aria-label={`Remove ${entry.exercise.name}`} disabled={busy} onClick={() => {

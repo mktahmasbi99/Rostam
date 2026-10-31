@@ -666,6 +666,7 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
 .workout-overview { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 8px 0 18px; border-bottom: 1px solid var(--line); }
 .workout-time-trigger { display: block; margin: 6px 0; padding: 0; border: 0; background: transparent; color: var(--muted); font-weight: 400; text-align: left; }
 .workout-time-trigger:hover { color: var(--heading); text-decoration: underline; }
+.workout-elapsed { display: block; margin: 4px 0 8px; color: var(--accent-dark); font-variant-numeric: tabular-nums; font-weight: 700; }
 .workout-exercise h3 { margin: 0 0 8px; color: var(--heading); }
 .workout-exercise-tools { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
 .workout-exercise-tools > span { margin-right: auto; color: var(--muted); }

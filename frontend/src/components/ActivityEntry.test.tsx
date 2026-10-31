@@ -146,6 +146,7 @@ describe("ActivityEntryCard", () => {
     const user = userEvent.setup();
     const activeEntry = { ...entry, startedAt: "2020-10-19T17:45:00+02:00", endedAt: null, durationSeconds: null };
     render(<ActivityEntryCard entry={activeEntry} timezone="Europe/Warsaw" onChanged={vi.fn()} />);
+    expect(document.querySelector(".activity-entry-time")).toHaveTextContent("17:45 – In progress");
     await user.click(await screen.findByRole("button", { name: "Stop BJJ – No Gi" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
@@ -157,6 +158,7 @@ describe("ActivityEntryCard", () => {
   it("opens the time editor from the displayed session time", async () => {
     const user = userEvent.setup();
     render(<ActivityEntryCard entry={entry} timezone="Europe/Warsaw" onChanged={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Edit time for BJJ – No Gi" })).toHaveTextContent("17:45–18:45");
     await user.click(screen.getByRole("button", { name: "Edit time for BJJ – No Gi" }));
 
     expect(screen.getByRole("heading", { name: "Edit BJJ – No Gi" })).toBeInTheDocument();
