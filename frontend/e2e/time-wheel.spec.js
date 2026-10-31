@@ -78,3 +78,41 @@ test.describe("desktop controls", () => {
     await expect(wheel.locator(".time-wheel-scroll")).toHaveJSProperty("scrollTop", 0);
   });
 });
+
+
+for (const width of [320, 390, 1280]) {
+  test(`set time reuses the wheel without clipping or losing cancelled values at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 954 });
+    const exercise = { id: 1, name: "Push-ups", measurementType: "repetitions", equipment: null, allowBodyweight: true, imageKey: null, hasHistory: false, exerciseNote: null };
+    const set = { id: 1, exerciseId: 1, date: "2026-10-27", occurredAt: "2026-10-27T09:11:00Z", time: "10:11", repetitions: 12, resistanceKind: "bodyweight", weightKg: null };
+    let saved;
+    await page.route("**/api/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === "/api/config") return route.fulfill({ json: { today: "2026-10-27", timezone: "Europe/Warsaw", version: "2.0.0" } });
+      if (path === "/api/days/2026-10-27") return route.fulfill({ json: { date: "2026-10-27", sections: [{ exercise, sets: [set], total: 12 }], activities: [] } });
+      if (path === "/api/sets/1" && route.request().method() === "PATCH") { saved = route.request().postDataJSON(); return route.fulfill({ json: { ...set, ...saved } }); }
+      return route.fulfill({ json: [] });
+    });
+    await page.goto("/");
+    await page.getByRole("checkbox", { name: "Saved set 1; uncheck to edit", exact: true }).click();
+    const trigger = page.getByRole("button", { name: "Time", exact: true });
+    await trigger.click();
+    const popover = page.locator(".set-form-grid .time-wheel-popover");
+    await expect(popover).toBeVisible();
+    const box = await popover.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+    expect(await popover.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    await page.getByRole("spinbutton", { name: "Hour" }).press("ArrowUp");
+    await popover.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(trigger).toHaveText("10:11");
+    await expect(page.getByLabel("Reps", { exact: true })).toHaveValue("12");
+    await trigger.click();
+    await page.getByRole("spinbutton", { name: "Minute" }).press("ArrowUp");
+    await page.screenshot({ path: `/tmp/rostam-set-time-wheel-${width}.png`, fullPage: true });
+    await page.getByRole("button", { name: "Set time", exact: true }).click();
+    await expect(trigger).toHaveText("10:12");
+    await page.getByRole("checkbox", { name: "Save set", exact: true }).click();
+    await expect.poll(() => saved?.time).toBe("10:12");
+  });
+}

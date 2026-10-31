@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { api } from "../lib/api";
@@ -269,10 +269,11 @@ it("rejects an invalid combined hold before writing and keeps edits during prefi
   await user.clear(screen.getByLabelText("kg"));
   await user.type(screen.getByLabelText("kg"), "25");
   vi.mocked(api.prefill).mockResolvedValue({ ...prefill, repetitions: 12, holdSeconds: 20 });
-  const time = screen.getByLabelText("Time");
-  await user.clear(time);
-  await user.type(time, "09:00");
-  await user.tab();
+  await user.click(screen.getByRole("button", { name: "Time" }));
+  fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Hour" }), { key: "Home" });
+  for (let hour = 0; hour < 9; hour++) fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Hour" }), { key: "ArrowUp" });
+  fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Minute" }), { key: "Home" });
+  await user.click(screen.getByRole("button", { name: "Set time" }));
   await waitFor(() => expect(api.prefill).toHaveBeenLastCalledWith(exercise.id, "2026-09-16", "09:00"));
   expect(hold).toHaveValue("1:30");
   expect(screen.getByLabelText("kg")).toHaveValue("25");
@@ -372,4 +373,28 @@ it("saves a backfilled workout set through its membership endpoint and keeps val
   await waitFor(() => expect(addWorkoutSet).toHaveBeenCalledWith(7, 11, expect.objectContaining({ occurredAt: "2026-10-30T08:00:00Z", repetitions: 12 })));
   expect(await screen.findByRole("alert")).toHaveTextContent("Set time must be within");
   expect(screen.getByLabelText("Reps")).toHaveValue(12);
+});
+
+
+it.each([false, true])("uses the shared time wheel without changing a cancelled set time (workout: %s)", async (inWorkout) => {
+  const user = userEvent.setup();
+  const onCancel = vi.fn();
+  render(<SetForm exercise={exercise} day="2026-09-16" existing={{
+    id: 3, exerciseId: exercise.id, date: "2026-09-16", occurredAt: "2026-09-16T10:00:23Z", time: "12:00",
+    repetitions: 10, durationMinutes: null, durationSeconds: null, holdMinutes: null, holdSeconds: null,
+    resistanceKind: "external", weightKg: "40", equipment: "resistance_band", customEquipment: null, createdAt: "2026-09-16T10:00:23Z",
+  }} workout={inWorkout ? { id: 7, entryId: 11, startedAt: "2026-09-16T08:00:00Z", endedAt: "2026-09-16T14:00:00Z", timezone: "Europe/Warsaw" } : undefined} onSaved={vi.fn()} onCancel={onCancel} />);
+  const trigger = screen.getByRole("button", { name: "Time" });
+  await user.click(trigger);
+  fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Hour" }), { key: "ArrowUp" });
+  await user.click(within(screen.getByRole("button", { name: "Set time" }).parentElement!).getByRole("button", { name: "Cancel" }));
+  expect(trigger).toHaveTextContent("12:00");
+  expect(onCancel).not.toHaveBeenCalled();
+  await user.click(trigger);
+  expect(screen.getByRole("spinbutton", { name: "Hour" })).toHaveAttribute("aria-valuenow", "12");
+  fireEvent.keyDown(screen.getByRole("spinbutton", { name: "Hour" }), { key: "ArrowUp" });
+  await user.click(screen.getByRole("button", { name: "Set time" }));
+  expect(trigger).toHaveTextContent("13:00");
+  await user.click(screen.getByRole("checkbox", { name: "Save set" }));
+  await waitFor(() => expect(api.updateSet).toHaveBeenLastCalledWith(3, expect.objectContaining(inWorkout ? { occurredAt: "2026-09-16T13:00", time: null } : { time: "13:00" })));
 });
