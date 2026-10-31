@@ -249,15 +249,15 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .set-edit-actions { display: flex; justify-content: flex-end; padding: 0 8px 8px; }
 .set-edit-actions button { min-height: 36px; padding: 0 12px; }
 .set-form-grid input:not([type="checkbox"]) { min-width: 0; max-width: 100%; justify-self: center; padding: 0 3px; text-align: center; font-size: 16px; font-variant-numeric: tabular-nums; }
-.set-form-grid input[type="time"] { width: var(--set-time-width); }
+.set-form-grid .time-wheel-field { display: contents; }
+.set-form-grid .time-wheel-field-label, .set-form-grid .time-wheel-trigger svg { display: none; }
+.set-form-grid .time-wheel-trigger { width: var(--set-time-width); min-height: 44px; justify-self: center; justify-content: center; padding: 0 3px; font-size: 16px; }
+.set-form-grid .time-wheel-popover { grid-column: 1 / -1; grid-row: 2; }
 .set-form-grid input.set-weight-input { width: var(--set-weight-width); }
 .set-form-grid input[type="number"] { width: var(--set-reps-width); }
 .set-form-grid input.duration-input { width: var(--set-duration-width); padding-inline: 1px; }
 .set-form-grid input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
 .set-form-grid input::-webkit-inner-spin-button, .set-form-grid input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.set-form-grid input[type="time"]::-webkit-calendar-picker-indicator { display: none; }
-.set-form-grid input[type="time"]::-webkit-date-and-time-value { min-width: 0; text-align: center; }
-.set-form-grid input[type="time"]::-webkit-datetime-edit { padding: 0; }
 .set-weight-hint { display: block; padding: 0 8px 6px; text-align: center; color: var(--muted); font-size: .72rem; }
 .set-draft > .save-error { padding: 0 8px; }
 .set-completion { width: 44px; height: 44px; justify-self: center; display: grid; place-items: center; cursor: pointer; }

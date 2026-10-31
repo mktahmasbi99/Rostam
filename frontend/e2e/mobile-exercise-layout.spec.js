@@ -32,7 +32,7 @@ for (const measurementType of ["repetitions", "duration", "timed_repetitions"]) 
       await expect(page.locator(".previous-session")).toContainText("2026");
       await expect(page.locator(".set-row .set-actions-trigger")).toHaveCount(0);
       await page.getByRole("checkbox", { name: "Saved set 1; uncheck to edit", exact: true }).click();
-      await expect(page.getByLabel("Time", { exact: true })).toHaveValue("10:11");
+      await expect(page.getByRole("button", { name: "Time", exact: true })).toHaveText("10:11");
 
       for (const width of [320, 360, 393, 430, 768, 907, 1440]) {
         await page.setViewportSize({ width, height: 1000 });
@@ -42,7 +42,7 @@ for (const measurementType of ["repetitions", "duration", "timed_repetitions"]) 
           const problems = await page.locator(".exercise-card").evaluate((card) => {
             const issues = [];
             const cardBox = card.getBoundingClientRect();
-            const elements = [...card.querySelectorAll("h2, .previous-session, .history-button, .set-form-grid input:not([type=checkbox]), .set-form-grid .set-completion, .set-form-grid .set-actions-menu")];
+            const elements = [...card.querySelectorAll("h2, .previous-session, .history-button, .set-form-grid input:not([type=checkbox]), .set-form-grid .time-wheel-trigger, .set-form-grid .set-completion, .set-form-grid .set-actions-menu")];
             const boxes = elements.map((element) => ({ element, box: element.getBoundingClientRect() }));
             for (const { element, box } of boxes) {
               if (box.left < cardBox.left || box.right > cardBox.right) issues.push(`${element.tagName} outside card`);
@@ -56,7 +56,7 @@ for (const measurementType of ["repetitions", "duration", "timed_repetitions"]) 
               }
             }
             const headerCells = [...card.querySelectorAll(".set-table-header > span:not(.visually-hidden)")];
-            const inputs = [...card.querySelectorAll(".set-form-grid input:not([type=checkbox])")];
+            const inputs = [...card.querySelectorAll(".set-form-grid input:not([type=checkbox]), .set-form-grid .time-wheel-trigger")];
             const savedCells = [...card.querySelectorAll(".set-row > time, .set-row > strong")];
             for (let i = 0; i < inputs.length; i++) {
               const heading = headerCells[i].getBoundingClientRect();

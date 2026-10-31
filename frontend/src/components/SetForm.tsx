@@ -7,6 +7,7 @@ import type { Exercise, ExerciseSet, SetPayload } from "../lib/types";
 import { durationValue, parseDurationValue } from "../lib/duration";
 import { DurationInput } from "./DurationInput";
 import { SwipeSetRow } from "./SwipeSetRow";
+import { TimeWheelField } from "./TimeWheelField";
 
 interface Props {
   workout?: { id: number; entryId: number; startedAt: string; endedAt: string | null; timezone: string };
@@ -119,6 +120,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, 
     if (writing.current) return;
     if (form.current && !form.current.reportValidity()) return;
     setError("");
+    if (!time) { setError("Choose a set time."); return; }
     const parsedDuration = parseDurationValue(duration);
     const parsedHold = parseDurationValue(hold);
     if ((exercise.measurementType === "duration" && !parsedDuration) || (exercise.measurementType === "timed_repetitions" && !parsedHold)) {
@@ -167,7 +169,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, 
     <SwipeSetRow onDelete={existing && !onDelete ? undefined : remove} disabled={saving || deleting} error={deleteError}><form ref={form} className="set-draft" data-update-dirty={`set-entry-${workout?.entryId ?? exercise.id}`} data-update-dirty-label="Set entry" onSubmit={(event) => { event.preventDefault(); if (!deleting) void save(); }}>
       {workout && <label className="workout-set-date">Set date<input aria-label="Set date" type="date" value={setDate} required onChange={(event) => { setSetDate(event.target.value); setDateEdited(true); }} onBlur={() => void refreshPrefill(time)} /></label>}
       <div className="set-form-grid set-cells">
-        <input aria-label="Time" type="time" value={time} onClick={(event) => { try { event.currentTarget.showPicker?.(); } catch { /* Safari may open its native picker directly on focus. */ } }} onChange={(event) => { setTime(event.target.value); setTimeEdited(true); timeEditedRef.current = true; }} onBlur={() => void refreshPrefill(time)} required />
+        <TimeWheelField label="Time" value={time} onChange={(value) => { setTime(value); setTimeEdited(true); timeEditedRef.current = true; void refreshPrefill(value); }} />
         {exercise.equipment && <input aria-label="kg" aria-describedby={exercise.allowBodyweight ? hintId : undefined} className={`set-weight-input${suggested.weight ? " suggested-value" : ""}`} inputMode="decimal" value={weight} onFocus={(event) => suggested.weight && event.currentTarget.select()} onClick={(event) => suggested.weight && event.currentTarget.select()} onChange={(event) => editWeight(event.target.value)} required />}
         {exercise.measurementType !== "duration" && <input aria-label="Reps" ref={firstMeasurementInput} className={suggested.repetitions ? "suggested-value" : ""} type="number" min="1" step="1" inputMode="numeric" value={repetitions} onFocus={(event) => suggested.repetitions && event.currentTarget.select()} onClick={(event) => suggested.repetitions && event.currentTarget.select()} onChange={(event) => editMeasurement("repetitions", event.target.value, setRepetitions)} required autoFocus />}
         {exercise.measurementType === "duration" && <DurationInput label="Duration" inputRef={firstMeasurementInput} value={duration} suggested={suggested.duration} onChange={(value) => editMeasurement("duration", value, setDuration)} invalid={invalidDuration} autoFocus />}

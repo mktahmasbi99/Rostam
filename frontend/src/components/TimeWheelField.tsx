@@ -147,7 +147,7 @@ export function TimeWheelField({ label, value, onChange, min = 0, max = MAX_MINU
   }
   return <div className="time-wheel-field">
     <span className="time-wheel-field-label">{label}</span>
-    <button type="button" className="time-wheel-trigger" aria-label={label} aria-expanded={open} onClick={() => setOpen(!open)}><Clock3 />{formatTime(safeValue)}</button>
+    <button type="button" className="time-wheel-trigger" aria-label={label} aria-expanded={open} onClick={() => { setDraft(safeValue); setOpen(!open); }}><Clock3 />{formatTime(safeValue)}</button>
     {open && <div className="time-wheel-popover">
       <div className="time-wheel-columns"><Wheel label="Hour" values={hours} selected={hour} onSelect={chooseHour} disabledValues={disabledHours} /><span className="time-wheel-separator">:</span><Wheel label="Minute" values={minutes} selected={minute} onSelect={chooseMinute} disabledValues={disabledMinutes} /></div>
       <div className="time-wheel-actions"><button type="button" className="secondary" onClick={() => setOpen(false)}><X />Cancel</button><button type="button" className="primary" onClick={() => { onChange(formatTime(selected)); setOpen(false); }}><Check />Set time</button></div>
