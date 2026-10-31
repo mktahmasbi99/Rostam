@@ -41,7 +41,6 @@ test("day add menu opens its existing pickers and stays visible on a narrow scre
   await page.keyboard.press("Home");
   await expect(page.getByRole("menuitem", { name: /Start workout/ })).toBeFocused();
   await page.keyboard.press("ArrowDown");
-  await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("menuitem", { name: /Add activity/ })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toBeVisible();
