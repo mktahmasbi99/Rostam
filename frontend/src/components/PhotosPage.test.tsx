@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../lib/api";
 import { PhotosPage } from "./PhotosPage";
+import type { PhotoPage } from "../lib/types";
 
 vi.mock("../lib/api", () => ({ api: { photos: vi.fn(), dayPhotos: vi.fn(), uploadPhotos: vi.fn(), deletePhoto: vi.fn() } }));
 
@@ -87,4 +88,41 @@ it("shows upload failures without closing the dialog or changing the gallery", a
   expect(screen.getByRole("dialog", { name: "Daily photos" })).toBeInTheDocument();
   expect(screen.getByText("No daily photos yet.")).toBeInTheDocument();
   expect(api.photos).toHaveBeenCalledTimes(1);
+});
+
+
+it.each(["failed", "late success", "late failure"])("resets photo pagination after upload and ignores a %s older request", async (outcome) => {
+  const user = userEvent.setup();
+  const first: PhotoPage = { items: [{ date: "2026-10-31", photos: [] }], nextBeforeDate: "2026-10-31" };
+  const second: PhotoPage = { items: [{ date: "2026-10-30", photos: [] }], nextBeforeDate: "2026-10-30" };
+  let resolve!: (page: PhotoPage) => void;
+  let reject!: (error: Error) => void;
+  const pending = new Promise<PhotoPage>((yes, no) => { resolve = yes; reject = no; });
+  vi.mocked(api.photos)
+    .mockResolvedValueOnce(first)
+    .mockResolvedValueOnce(second)
+    .mockImplementationOnce(() => outcome === "failed" ? Promise.reject(new Error("Old page failed")) : pending)
+    .mockResolvedValueOnce(first)
+    .mockResolvedValueOnce(second);
+  vi.mocked(api.dayPhotos).mockResolvedValue([]);
+  vi.mocked(api.uploadPhotos).mockResolvedValue([]);
+  render(<PhotosPage today="2026-10-31" onChooseDay={vi.fn()} />);
+  await user.click(await screen.findByRole("button", { name: "Load older photos" }));
+  await screen.findByRole("button", { name: "2026-10-30" });
+  await user.click(screen.getByRole("button", { name: "Load older photos" }));
+  if (outcome === "failed") expect(await screen.findByRole("alert")).toHaveTextContent("Old page failed");
+  await user.click(screen.getByRole("button", { name: "Add photos for today" }));
+  await screen.findByRole("dialog", { name: "Daily photos" });
+  await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!, new File(["photo"], "today.png", { type: "image/png" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "2026-10-30" })).not.toBeInTheDocument());
+  await user.click(screen.getByRole("button", { name: "Close Daily photos" }));
+  await act(async () => {
+    if (outcome === "late success") resolve({ items: [{ date: "2026-10-29", photos: [] }], nextBeforeDate: null });
+    if (outcome === "late failure") reject(new Error("Stale page failed"));
+  });
+  expect(screen.queryByRole("button", { name: "2026-10-29" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Load older photos" }));
+  await screen.findByRole("button", { name: "2026-10-30" });
+  expect(api.photos).toHaveBeenLastCalledWith({ beforeDate: "2026-10-31" });
 });
