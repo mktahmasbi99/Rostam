@@ -110,7 +110,7 @@ for (const width of [390, 1280]) {
   }
 }
 
-test("backfilled workout, invalid times, and confirmed removal", async ({ page, request }) => {
+test("backfilled workout, live set logging, and confirmed removal", async ({ page, request }) => {
   await page.goto(origin);
   await page.getByRole("button", { name: "Previous day" }).click();
   await page.getByRole("button", { name: "Add to day" }).click();
@@ -118,12 +118,11 @@ test("backfilled workout, invalid times, and confirmed removal", async ({ page, 
   await page.getByRole("menuitem", { name: /Start workout/ }).click();
   await page.getByLabel("Workout name").fill("Past gym");
   await page.getByRole("button", { name: "Save workout", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Edit workout time" })).toContainText("– In progress");
+  await expect(page.getByLabel("Workout elapsed time")).toHaveText(/\d{2}:\d{2}:\d{2}/);
   await addExercise(page, "Push-ups");
   await page.getByLabel("Time", { exact: true }).fill("11:00");
   await page.getByLabel("Reps", { exact: true }).fill("5");
-  await page.getByRole("checkbox", { name: "Save set" }).click();
-  await expect(page.getByRole("alert")).toContainText("within the workout");
-  await page.getByLabel("Time", { exact: true }).fill("09:30");
   await page.getByRole("checkbox", { name: "Save set" }).click();
   await expect(page.getByLabel("5 reps", { exact: true })).toBeVisible();
   await cancelDraft(page);
