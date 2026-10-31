@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { DailyJournal } from "./DailyJournal";
@@ -22,7 +22,7 @@ describe("DailyJournal", () => {
 
   it("keeps an edited note draft when a late refresh changes the server note", async () => {
     const user = userEvent.setup();
-    const props = { day: "2026-10-25", today: "2026-10-25", note: "Original note", photoCount: 0, onChanged: vi.fn(), openOnMount: true };
+    const props = { day: "2026-10-25", today: "2026-10-25", note: "Original note", photoCount: 0, onChanged: vi.fn(), initialMode: "note" as const };
     const view = render(<DailyJournal {...props} />);
     const textarea = screen.getByRole("textbox", { name: "Note" });
     await user.clear(textarea);
@@ -32,4 +32,22 @@ describe("DailyJournal", () => {
 
     expect(screen.getByRole("textbox", { name: "Note" })).toHaveValue("My unsaved draft");
   });
+});
+
+
+it("keeps the photo dialog open until an upload finishes", async () => {
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+  let finish!: () => void;
+  vi.mocked(api.dayPhotos).mockResolvedValue([]);
+  vi.mocked(api.uploadPhotos).mockImplementation(() => new Promise((resolve) => { finish = () => resolve([]); }));
+  render(<DailyJournal day="2026-10-31" today="2026-10-31" note={null} photoCount={0} onChanged={vi.fn()} initialMode="photos" hideActions onClose={onClose} />);
+  await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!, new File(["photo"], "today.png", { type: "image/png" }));
+  await user.click(screen.getByRole("button", { name: "Close Daily photos" }));
+  expect(screen.getByRole("dialog", { name: "Daily photos" })).toBeInTheDocument();
+  expect(onClose).not.toHaveBeenCalled();
+  await act(async () => { finish(); });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Add photos" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Close Daily photos" }));
+  expect(onClose).toHaveBeenCalledOnce();
 });

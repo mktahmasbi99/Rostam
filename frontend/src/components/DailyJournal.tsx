@@ -5,8 +5,8 @@ import type { DailyPhoto } from "../lib/types";
 import { Modal } from "./Modal";
 import { ReadState } from "./ReadState";
 
-export function DailyJournal({ day, today, note, photoCount, onChanged, openOnMount = false, hideActions = false }: { day: string; today: string; note: string | null; photoCount: number; onChanged: () => void; openOnMount?: boolean; hideActions?: boolean }) {
-  const [mode, setMode] = useState<"note" | "photos" | null>(openOnMount ? "note" : null);
+export function DailyJournal({ day, today, note, photoCount, onChanged, initialMode = null, hideActions = false, onClose }: { day: string; today: string; note: string | null; photoCount: number; onChanged: () => void; initialMode?: "note" | "photos" | null; hideActions?: boolean; onClose?: () => void }) {
+  const [mode, setMode] = useState<"note" | "photos" | null>(initialMode);
   const [draft, setDraft] = useState(note ?? "");
   const [photos, setPhotos] = useState<DailyPhoto[]>([]);
   const [error, setError] = useState("");
@@ -17,7 +17,7 @@ export function DailyJournal({ day, today, note, photoCount, onChanged, openOnMo
   const lastNote = useRef(note ?? "");
   const input = useRef<HTMLInputElement>(null);
   const editable = day <= today;
-  const close = useCallback(() => setMode(null), []);
+  const close = useCallback(() => { if (saving) return; setMode(null); onClose?.(); }, [saving, onClose]);
   useEffect(() => {
     const next = note ?? "";
     if (draft === lastNote.current) setDraft(next);
