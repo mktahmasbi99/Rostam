@@ -184,3 +184,18 @@ describe("ActivityEntryCard", () => {
     expect(onChanged).toHaveBeenCalledOnce();
   });
 });
+
+
+it.each(["cancel", "escape"])("restores the saved activity note after %s", async (action) => {
+  const user = userEvent.setup();
+  render(<ActivityEntryCard entry={entry} timezone="Europe/Warsaw" onChanged={vi.fn()} />);
+  await user.click(screen.getByRole("button", { name: "Edit activity note" }));
+  await user.clear(screen.getByRole("textbox", { name: "Activity note" }));
+  await user.type(screen.getByRole("textbox", { name: "Activity note" }), "Discard this text");
+  if (action === "cancel") await user.click(screen.getByRole("button", { name: "Cancel" }));
+  else await user.keyboard("{Escape}");
+  expect(screen.getByText("Guard retention")).toBeInTheDocument();
+  expect(screen.queryByText("Discard this text")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Edit activity note" }));
+  expect(screen.getByRole("textbox", { name: "Activity note" })).toHaveValue("Guard retention");
+});

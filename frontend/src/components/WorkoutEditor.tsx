@@ -22,6 +22,9 @@ export function WorkoutDetailsForm({ workout, day, today, timezone, onSave, onCl
   const defaultStart = day === today
     ? `${day}T${workoutLocalTime(new Date().toISOString(), timezone).slice(11, 16)}`
     : `${day}T09:00`;
+  const historical = !workout && day < today;
+  const [start, setStart] = useState(defaultStart);
+  const [end, setEnd] = useState(`${day}T10:00`);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const saving = useRef(false);
@@ -32,10 +35,12 @@ export function WorkoutDetailsForm({ workout, day, today, timezone, onSave, onCl
       saving.current = true;
       setBusy(true); setError("");
       const payload: WorkoutPayload = { name: name.trim() || "Workout" };
-      if (!workout) payload.startedAt = defaultStart;
+      if (!workout) payload.startedAt = start;
+      if (historical) payload.endedAt = end;
       void onSave(payload).catch((caught) => setError(caught instanceof Error ? caught.message : "Could not save workout.")).finally(() => { saving.current = false; setBusy(false); });
     }}>
       <label>Workout name<input aria-label="Workout name" maxLength={100} placeholder="Workout" value={name} onChange={(event) => setName(event.target.value)} /></label>
+      {historical && <><p className="muted">Times use {timezone}.</p><label>Started<input aria-label="Workout start time" type="datetime-local" value={start} required onChange={(event) => setStart(event.target.value)} /></label><label>Ended<input aria-label="Workout end time" type="datetime-local" value={end} min={start} required onChange={(event) => setEnd(event.target.value)} /></label></>}
       {error && <p className="error" role="alert">{error}</p>}
       <div className="draft-actions"><button type="button" disabled={busy} onClick={onClose}>Cancel</button><button className="primary" disabled={busy}>{busy ? "Saving…" : "Save workout"}</button></div>
     </form>

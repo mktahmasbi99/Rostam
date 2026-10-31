@@ -2265,7 +2265,9 @@ class RostamDatabase:
             "date": start.date().isoformat(),
             "startedAt": start.isoformat(timespec="seconds"),
             "endedAt": end.isoformat(timespec="seconds") if end else None,
-            "durationSeconds": int((end - start).total_seconds()) if end else None,
+            "durationSeconds": int((end.astimezone(UTC) - start.astimezone(UTC)).total_seconds())
+            if end
+            else None,
             "note": row["note"],
             "createdAt": row["created_at"],
         }
@@ -3579,6 +3581,32 @@ class RostamDatabase:
 
     def _verify_live_database(self) -> None:
         with self.connect() as connection:
+            # Derive required columns from current migrations rather than a second schema list.
+            with tempfile.TemporaryDirectory(prefix="rostam-schema-") as directory:
+                reference = RostamDatabase(
+                    Settings(
+                        Path(directory) / "reference.sqlite3",
+                        self.settings.timezone_name,
+                        self.settings.timezone,
+                    )
+                )
+                with reference.connect() as expected:
+                    for table in expected.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table' "
+                        "AND name NOT LIKE 'sqlite_%'"
+                    ):
+                        name = table["name"]
+                        required = {
+                            row["name"] for row in expected.execute(f'PRAGMA table_info("{name}")')
+                        }
+                        actual = {
+                            row["name"]
+                            for row in connection.execute(f'PRAGMA table_info("{name}")')
+                        }
+                        if not required <= actual:
+                            raise DomainError(
+                                f"Backup schema is missing required columns in {name}."
+                            )
             if connection.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                 raise DomainError("Restored database integrity check failed.")
             if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:

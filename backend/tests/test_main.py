@@ -519,3 +519,45 @@ def test_restore_upload_endpoint_removes_temporary_file(database, monkeypatch):
 
     assert response.status_code == 200
     assert not list(database.path.parent.glob("restore-upload-*.sqlite3"))
+
+
+@pytest.mark.parametrize(
+    "handler,prefix,confirmation",
+    [
+        (main.restore_uploaded_backup, "restore-upload-", "RESTORE"),
+        (main.import_legacy_database, "legacy-import-", "IMPORT"),
+    ],
+)
+@pytest.mark.parametrize("failure", ["interrupted", "oversized"])
+def test_backup_upload_failures_remove_temporary_files(
+    database, monkeypatch, handler, prefix, confirmation, failure
+):
+    monkeypatch.setattr(main, "database", database)
+
+    class FailedUpload:
+        filename = "backup.sqlite3"
+        closed = False
+        reads = 0
+
+        async def read(self, size):
+            self.reads += 1
+            if self.reads == 1:
+                return b"partial upload"
+            if failure == "interrupted":
+                raise OSError("Interrupted upload")
+
+            # Reject the limit-crossing chunk without writing a 100 MiB fixture.
+            class Oversized(bytes):
+                def __len__(self):
+                    return 100 * 1024 * 1024
+
+            return Oversized(b"x")
+
+        async def close(self):
+            self.closed = True
+
+    upload = FailedUpload()
+    with pytest.raises(OSError if failure == "interrupted" else main.DomainError):
+        asyncio.run(handler(confirmation, upload))
+    assert upload.closed
+    assert not list(database.path.parent.glob(f"{prefix}*.sqlite3"))

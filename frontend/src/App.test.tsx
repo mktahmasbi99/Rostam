@@ -1,8 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { api } from "./lib/api";
+import { trackWrite } from "./lib/restartSafety";
 
 vi.mock("./lib/api", () => ({
   api: {
@@ -113,4 +114,38 @@ describe("Rostam shell", () => {
     await user.click(screen.getByTestId("calendar-backdrop"));
     expect(screen.queryByRole("dialog", { name: "Calendar" })).not.toBeInTheDocument();
   });
+});
+
+
+it("keeps an unsaved daily note open when the server day changes", async () => {
+  const user = userEvent.setup();
+  vi.mocked(api.config).mockResolvedValue({ today: "2026-10-30", timezone: "Europe/Warsaw", version: "2.0.0" });
+  vi.mocked(api.day).mockResolvedValue({ date: "2026-10-30", sections: [], dailyNote: null });
+  render(<App />);
+  await user.click(await screen.findByRole("button", { name: "Open daily note" }));
+  await user.type(screen.getByRole("textbox", { name: "Note" }), "Keep my midnight draft");
+  vi.mocked(api.config).mockResolvedValue({ today: "2026-10-31", timezone: "Europe/Warsaw", version: "2.0.0" });
+  await act(async () => { window.dispatchEvent(new Event("focus")); });
+  await waitFor(() => expect(screen.getByRole("heading", { name: "Yesterday" })).toBeInTheDocument());
+  expect(screen.getByRole("textbox", { name: "Note" })).toHaveValue("Keep my midnight draft");
+  expect(api.day).toHaveBeenLastCalledWith("2026-10-30", expect.any(AbortSignal));
+});
+
+
+it("keeps the selected day while a save is pending at midnight", async () => {
+  vi.mocked(api.config).mockResolvedValue({ today: "2026-10-30", timezone: "Europe/Warsaw", version: "2.0.0" });
+  vi.mocked(api.day).mockResolvedValue({ date: "2026-10-30", sections: [] });
+  render(<App />);
+  await screen.findByRole("heading", { name: "Today" });
+  let finish!: () => void;
+  const saving = trackWrite(() => new Promise<void>((resolve) => { finish = resolve; }));
+  try {
+    vi.mocked(api.config).mockResolvedValue({ today: "2026-10-31", timezone: "Europe/Warsaw", version: "2.0.0" });
+    await act(async () => { window.dispatchEvent(new Event("focus")); });
+    await screen.findByRole("heading", { name: "Yesterday" });
+    expect(api.day).toHaveBeenLastCalledWith("2026-10-30", expect.any(AbortSignal));
+  } finally {
+    finish();
+    await saving;
+  }
 });

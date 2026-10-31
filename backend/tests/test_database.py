@@ -1306,3 +1306,35 @@ def test_rotation_recommendations_return_one_occurrence_per_exercise_day(databas
     ]
     with pytest.raises(DomainError, match="at least one day"):
         database.rotation_recommendations(0)
+
+
+@pytest.mark.parametrize(
+    "statement", ["DROP TABLE daily_notes", "ALTER TABLE workouts DROP COLUMN name"]
+)
+def test_restore_rejects_incomplete_schema_and_preserves_live_data(database, statement):
+    day = database.today().isoformat()
+    database.update_daily_note(day, "Saved before backup")
+    source = database.create_backup("on-demand")
+    database.update_daily_note(day, "Keep live data")
+    with sqlite3.connect(database.backup_path(source["id"])) as connection:
+        connection.execute(statement)
+    backups = database.list_backups()
+    with pytest.raises(DomainError, match="schema is missing"):
+        database.restore_backup(source["id"], "RESTORE")
+    assert database.day(day)["dailyNote"] == "Keep live data"
+    assert database.list_backups() == backups
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "seconds"),
+    [
+        ("2026-10-25T02:15:00+02:00", "2026-10-25T02:45:00+01:00", 5400),
+        ("2026-03-29T01:30:00+01:00", "2026-03-29T03:30:00+02:00", 3600),
+    ],
+)
+def test_activity_elapsed_duration_across_clock_changes(database, start, end, seconds):
+    activity = database.create_activity("Clock change walk")
+    entry = database.start_activity_entry(activity["id"], start)
+    result = database.finish_activity_entry(entry["id"], start, end, "")
+    assert result["durationSeconds"] == seconds
+    assert database.day(result["date"])["activities"][0]["durationSeconds"] == seconds
