@@ -1,6 +1,6 @@
 import { ChevronLeft, ChevronRight, ClipboardList, Clock3, Dumbbell, Plus } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { workoutRange } from "../lib/workoutTime";
+import { workoutTimeRange } from "../lib/workoutTime";
 import { api } from "../lib/api";
 import { artwork } from "../artwork";
 import { formatDay, formatExerciseTotal } from "../lib/format";
@@ -209,7 +209,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
 
       {workoutError && <p className="error" role="alert">{workoutError}</p>}
       {data.activeWorkout && !data.workouts?.some((item) => item.id === data.activeWorkout?.id) && <button className="workout-resume-banner" onClick={() => setWorkoutId(data.activeWorkout!.id)}>Resume {data.activeWorkout.name} · workout in progress</button>}
-      {!!data.workouts?.length && <section className="workout-day-list" aria-label="Workouts">{data.workouts.map((workout) => <button className="workout-summary-card" key={workout.id} onClick={() => setWorkoutId(workout.id)}><div><span className="workout-status">{workout.endedAt ? "Workout" : "In progress"}</span><h2>{workout.name}</h2><p>{workoutRange(workout.startedAt, workout.endedAt, timezone)}</p><span>{workout.exerciseCount} exercises · {workout.setCount} sets</span></div><span className="workout-open-label">{workout.endedAt ? "View" : "Resume"}<ChevronRight /></span></button>)}</section>}
+      {!!data.workouts?.length && <section className="workout-day-list" aria-label="Workouts">{data.workouts.map((workout) => <button className="workout-summary-card" key={workout.id} onClick={() => setWorkoutId(workout.id)}><div><span className="workout-status">{workout.endedAt ? "Workout" : "In progress"}</span><h2>{workout.name}</h2><p>{workoutTimeRange(workout.startedAt, workout.endedAt, timezone)}</p><span>{workout.exerciseCount} exercises · {workout.setCount} sets</span></div><span className="workout-open-label">{workout.endedAt ? "View" : "Resume"}<ChevronRight /></span></button>)}</section>}
       {workoutId !== null && <Suspense fallback={<div role="status">Loading workout…</div>}><WorkoutEditor id={workoutId} today={today} timezone={timezone} onClose={() => { setWorkoutId(null); void load(); }} onChanged={() => void load()} /></Suspense>}
       {workoutDetailsOpen && <Suspense fallback={null}><WorkoutDetailsForm day={day} today={today} timezone={timezone} onClose={() => setWorkoutDetailsOpen(false)} onSave={async (payload) => { const workout = await api.createWorkout(payload); setWorkoutDetailsOpen(false); setWorkoutId(workout.id); void load(); }} /></Suspense>}
 
