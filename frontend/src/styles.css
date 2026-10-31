@@ -694,3 +694,7 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
 .workout-set-day { display: block; padding: 8px 18px 0; font-size: .75rem; color: var(--muted); }
 
 .workout-numbered-set:has(.workout-set-day) .workout-set-number { top: 42px; }
+
+.entry-kind-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.entry-kind-title > span { min-width: 0; overflow-wrap: anywhere; }
+.entry-kind-icon { width: 20px; height: 20px; flex-shrink: 0; color: var(--accent-dark); }
