@@ -86,6 +86,7 @@ export interface Rotation {
 }
 
 export interface ExerciseSet {
+  workoutExerciseId?: number | null;
   id: number;
   exerciseId: number;
   date: string;
@@ -121,9 +122,28 @@ export interface ExerciseHistoryPage {
   nextBeforeDate: string | null;
 }
 
+export interface WorkoutSummary {
+  id: number;
+  name: string;
+  startedAt: string;
+  endedAt: string | null;
+  exerciseCount: number;
+  setCount: number;
+}
+export interface WorkoutExercise {
+  id: number;
+  position: number;
+  exercise: Exercise;
+  sets: ExerciseSet[];
+}
+export interface Workout extends WorkoutSummary { exercises: WorkoutExercise[]; }
+export interface WorkoutPayload { name?: string; startedAt?: string; endedAt?: string; }
+
 export interface DayData {
   date: string;
   sections: DaySection[];
+  workouts?: WorkoutSummary[];
+  activeWorkout?: WorkoutSummary | null;
   activities?: ActivityEntry[];
   dailyNote?: string | null;
   photoCount?: number;
@@ -145,6 +165,7 @@ export interface ActivityNotePage { items: ActivityEntry[]; nextBeforeStartedAt:
 export interface ActivityNoteGroup { activityId: number; activityName: string; noteCount: number; latestStartedAt: string; }
 
 export interface SetPayload {
+  occurredAt?: string | null;
   time: string | null;
   repetitions: number | null;
   durationMinutes: number | null;

@@ -1,3 +1,4 @@
+import { workoutLocalTime } from "../lib/workoutTime";
 import { RotateCcw } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useSetDeletion } from "../lib/useSetDeletion";
@@ -8,6 +9,7 @@ import { DurationInput } from "./DurationInput";
 import { SwipeSetRow } from "./SwipeSetRow";
 
 interface Props {
+  workout?: { id: number; entryId: number; startedAt: string; endedAt: string | null; timezone: string };
   exercise: Exercise;
   day: string;
   existing?: ExerciseSet;
@@ -16,10 +18,13 @@ interface Props {
   onDelete?: () => Promise<void> | void;
 }
 
-export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete }: Props) {
+export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, workout }: Props) {
   const form = useRef<HTMLFormElement>(null);
   const writing = useRef(false);
-  const [time, setTime] = useState(existing?.time ?? "");
+  const initialLocal = workout ? workoutLocalTime(existing?.occurredAt ?? (workout.endedAt ? workout.startedAt : new Date().toISOString()), workout.timezone) : "";
+  const [setDate, setSetDate] = useState(initialLocal.slice(0, 10) || day);
+  const [dateEdited, setDateEdited] = useState(false);
+  const [time, setTime] = useState(existing?.time ?? initialLocal.slice(11));
   const [timeEdited, setTimeEdited] = useState(false);
   const [repetitions, setRepetitions] = useState(existing?.repetitions?.toString() ?? "");
   const [duration, setDuration] = useState(durationValue(existing?.durationMinutes, existing?.durationSeconds));
@@ -82,7 +87,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete }
   async function refreshPrefill(atTime: string) {
     if (existing || !atTime) return;
     try {
-      applyPrefill(await api.prefill(exercise.id, day, atTime));
+      applyPrefill(await api.prefill(exercise.id, setDate, atTime));
     } catch (caught) {
       setReadError(caught instanceof Error ? caught.message : "Could not refresh the previous set.");
     }
@@ -93,7 +98,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete }
     let active = true;
     setLoading(true);
     setReadError("");
-    Promise.all([api.config(), api.prefill(exercise.id, day)])
+    Promise.all([api.config(), api.prefill(exercise.id, setDate, workout?.endedAt ? time : undefined)])
       .then(([config, prefill]) => {
         if (!active) return;
         const now = new Intl.DateTimeFormat("en-GB", {
@@ -102,13 +107,13 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete }
           hour12: false,
           timeZone: config.timezone,
         }).format(new Date());
-        if (!timeEditedRef.current) setTime(now);
+        if (!timeEditedRef.current && !workout) setTime(now);
         applyPrefill(prefill);
       })
       .catch((caught) => active && setReadError(caught instanceof Error ? caught.message : "Could not load previous set."))
       .finally(() => { if (active) { setLoading(false); setPrefillLoaded(true); } });
     return () => { active = false; };
-  }, [day, exercise.id, existing, prefillRetry]);
+  }, [day, exercise.id, existing, prefillRetry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function save() {
     if (writing.current) return;
@@ -139,7 +144,13 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete }
       weightKg: bodyweight ? null : weight,
     };
     try {
+      if (workout) {
+        payload.time = null;
+        payload.occurredAt = existing && !timeEdited && !dateEdited ? existing.occurredAt
+          : !existing && !timeEdited && !dateEdited ? (workout.endedAt ? workout.startedAt : null) : `${setDate}T${time}`;
+      }
       if (existing) await api.updateSet(existing.id, payload);
+      else if (workout) await api.addWorkoutSet(workout.id, workout.entryId, payload);
       else await api.addSet(day, exercise.id, { ...payload, enrollInRotation: false });
       onSaved();
     } catch (caught) {
@@ -153,7 +164,8 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete }
   if (loading && !prefillLoaded) return <div className="set-draft skeleton" role="status">Loading previous set…</div>;
 
   return (
-    <SwipeSetRow onDelete={existing && !onDelete ? undefined : remove} disabled={saving || deleting} error={deleteError}><form ref={form} className="set-draft" data-update-dirty="set-entry" data-update-dirty-label="Set entry" onSubmit={(event) => { event.preventDefault(); if (!deleting) void save(); }}>
+    <SwipeSetRow onDelete={existing && !onDelete ? undefined : remove} disabled={saving || deleting} error={deleteError}><form ref={form} className="set-draft" data-update-dirty={`set-entry-${workout?.entryId ?? exercise.id}`} data-update-dirty-label="Set entry" onSubmit={(event) => { event.preventDefault(); if (!deleting) void save(); }}>
+      {workout && <label className="workout-set-date">Set date<input aria-label="Set date" type="date" value={setDate} required onChange={(event) => { setSetDate(event.target.value); setDateEdited(true); }} onBlur={() => void refreshPrefill(time)} /></label>}
       <div className="set-form-grid set-cells">
         <input aria-label="Time" type="time" value={time} onClick={(event) => { try { event.currentTarget.showPicker?.(); } catch { /* Safari may open its native picker directly on focus. */ } }} onChange={(event) => { setTime(event.target.value); setTimeEdited(true); timeEditedRef.current = true; }} onBlur={() => void refreshPrefill(time)} required />
         {exercise.equipment && <input aria-label="kg" aria-describedby={exercise.allowBodyweight ? hintId : undefined} className={`set-weight-input${suggested.weight ? " suggested-value" : ""}`} inputMode="decimal" value={weight} onFocus={(event) => suggested.weight && event.currentTarget.select()} onClick={(event) => suggested.weight && event.currentTarget.select()} onChange={(event) => editWeight(event.target.value)} required />}
@@ -162,7 +174,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete }
         {exercise.measurementType === "timed_repetitions" && <DurationInput label="Hold per repetition" value={hold} suggested={suggested.hold} onChange={(value) => editMeasurement("hold", value, setHold)} invalid={invalidDuration} />}
         <label className="set-completion"><input type="checkbox" className="set-checkbox" aria-label="Save set" checked={false} disabled={saving || deleting} onChange={() => form.current?.requestSubmit()} /></label>
       </div>
-      {existing && <div className="set-edit-actions"><button type="button" className="secondary" disabled={saving || deleting} onClick={onCancel}>Cancel</button></div>}
+      {(existing || workout) && <div className="set-edit-actions"><button type="button" className="secondary" disabled={saving || deleting} onClick={onCancel}>Cancel</button></div>}
       {exercise.equipment && exercise.allowBodyweight && <small className="set-weight-hint" id={hintId}>0 = BW</small>}
       {readError && <div className="save-error" role="alert"><span>{readError}</span><button type="button" onClick={() => setPrefillRetry((value) => value + 1)}><RotateCcw />Retry previous set</button></div>}
       {error && <div className="save-error" role="alert"><span>{error} Your values remain unsaved on this page.</span><button type="button" disabled={saving || deleting} onClick={() => void save()}><RotateCcw />Retry</button></div>}

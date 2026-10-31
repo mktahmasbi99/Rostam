@@ -1,4 +1,4 @@
-import type { Activity, ActivityEntry, ActivityNoteGroup, ActivityNotePage, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPage, BodyMeasurementPayload, Config, DailyNotePage, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, MeasurementTrends, PhotoPage, Profile, ProfilePayload, RestoreResult, Rotation, RotationRecommendation, SetPayload } from "./types";
+import type { Workout, WorkoutSummary, WorkoutPayload, ExerciseSet, Activity, ActivityEntry, ActivityNoteGroup, ActivityNotePage, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPage, BodyMeasurementPayload, Config, DailyNotePage, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, MeasurementTrends, PhotoPage, Profile, ProfilePayload, RestoreResult, Rotation, RotationRecommendation, SetPayload } from "./types";
 import { trackWrite } from "./restartSafety";
 import { reportServerReachability, reportUncertainWrite, requireReachableServer, ServerConnectionError } from "./connectivity";
 
@@ -42,6 +42,17 @@ const json = (method: string, body?: unknown): RequestInit => ({
 });
 
 export const api = {
+  workouts: (beforeId?: number) => request<{ items: WorkoutSummary[]; nextBeforeId: number | null }>(`/api/workouts${beforeId ? `?beforeId=${beforeId}` : ""}`),
+  activeWorkout: () => request<Workout | null>("/api/workouts/active"),
+  workout: (id: number) => request<Workout>(`/api/workouts/${id}`),
+  createWorkout: (payload: WorkoutPayload) => request<Workout>("/api/workouts", json("POST", payload)),
+  updateWorkout: (id: number, payload: WorkoutPayload) => request<Workout>(`/api/workouts/${id}`, json("PATCH", payload)),
+  finishWorkout: (id: number, payload: WorkoutPayload = {}) => request<Workout>(`/api/workouts/${id}/finish`, json("POST", payload)),
+  deleteWorkout: (id: number, confirmed = false) => request<void>(`/api/workouts/${id}`, json("DELETE", { confirmation: confirmed ? "DELETE" : null })),
+  addWorkoutExercise: (id: number, exerciseId: number) => request<Workout>(`/api/workouts/${id}/exercises`, json("POST", { exerciseId })),
+  orderWorkoutExercises: (id: number, exerciseEntryIds: number[]) => request<Workout>(`/api/workouts/${id}/order`, json("PUT", { exerciseEntryIds })),
+  removeWorkoutExercise: (id: number, entryId: number, confirmed = false) => request<void>(`/api/workouts/${id}/exercises/${entryId}`, json("DELETE", { confirmation: confirmed ? "DELETE" : null })),
+  addWorkoutSet: (id: number, entryId: number, payload: SetPayload) => request<ExerciseSet>(`/api/workouts/${id}/exercises/${entryId}/sets`, json("POST", payload)),
   rotations: (status: "active" | "archived" | "all" = "active") => request<Rotation[]>(`/api/rotations?status=${status}`),
   createRotation: (name: string) => request<Rotation>("/api/rotations", json("POST", { name })),
   renameRotation: (id: number, name: string) => request<Rotation>(`/api/rotations/${id}`, json("PATCH", { name })),

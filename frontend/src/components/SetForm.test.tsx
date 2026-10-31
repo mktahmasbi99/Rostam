@@ -356,3 +356,20 @@ it("does not save an invalid row when its checkbox is clicked", async () => {
   expect(input).toBeInvalid();
   expect(api.addSet).toHaveBeenCalledTimes(calls);
 });
+
+it("saves a backfilled workout set through its membership endpoint and keeps values on failure", async () => {
+  const user = userEvent.setup();
+  // Add the workout-only method to this test's isolated API mock.
+  const addWorkoutSet = vi.fn().mockRejectedValue(new Error("Set time must be within the workout"));
+  Object.assign(api, { addWorkoutSet });
+  vi.mocked(api.config).mockResolvedValue({ today: "2026-10-31", timezone: "Europe/Warsaw", version: "2.0.0" });
+  vi.mocked(api.prefill).mockResolvedValue({ source: "previous", repetitions: 12, time: null, durationMinutes: null, durationSeconds: null, holdMinutes: null, holdSeconds: null, resistanceKind: "external", weightKg: "40" });
+  render(<SetForm exercise={exercise} day="2026-10-30" workout={{ id: 7, entryId: 11, startedAt: "2026-10-30T08:00:00Z", endedAt: "2026-10-30T09:00:00Z", timezone: "Europe/Warsaw" }} onSaved={vi.fn()} onCancel={vi.fn()} />);
+  await screen.findByDisplayValue("12");
+  expect(addWorkoutSet).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("Set date")).toHaveValue("2026-10-30");
+  await user.click(screen.getByRole("checkbox", { name: "Save set" }));
+  await waitFor(() => expect(addWorkoutSet).toHaveBeenCalledWith(7, 11, expect.objectContaining({ occurredAt: "2026-10-30T08:00:00Z", repetitions: 12 })));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Set time must be within");
+  expect(screen.getByLabelText("Reps")).toHaveValue(12);
+});

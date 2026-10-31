@@ -22,7 +22,11 @@ test("day add menu opens its existing pickers and stays visible on a narrow scre
       expect(menuBox.x).toBeGreaterThanOrEqual(0);
       expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(width);
       const items = menu.getByRole("menuitem");
-      await expect(items).toHaveCount(2);
+      await expect(items).toHaveCount(3);
+      const iconBoxes = await items.locator(".day-add-menu-icon > svg").evaluateAll((icons) =>
+        icons.map((icon) => icon.getBoundingClientRect().x),
+      );
+      expect(Math.max(...iconBoxes) - Math.min(...iconBoxes)).toBeLessThanOrEqual(1);
       for (const item of await items.all()) {
         const itemBackground = await item.evaluate((element) => getComputedStyle(element).backgroundColor);
         expect(itemBackground).not.toBe("rgba(0, 0, 0, 0)");
@@ -39,6 +43,8 @@ test("day add menu opens its existing pickers and stays visible on a narrow scre
   await trigger.click();
   const menu = page.getByRole("menu", { name: "Add to day" });
   await page.keyboard.press("Home");
+  await expect(page.getByRole("menuitem", { name: /Start workout/ })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
   await expect(page.getByRole("menuitem", { name: /Add activity/ })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog")).toBeVisible();

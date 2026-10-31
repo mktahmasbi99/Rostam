@@ -43,6 +43,22 @@ function deferred<T>() {
 }
 
 describe("DayPage exercise notes", () => {
+  it("shows only clock times on workout summary cards", async () => {
+    vi.mocked(api.day).mockResolvedValue({
+      date: "2026-10-31",
+      sections: [],
+      workouts: [
+        { id: 4, name: "Workout", startedAt: "2026-10-31T15:25:00Z", endedAt: "2026-10-31T16:10:00Z", exerciseCount: 2, setCount: 8 },
+        { id: 5, name: "In progress workout", startedAt: "2026-10-31T15:31:00Z", endedAt: null, exerciseCount: 0, setCount: 0 },
+      ],
+    });
+    render(<DayPage day="2026-10-31" today="2026-10-31" timezone="Europe/Warsaw" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
+
+    expect(await screen.findByText(/04:25 PM – 05:10 PM/)).toBeInTheDocument();
+    expect(screen.getByText(/04:31 PM – In progress/)).toBeInTheDocument();
+    expect(screen.queryByText(/Oct 31/)).not.toBeInTheDocument();
+  });
+
   it("renders separate session cards with their own delete menus and running controls", async () => {
     const user = userEvent.setup();
     vi.mocked(api.day).mockResolvedValue({
@@ -122,12 +138,15 @@ describe("DayPage exercise notes", () => {
     await user.click(trigger);
     const exerciseItem = screen.getByRole("menuitem", { name: /Add exercise/ });
     const activityItem = screen.getByRole("menuitem", { name: /Add activity/ });
+    const workoutItem = screen.getByRole("menuitem", { name: /Start workout/ });
     expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(workoutItem).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
     expect(activityItem).toHaveFocus();
     await user.keyboard("{ArrowDown}");
     expect(exerciseItem).toHaveFocus();
     await user.keyboard("{Home}");
-    expect(activityItem).toHaveFocus();
+    expect(workoutItem).toHaveFocus();
     await user.keyboard("{End}");
     expect(exerciseItem).toHaveFocus();
     await user.keyboard("{Escape}");
