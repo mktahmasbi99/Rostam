@@ -14,15 +14,14 @@ import { SetForm } from "./SetForm";
 import { SetRow } from "./SetRow";
 import { SetTable } from "./SetTable";
 
-export function WorkoutDetailsForm({ workout, day, timezone, onSave, onClose }: {
-  workout?: Workout; day: string; timezone: string;
+export function WorkoutDetailsForm({ workout, day, today, timezone, onSave, onClose }: {
+  workout?: Workout; day: string; today: string; timezone: string;
   onSave: (payload: WorkoutPayload) => Promise<void>; onClose: () => void;
 }) {
   const [name, setName] = useState(workout?.name ?? "");
-  const initialStart = workout ? workoutLocalTime(workout.startedAt, timezone) : `${day}T09:00`;
-  const initialEnd = workout?.endedAt ? workoutLocalTime(workout.endedAt, timezone) : `${day}T10:00`;
-  const [start, setStart] = useState(initialStart);
-  const [end, setEnd] = useState(initialEnd);
+  const defaultStart = day === today
+    ? `${day}T${workoutLocalTime(new Date().toISOString(), timezone).slice(11, 16)}`
+    : `${day}T09:00`;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const saving = useRef(false);
@@ -33,16 +32,42 @@ export function WorkoutDetailsForm({ workout, day, timezone, onSave, onClose }: 
       saving.current = true;
       setBusy(true); setError("");
       const payload: WorkoutPayload = { name: name.trim() || "Workout" };
-      if (!workout || start !== initialStart) payload.startedAt = start;
-      if ((!workout || workout.endedAt) && (!workout || end !== initialEnd)) payload.endedAt = end;
+      if (!workout) payload.startedAt = defaultStart;
       void onSave(payload).catch((caught) => setError(caught instanceof Error ? caught.message : "Could not save workout.")).finally(() => { saving.current = false; setBusy(false); });
     }}>
-      <p className="muted">Times use {timezone}.</p>
       <label>Workout name<input aria-label="Workout name" maxLength={100} placeholder="Workout" value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label>Started<input aria-label="Workout start" type="datetime-local" value={start} required onChange={(event) => setStart(event.target.value)} /></label>
-      {(!workout || workout.endedAt) && <label>Ended<input aria-label="Workout end" type="datetime-local" value={end} required onChange={(event) => setEnd(event.target.value)} /></label>}
       {error && <p className="error" role="alert">{error}</p>}
       <div className="draft-actions"><button type="button" disabled={busy} onClick={onClose}>Cancel</button><button className="primary" disabled={busy}>{busy ? "Saving…" : "Save workout"}</button></div>
+    </form>
+  </Modal>;
+}
+
+function WorkoutTimeForm({ workout, timezone, onSave, onClose }: {
+  workout: Workout; timezone: string;
+  onSave: (payload: WorkoutPayload) => Promise<void>; onClose: () => void;
+}) {
+  const [start, setStart] = useState(workoutLocalTime(workout.startedAt, timezone).slice(11, 16));
+  const [end, setEnd] = useState(workout.endedAt ? workoutLocalTime(workout.endedAt, timezone).slice(11, 16) : "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const saving = useRef(false);
+  const startDate = workoutLocalTime(workout.startedAt, timezone).slice(0, 10);
+  const endDate = workout.endedAt ? workoutLocalTime(workout.endedAt, timezone).slice(0, 10) : "";
+  return <Modal title="Edit workout time" onClose={() => { if (!busy) onClose(); }}>
+    <form className="workout-details" onSubmit={(event) => {
+      event.preventDefault();
+      if (saving.current) return;
+      saving.current = true;
+      setBusy(true); setError("");
+      const payload: WorkoutPayload = { startedAt: `${startDate}T${start}` };
+      if (workout.endedAt) payload.endedAt = `${endDate}T${end}`;
+      void onSave(payload).catch((caught) => setError(caught instanceof Error ? caught.message : "Could not save workout time.")).finally(() => { saving.current = false; setBusy(false); });
+    }}>
+      <p className="muted">Times use {timezone}. Dates follow the workout and its active day.</p>
+      <label>Started<input aria-label="Workout start time" type="time" value={start} required onChange={(event) => setStart(event.target.value)} /></label>
+      {workout.endedAt && <label>Ended<input aria-label="Workout end time" type="time" value={end} required onChange={(event) => setEnd(event.target.value)} /></label>}
+      {error && <p className="error" role="alert">{error}</p>}
+      <div className="draft-actions"><button type="button" disabled={busy} onClick={onClose}>Cancel</button><button className="primary" disabled={busy}>{busy ? "Saving…" : "Save time"}</button></div>
     </form>
   </Modal>;
 }
@@ -57,6 +82,7 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged }: {
   const writing = useRef(false);
   const [picker, setPicker] = useState(false);
   const [details, setDetails] = useState(false);
+  const [editingTime, setEditingTime] = useState(false);
   const [draft, setDraft] = useState<{ entryId: number; existing?: ExerciseSet } | null>(null);
   const [draftKey, setDraftKey] = useState(0);
   const [confirmation, setConfirmation] = useState<{ title: string; message: string; action: () => void | Promise<void> } | null>(null);
@@ -111,7 +137,7 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged }: {
     <div className="workout-editor">
       <ReadState loading={loading} error={error} hasData={Boolean(workout)} onRetry={() => void load()} loadingText="Loading workout…" />
       {workout && <>
-        <header className="workout-overview"><div><span className="workout-status">{workout.endedAt ? "Recorded workout" : "Workout in progress"}</span><p>{workoutRange(workout.startedAt, workout.endedAt, timezone)}</p><strong>{workout.exerciseCount} exercises · {workout.setCount} sets</strong></div><button className="icon-button" aria-label="Edit workout details" disabled={busy} onClick={() => guardDraft(() => { setDraft(null); setDetails(true); })}><Pencil /></button></header>
+        <header className="workout-overview"><div><span className="workout-status">{workout.endedAt ? "Recorded workout" : "Workout in progress"}</span><button type="button" className="workout-time-trigger" aria-label="Edit workout time" disabled={busy} onClick={() => guardDraft(() => { setDraft(null); setEditingTime(true); })}>{workoutRange(workout.startedAt, workout.endedAt, timezone)}</button><strong>{workout.exerciseCount} exercises · {workout.setCount} sets</strong></div><button className="icon-button" aria-label="Edit workout details" disabled={busy} onClick={() => guardDraft(() => { setDraft(null); setDetails(true); })}><Pencil /></button></header>
         <div className="workout-exercises">{workout.exercises.map((entry, index) => <section className="exercise-card workout-exercise" id={`workout-exercise-${entry.id}`} key={entry.id}>
           <header className="exercise-card-header"><ExerciseImage imageKey={entry.exercise.imageKey} name={entry.exercise.name} size="large" /><div className="exercise-card-main"><h3>{index + 1}. {entry.exercise.name}</h3><ExerciseHistory exercise={entry.exercise} day={workoutLocalTime(workout.startedAt, timezone).slice(0, 10)} /></div></header>
           <div className="workout-exercise-tools"><span>{entry.sets.length} {entry.sets.length === 1 ? "set" : "sets"}</span><button className="icon-button" aria-label={`Move ${entry.exercise.name} earlier`} disabled={busy || index === 0} onClick={() => void move(index, -1)}><ArrowUp /></button><button className="icon-button" aria-label={`Move ${entry.exercise.name} later`} disabled={busy || index === workout.exercises.length - 1} onClick={() => void move(index, 1)}><ArrowDown /></button><button className="icon-button" aria-label={`Remove ${entry.exercise.name}`} disabled={busy} onClick={() => {
@@ -132,7 +158,8 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged }: {
       </>}
     </div>
     {picker && <ExercisePicker day={today} today={today} presentIds={[]} onClose={() => setPicker(false)} onChoose={(exercise) => void chooseExercise(exercise)} />}
-    {details && workout && <WorkoutDetailsForm workout={workout} day={today} timezone={timezone} onClose={() => setDetails(false)} onSave={async (payload) => { setWorkout(await api.updateWorkout(id, payload)); setDetails(false); onChanged(); }} />}
+    {details && workout && <WorkoutDetailsForm workout={workout} day={today} today={today} timezone={timezone} onClose={() => setDetails(false)} onSave={async (payload) => { setWorkout(await api.updateWorkout(id, payload)); setDetails(false); onChanged(); }} />}
+    {editingTime && workout && <WorkoutTimeForm workout={workout} timezone={timezone} onClose={() => setEditingTime(false)} onSave={async (payload) => { setWorkout(await api.updateWorkout(id, payload)); setEditingTime(false); onChanged(); }} />}
     {confirmation && <Modal title={confirmation.title} onClose={() => setConfirmation(null)}><p>{confirmation.message}</p><div className="draft-actions"><button onClick={() => setConfirmation(null)}>Cancel</button><button className="primary" onClick={() => { const action = confirmation.action; setConfirmation(null); void action(); }}>Confirm</button></div></Modal>}
   </Modal>;
 }
