@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, Clock3, Dumbbell, Plus } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { workoutRange } from "../lib/workoutTime";
 import { api } from "../lib/api";
 import { artwork } from "../artwork";
 import { formatDay, formatExerciseTotal } from "../lib/format";
@@ -10,6 +11,8 @@ import { SetRow } from "./SetRow";
 import { ActivityEntryCard } from "./ActivityEntry";
 import { ReadState } from "./ReadState";
 
+const WorkoutEditor = lazy(() => import("./WorkoutEditor").then((module) => ({ default: module.WorkoutEditor })));
+const WorkoutDetailsForm = lazy(() => import("./WorkoutEditor").then((module) => ({ default: module.WorkoutDetailsForm })));
 const ExerciseNote = lazy(() => import("./ExerciseNote").then((module) => ({ default: module.ExerciseNote })));
 const DailyJournal = lazy(() => import("./DailyJournal").then((module) => ({ default: module.DailyJournal })));
 const ExercisePicker = lazy(() => import("./ExercisePicker").then((module) => ({ default: module.ExercisePicker })));
@@ -33,6 +36,11 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
+  const [workoutId, setWorkoutId] = useState<number | null>(null);
+  const [pastWorkoutOpen, setPastWorkoutOpen] = useState(false);
+  const [startingWorkout, setStartingWorkout] = useState(false);
+  const [workoutError, setWorkoutError] = useState("");
+  const startingWorkoutRef = useRef(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activityPickerOpen, setActivityPickerOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -171,6 +179,14 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
     await load();
   }
 
+  async function startWorkout() {
+    if (startingWorkoutRef.current) return;
+    startingWorkoutRef.current = true; setStartingWorkout(true); setWorkoutError(""); setAddMenuOpen(false);
+    try { const workout = await api.createWorkout({}); setWorkoutId(workout.id); void load(); }
+    catch (caught) { setWorkoutError(caught instanceof Error ? caught.message : "Could not start workout."); }
+    finally { startingWorkoutRef.current = false; setStartingWorkout(false); }
+  }
+
   const presentIds = data.sections.map((section) => section.exercise.id);
 
   return (
@@ -184,7 +200,13 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       {loaded && <div className="day-journal-actions"><Suspense fallback={<span className="deferred-loading" role="status">Loading journal…</span>}><DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} /></Suspense></div>}
 
       <ReadState loading={loading} error={error} hasData={loaded} onRetry={() => void load()} loadingText="Loading sets…" />
-      {loaded && !loading && !error && data.sections.length === 0 && !(data.activities?.length) && !pendingExercise && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise or start a timed activity.</p></div>}
+      {loaded && !loading && !error && data.sections.length === 0 && !(data.activities?.length) && !(data.workouts?.length) && !pendingExercise && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise, activity, or workout.</p></div>}
+
+      {workoutError && <p className="error" role="alert">{workoutError}</p>}
+      {data.activeWorkout && !data.workouts?.some((item) => item.id === data.activeWorkout?.id) && <button className="workout-resume-banner" onClick={() => setWorkoutId(data.activeWorkout!.id)}>Resume {data.activeWorkout.name} · workout in progress</button>}
+      {!!data.workouts?.length && <section className="workout-day-list" aria-label="Workouts">{data.workouts.map((workout) => <button className="workout-summary-card" key={workout.id} onClick={() => setWorkoutId(workout.id)}><div><span className="workout-status">{workout.endedAt ? "Workout" : "In progress"}</span><h2>{workout.name}</h2><p>{workoutRange(workout.startedAt, workout.endedAt, timezone)}</p><span>{workout.exerciseCount} exercises · {workout.setCount} sets</span></div><span className="workout-open-label">{workout.endedAt ? "View" : "Resume"}<ChevronRight /></span></button>)}</section>}
+      {workoutId !== null && <Suspense fallback={<div role="status">Loading workout…</div>}><WorkoutEditor id={workoutId} today={today} timezone={timezone} onClose={() => { setWorkoutId(null); void load(); }} onChanged={() => void load()} /></Suspense>}
+      {pastWorkoutOpen && <Suspense fallback={null}><WorkoutDetailsForm day={day} timezone={timezone} onClose={() => setPastWorkoutOpen(false)} onSave={async (payload) => { const workout = await api.createWorkout(payload); setPastWorkoutOpen(false); setWorkoutId(workout.id); void load(); }} /></Suspense>}
 
       {!!data.activities?.length && <section className="activity-card"><h2>Timed activities</h2><div className="activity-entry-list">{data.activities.map((entry) => <ActivityEntryCard key={entry.id} entry={entry} activities={data.activities ?? []} timezone={timezone} onChanged={() => void load()} />)}</div></section>}
 
@@ -206,6 +228,8 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       {activityPickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading activity picker…</div>}><ActivityPicker day={day} timezone={timezone} onClose={() => { setActivityPickerOpen(false); addTriggerRef.current?.focus(); }} onStarted={() => { setActivityPickerOpen(false); addTriggerRef.current?.focus(); void load(); }} /></Suspense>}
       <div className="day-add-actions floating-create-action" ref={addMenuRef} onKeyDown={handleAddMenuKeyDown}>
         {addMenuOpen && <div id="day-add-menu" className="day-add-menu" role="menu" aria-label="Add to day">
+          {day === today && <button className="day-add-menu-item" role="menuitem" disabled={startingWorkout} onClick={() => void startWorkout()}><Dumbbell /><span><strong>Start workout</strong><small>Exercises and sets in one session</small></span></button>}
+          <button className="day-add-menu-item" role="menuitem" onClick={() => { setAddMenuOpen(false); setPastWorkoutOpen(true); }}><Clock3 /><span><strong>Record past workout</strong><small>Reconstruct a completed session</small></span></button>
           <button className="day-add-menu-item" role="menuitem" onClick={openActivityPicker}><Clock3 /><span><strong>Add activity</strong><small>BJJ, walking, and other activities</small></span></button>
           <button className="day-add-menu-item" role="menuitem" onClick={openExercisePicker}><Dumbbell /><span><strong>Add exercise</strong><small>Sets throughout the day</small></span></button>
         </div>}

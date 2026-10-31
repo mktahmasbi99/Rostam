@@ -44,6 +44,10 @@ from .schemas import (
     RotationMembers,
     RotationName,
     SetWrite,
+    WorkoutDelete,
+    WorkoutExerciseAdd,
+    WorkoutOrder,
+    WorkoutWrite,
 )
 
 settings = load_settings()
@@ -73,7 +77,7 @@ async def lifespan(_: FastAPI):
             await task
 
 
-app = FastAPI(title="Rostam API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Rostam API", version="2.0.0", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 
 
@@ -132,7 +136,7 @@ def config() -> dict[str, str]:
     return {
         "today": database.today().isoformat(),
         "timezone": settings.timezone_name,
-        "version": "1.0.0",
+        "version": "2.0.0",
     }
 
 
@@ -257,6 +261,63 @@ def delete_activity_entry(entry_id: int) -> None:
 @app.get("/api/calendar/{month}")
 def get_calendar(month: str) -> dict:
     return database.calendar(month)
+
+
+@app.get("/api/workouts")
+def list_workouts(
+    before_id: Annotated[int | None, Query(alias="beforeId")] = None, limit: int = 20
+) -> dict:
+    return database.list_workouts(before_id, limit)
+
+
+@app.get("/api/workouts/active")
+def active_workout() -> dict | None:
+    return database.active_workout()
+
+
+@app.post("/api/workouts", status_code=201)
+def create_workout(payload: WorkoutWrite) -> dict:
+    return database.create_workout(payload)
+
+
+@app.get("/api/workouts/{workout_id}")
+def get_workout(workout_id: int) -> dict:
+    return database.workout(workout_id)
+
+
+@app.patch("/api/workouts/{workout_id}")
+def update_workout(workout_id: int, payload: WorkoutWrite) -> dict:
+    return database.update_workout(workout_id, payload)
+
+
+@app.post("/api/workouts/{workout_id}/finish")
+def finish_workout(workout_id: int, payload: WorkoutWrite) -> dict:
+    return database.update_workout(workout_id, payload, finish=True)
+
+
+@app.delete("/api/workouts/{workout_id}", status_code=204)
+def delete_workout(workout_id: int, payload: WorkoutDelete) -> None:
+    database.delete_workout(workout_id, payload.confirmation)
+
+
+@app.post("/api/workouts/{workout_id}/exercises")
+def add_workout_exercise(workout_id: int, payload: WorkoutExerciseAdd) -> dict:
+    return database.add_workout_exercise(workout_id, payload.exerciseId)
+
+
+@app.put("/api/workouts/{workout_id}/order")
+def order_workout_exercises(workout_id: int, payload: WorkoutOrder) -> dict:
+    return database.reorder_workout_exercises(workout_id, payload.exerciseEntryIds)
+
+
+@app.delete("/api/workouts/{workout_id}/exercises/{entry_id}", status_code=204)
+def remove_workout_exercise(workout_id: int, entry_id: int, payload: WorkoutDelete) -> None:
+    database.remove_workout_exercise(workout_id, entry_id, payload.confirmation)
+
+
+@app.post("/api/workouts/{workout_id}/exercises/{entry_id}/sets", status_code=201)
+def add_workout_set(workout_id: int, entry_id: int, payload: SetWrite) -> dict:
+    return database.add_workout_set(workout_id, entry_id, payload)
 
 
 @app.get("/api/exercises/{exercise_id}/history")

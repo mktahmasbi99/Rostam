@@ -1,14 +1,16 @@
 # Rostam
 
-Rostam is a private, observational daily exercise ledger. Record a set when it happens—or reconstruct the day later—without starting a workout session, chasing a goal, or carrying unfinished work into tomorrow.
+Rostam is a private, observational exercise ledger. Record individual sets throughout the day, track timed activities, or group exercises into a gym workout. Log as you go or reconstruct the day later.
 
 ## Why Rostam?
 
 Rostam is named after the legendary hero of Ferdowsi’s *Shahnameh* (*Book of Kings*).
 
-## What V1 does
+## What Rostam 2.0 does
 
-- Logs repetition- and duration-based sets against a server-authoritative day and time.
+- Logs repetition-, duration-, and timed-repetition sets against a server-authoritative day and time.
+- Groups exercises and sets into live or backfilled workouts, with ordering, server-saved resumption, editable history, and start/end times. Workout sets share exercise history but do not advance daily rotations.
+- Supports timed activities and daily exercise rotations.
 - Treats bodyweight as an explicit resistance state when the exercise permits it. Entering `0` in the kg field is a shortcut that saves as Bodyweight, never as `0 kg`.
 - Locks equipment and bodyweight eligibility when an exercise is created, then derives titles such as `Squats (Resistance Bands)` and uses that equipment automatically while logging.
 - Supports resistance bands, dumbbells, barbells, kettlebells, cables, weight machines, weighted vests, plates, ankle weights, sandbags, and custom equipment.
@@ -16,11 +18,11 @@ Rostam is named after the legendary hero of Ferdowsi’s *Shahnameh* (*Book of K
 - Keeps one current plaintext reference note per exercise for technique cues, video links, and progression reminders, shown directly on daily exercise cards.
 - Keeps private day-level notes and compressed JPEG photos (up to 10 per date) inside SQLite, so downloads and restores include them without affecting exercise calculations. Camera originals may be up to 50 MiB; processed stored photos are capped at 5 MiB each.
 - Keeps measurement type, equipment, and bodyweight eligibility immutable; supports archive/restore for used exercises; and requires typing `DELETE` before permanently removing an unused exercise.
-- Shows a neutral calendar dot for any day containing at least one set.
+- Shows a green calendar dot for any day containing a saved set or logged activity. Workout sets count immediately; empty workouts do not.
 - Creates WAL-safe SQLite snapshots in `/data/backups`: daily (7 retained), weekly (8 retained), safety snapshots (8 shared across restore/import/delete), and on-demand backups that persist until manually deleted.
 - Installs as a connected-only PWA from the Settings page, with browser-specific guidance when a native install prompt is unavailable.
 
-There are deliberately no goals, reminders, streaks, date- or set-associated notes, perceived-effort fields, workout timers, or offline write queue in V1.
+Reusable workout routines and rest timers are deferred; supersets are excluded. There are no goals, reminders, streaks, perceived-effort fields, or offline write queue. See [the 2.0.0 release notes](docs/RELEASE_2.0.0.md) for workout behavior and compatibility.
 
 ## Run locally
 

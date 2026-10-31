@@ -75,7 +75,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "rostam"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 MUSCLE_GROUPS = (
     ("abs", "Abs"),
     ("back", "Back"),
@@ -804,6 +804,35 @@ class RostamDatabase:
                 if "archived_at" not in rotation_columns:
                     connection.execute("ALTER TABLE rotations ADD COLUMN archived_at TEXT")
                 connection.execute("INSERT INTO schema_migrations(version) VALUES (16)")
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 17").fetchone()
+                is None
+            ):
+                connection.executescript("""
+                    BEGIN IMMEDIATE;
+                    CREATE TABLE workouts (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        started_at TEXT NOT NULL,
+                        ended_at TEXT,
+                        CHECK (ended_at IS NULL OR ended_at >= started_at)
+                    );
+                    CREATE UNIQUE INDEX idx_one_active_workout ON workouts((1))
+                        WHERE ended_at IS NULL;
+                    CREATE TABLE workout_exercises (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        workout_id INTEGER NOT NULL REFERENCES workouts(id) ON DELETE CASCADE,
+                        exercise_id INTEGER NOT NULL REFERENCES exercises(id),
+                        position INTEGER NOT NULL,
+                        UNIQUE (workout_id, exercise_id)
+                    );
+                    ALTER TABLE exercise_sets ADD COLUMN workout_exercise_id INTEGER
+                        REFERENCES workout_exercises(id) ON DELETE CASCADE;
+                    CREATE INDEX idx_sets_workout ON exercise_sets(workout_exercise_id, occurred_at);
+                    CREATE INDEX idx_workouts_started ON workouts(started_at);
+                    INSERT INTO schema_migrations(version) VALUES (17);
+                    COMMIT;
+                """)
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -813,6 +842,265 @@ class RostamDatabase:
                 (BACKUP_APP_ID, BACKUP_FORMAT_VERSION, self._utc_now()),
             )
             connection.commit()
+
+    def _workout_timestamp(self, value: str) -> str:
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise DomainError("Workout time must be an ISO date and time.") from exc
+        if parsed.tzinfo is None:
+            parsed = self._resolve_local_occurrence(parsed.date(), parsed.time())
+        if parsed > self.now_local():
+            raise DomainError("Workout times cannot be in the future.")
+        return parsed.astimezone(UTC).isoformat(timespec="microseconds")
+
+    def _workout_row(self, connection: sqlite3.Connection, workout_id: int) -> sqlite3.Row:
+        row = connection.execute("SELECT * FROM workouts WHERE id = ?", (workout_id,)).fetchone()
+        if row is None:
+            raise DomainError("Workout not found.")
+        return row
+
+    def _workout_summary(self, connection: sqlite3.Connection, row: sqlite3.Row) -> dict:
+        counts = connection.execute(
+            "SELECT COUNT(DISTINCT x.id), COUNT(s.id) FROM workout_exercises x "
+            "LEFT JOIN exercise_sets s ON s.workout_exercise_id = x.id WHERE x.workout_id = ?",
+            (row["id"],),
+        ).fetchone()
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "startedAt": row["started_at"],
+            "endedAt": row["ended_at"],
+            "exerciseCount": counts[0],
+            "setCount": counts[1],
+        }
+
+    def workout(self, workout_id: int) -> dict:
+        with self.connect() as connection:
+            return self._workout_detail(connection, workout_id)
+
+    def _workout_detail(self, connection: sqlite3.Connection, workout_id: int) -> dict:
+        result = self._workout_summary(connection, self._workout_row(connection, workout_id))
+        result["exercises"] = []
+        for row in connection.execute(
+            "SELECT * FROM workout_exercises WHERE workout_id = ? ORDER BY position, id",
+            (workout_id,),
+        ).fetchall():
+            exercise = self._exercise_row(connection, row["exercise_id"])
+            serialized = self._serialize_exercise(exercise, connection)
+            serialized["hasHistory"] = (
+                connection.execute(
+                    "SELECT 1 FROM exercise_sets WHERE exercise_id = ? LIMIT 1", (exercise["id"],)
+                ).fetchone()
+                is not None
+            )
+            result["exercises"].append(
+                {
+                    "id": row["id"],
+                    "position": row["position"],
+                    "exercise": serialized,
+                    "sets": [
+                        self._serialize_set(item)
+                        for item in connection.execute(
+                            "SELECT * FROM exercise_sets WHERE workout_exercise_id = ? "
+                            "ORDER BY occurred_at, created_at, id",
+                            (row["id"],),
+                        ).fetchall()
+                    ],
+                }
+            )
+        return result
+
+    def active_workout(self) -> dict | None:
+        with self.connect() as connection:
+            row = connection.execute("SELECT id FROM workouts WHERE ended_at IS NULL").fetchone()
+            return self._workout_detail(connection, row["id"]) if row else None
+
+    def list_workouts(self, before_id: int | None = None, limit: int = 20) -> dict:
+        if not 1 <= limit <= 50:
+            raise DomainError("Limit must be between 1 and 50.")
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM workouts WHERE (? IS NULL OR id < ?) ORDER BY id DESC LIMIT ?",
+                (before_id, before_id, limit + 1),
+            ).fetchall()
+            return {
+                "items": [self._workout_summary(connection, row) for row in rows[:limit]],
+                "nextBeforeId": rows[limit - 1]["id"] if len(rows) > limit else None,
+            }
+
+    def _workouts_for_day(self, connection: sqlite3.Connection, day_value: str) -> list[dict]:
+        selected = date.fromisoformat(day_value)
+        start = datetime.combine(selected, time.min, self.settings.timezone).astimezone(UTC)
+        end = datetime.combine(
+            selected + timedelta(days=1), time.min, self.settings.timezone
+        ).astimezone(UTC)
+        rows = connection.execute(
+            "SELECT w.* FROM workouts w WHERE (w.started_at >= ? AND w.started_at < ?) "
+            "OR EXISTS (SELECT 1 FROM workout_exercises x JOIN exercise_sets s "
+            "ON s.workout_exercise_id = x.id WHERE x.workout_id = w.id AND s.entry_date = ?) "
+            "ORDER BY w.started_at, w.id",
+            (
+                start.isoformat(timespec="microseconds"),
+                end.isoformat(timespec="microseconds"),
+                day_value,
+            ),
+        ).fetchall()
+        return [self._workout_summary(connection, row) for row in rows]
+
+    def _validate_workout_range(self, start: str, end: str | None) -> None:
+        if end is not None and end < start:
+            raise DomainError("Workout end must be at or after its start.")
+
+    def create_workout(self, payload) -> dict:
+        start = self._workout_timestamp(payload.startedAt) if payload.startedAt else self._utc_now()
+        end = self._workout_timestamp(payload.endedAt) if payload.endedAt else None
+        name = " ".join((payload.name or "Workout").split()) or "Workout"
+        self._validate_workout_range(start, end)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if end is None:
+                active = connection.execute(
+                    "SELECT id FROM workouts WHERE ended_at IS NULL"
+                ).fetchone()
+                if active:
+                    return self._workout_detail(connection, active["id"])
+            cursor = connection.execute(
+                "INSERT INTO workouts(name, started_at, ended_at) VALUES (?, ?, ?)",
+                (name, start, end),
+            )
+            result = self._workout_detail(connection, cursor.lastrowid)
+            connection.commit()
+            return result
+
+    def update_workout(self, workout_id: int, payload, *, finish: bool = False) -> dict:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = self._workout_row(connection, workout_id)
+            if finish and row["ended_at"] is not None:
+                return self._workout_detail(connection, workout_id)
+            start = (
+                self._workout_timestamp(payload.startedAt)
+                if payload.startedAt
+                else row["started_at"]
+            )
+            end = self._workout_timestamp(payload.endedAt) if payload.endedAt else row["ended_at"]
+            if finish:
+                end = end or self._utc_now()
+            self._validate_workout_range(start, end)
+            bounds = connection.execute(
+                "SELECT MIN(s.occurred_at), MAX(s.occurred_at), COUNT(s.id) FROM exercise_sets s "
+                "JOIN workout_exercises x ON x.id = s.workout_exercise_id WHERE x.workout_id = ?",
+                (workout_id,),
+            ).fetchone()
+            if (finish or (row["ended_at"] is None and end is not None)) and not bounds[2]:
+                raise DomainError("Log at least one set or discard this empty workout.")
+            if bounds[2] and (bounds[0] < start or (end is not None and bounds[1] > end)):
+                raise DomainError("Workout times must contain all its saved sets.")
+            name = (
+                row["name"]
+                if payload.name is None
+                else (" ".join(payload.name.split()) or "Workout")
+            )
+            connection.execute(
+                "UPDATE workouts SET name = ?, started_at = ?, ended_at = ? WHERE id = ?",
+                (name, start, end, workout_id),
+            )
+            result = self._workout_detail(connection, workout_id)
+            connection.commit()
+            return result
+
+    def delete_workout(self, workout_id: int, confirmation: str | None) -> None:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            summary = self._workout_summary(connection, self._workout_row(connection, workout_id))
+            if summary["setCount"] and confirmation != "DELETE":
+                raise DomainError("Confirm deletion of this workout and its sets.")
+            connection.execute("DELETE FROM workouts WHERE id = ?", (workout_id,))
+            connection.commit()
+
+    def add_workout_exercise(self, workout_id: int, exercise_id: int) -> dict:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._workout_row(connection, workout_id)
+            if self._exercise_row(connection, exercise_id)["archived_at"]:
+                raise DomainError("Restore this exercise before adding it to a workout.")
+            connection.execute(
+                "INSERT OR IGNORE INTO workout_exercises(workout_id, exercise_id, position) "
+                "VALUES (?, ?, (SELECT COALESCE(MAX(position), -1) + 1 FROM workout_exercises "
+                "WHERE workout_id = ?))",
+                (workout_id, exercise_id, workout_id),
+            )
+            result = self._workout_detail(connection, workout_id)
+            connection.commit()
+            return result
+
+    def reorder_workout_exercises(self, workout_id: int, ids: list[int]) -> dict:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._workout_row(connection, workout_id)
+            existing = [
+                row[0]
+                for row in connection.execute(
+                    "SELECT id FROM workout_exercises WHERE workout_id = ?", (workout_id,)
+                )
+            ]
+            if len(ids) != len(existing) or set(ids) != set(existing):
+                raise DomainError("Include each workout exercise exactly once.")
+            connection.executemany(
+                "UPDATE workout_exercises SET position = ? WHERE id = ?",
+                [(index, item) for index, item in enumerate(ids)],
+            )
+            result = self._workout_detail(connection, workout_id)
+            connection.commit()
+            return result
+
+    def remove_workout_exercise(
+        self, workout_id: int, entry_id: int, confirmation: str | None
+    ) -> None:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            self._workout_member(connection, workout_id, entry_id)
+            if (
+                confirmation != "DELETE"
+                and connection.execute(
+                    "SELECT 1 FROM exercise_sets WHERE workout_exercise_id = ? LIMIT 1", (entry_id,)
+                ).fetchone()
+            ):
+                raise DomainError("Confirm removal of this exercise and its sets.")
+            connection.execute("DELETE FROM workout_exercises WHERE id = ?", (entry_id,))
+            connection.commit()
+
+    def _workout_member(
+        self, connection: sqlite3.Connection, workout_id: int, entry_id: int
+    ) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM workout_exercises WHERE id = ? AND workout_id = ?",
+            (entry_id, workout_id),
+        ).fetchone()
+        if row is None:
+            raise DomainError("Workout exercise not found.")
+        return row
+
+    def _validate_workout_set(
+        self, connection: sqlite3.Connection, entry_id: int, exercise_id: int, occurred_at: str
+    ) -> None:
+        row = connection.execute(
+            "SELECT w.* FROM workouts w JOIN workout_exercises x ON x.workout_id = w.id "
+            "WHERE x.id = ? AND x.exercise_id = ?",
+            (entry_id, exercise_id),
+        ).fetchone()
+        if row is None:
+            raise DomainError("Workout exercise not found.")
+        if occurred_at < row["started_at"] or (row["ended_at"] and occurred_at > row["ended_at"]):
+            raise DomainError("Set time must be within the workout's start and end times.")
+
+    def add_workout_set(self, workout_id: int, entry_id: int, payload) -> dict:
+        # Validate both identifiers; add_set repeats membership/time validation in its transaction.
+        with self._database_lock:
+            with self.connect() as connection:
+                member = self._workout_member(connection, workout_id, entry_id)
+            return self.add_set(member["exercise_id"], "", payload, workout_exercise_id=entry_id)
 
     def _utc_now(self) -> str:
         return datetime.now(UTC).isoformat(timespec="microseconds")
@@ -1486,6 +1774,7 @@ class RostamDatabase:
         return {
             "id": row["id"],
             "exerciseId": row["exercise_id"],
+            "workoutExerciseId": row["workout_exercise_id"],
             "date": row["entry_date"],
             "occurredAt": row["occurred_at"],
             "time": self._local_time(row["occurred_at"]),
@@ -1856,6 +2145,10 @@ class RostamDatabase:
         with self._backup_lock:
             with self.connect() as connection:
                 self._exercise_row(connection, exercise_id)
+                if connection.execute(
+                    "SELECT 1 FROM workout_exercises WHERE exercise_id = ? LIMIT 1", (exercise_id,)
+                ).fetchone():
+                    raise DomainError("Remove this exercise from its workouts before deleting it.")
             self.create_backup("pre-delete")
             with self.connect() as connection:
                 connection.execute("BEGIN IMMEDIATE")
@@ -1891,6 +2184,11 @@ class RostamDatabase:
                 "SELECT COUNT(*) FROM daily_photos WHERE entry_date = ?", (day_value,)
             ).fetchone()[0]
             activities = self._activity_entries_for_day(connection, day_value)
+            workouts = self._workouts_for_day(connection, day_value)
+            active_row = connection.execute(
+                "SELECT * FROM workouts WHERE ended_at IS NULL"
+            ).fetchone()
+            active_workout = self._workout_summary(connection, active_row) if active_row else None
             rows = connection.execute(
                 """
                 SELECT e.*, d.display_order,
@@ -1906,7 +2204,10 @@ class RostamDatabase:
                 sets = [
                     self._serialize_set(row)
                     for row in self._set_rows(connection, day_value, exercise["id"])
+                    if row["workout_exercise_id"] is None
                 ]
+                if not sets:
+                    continue
                 total = sum(
                     (item["repetitions"] or 0)
                     if exercise["measurement_type"] in {"repetitions", "timed_repetitions"}
@@ -1925,6 +2226,8 @@ class RostamDatabase:
             "date": day_value,
             "sections": sections,
             "activities": activities,
+            "workouts": workouts,
+            "activeWorkout": active_workout,
             "dailyNote": note["body"] if note else None,
             "photoCount": photo_count,
         }
@@ -2422,18 +2725,41 @@ class RostamDatabase:
                 "weightKg": None,
             }
 
-    def add_set(self, exercise_id: int, day_value: str, payload) -> dict:
-        occurred_at = self._occurrence(day_value, payload.time)
+    def add_set(
+        self, exercise_id: int, day_value: str, payload, *, workout_exercise_id: int | None = None
+    ) -> dict:
+        if workout_exercise_id is not None:
+            occurred_at = (
+                self._workout_timestamp(payload.occurredAt)
+                if payload.occurredAt
+                else self._utc_now()
+            )
+            day_value = (
+                datetime.fromisoformat(occurred_at)
+                .astimezone(self.settings.timezone)
+                .date()
+                .isoformat()
+            )
+        else:
+            if getattr(payload, "occurredAt", None):
+                raise DomainError("Use time for standalone exercise sets.")
+            occurred_at = self._occurrence(day_value, payload.time)
         now = self._utc_now()
         with self.connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if workout_exercise_id is not None:
+                self._validate_workout_set(
+                    connection, workout_exercise_id, exercise_id, occurred_at
+                )
             exercise = self._exercise_row(connection, exercise_id)
             if exercise["archived_at"] is not None:
                 raise DomainError("Restore this exercise before adding a set.")
-            active = connection.execute("SELECT * FROM rotations WHERE active = 1").fetchone()
+            active = connection.execute(
+                "SELECT * FROM rotations WHERE active = 1 AND ? IS NULL", (workout_exercise_id,)
+            ).fetchone()
             first_today = (
                 connection.execute(
-                    "SELECT 1 FROM exercise_sets WHERE entry_date = ? AND exercise_id = ?",
+                    "SELECT 1 FROM exercise_sets WHERE entry_date = ? AND exercise_id = ? AND workout_exercise_id IS NULL",
                     (day_value, exercise_id),
                 ).fetchone()
                 is None
@@ -2463,7 +2789,7 @@ class RostamDatabase:
                 payload.resistanceKind,
                 payload.weightKg,
             )
-            if (
+            if workout_exercise_id is None and (
                 connection.execute(
                     "SELECT 1 FROM day_exercises WHERE entry_date = ? AND exercise_id = ?",
                     (day_value, exercise_id),
@@ -2483,8 +2809,8 @@ class RostamDatabase:
                 INSERT INTO exercise_sets(
                     exercise_id, entry_date, occurred_at, repetitions,
                     duration_seconds, hold_seconds, resistance_kind, weight_grams, equipment,
-                    custom_equipment, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    custom_equipment, created_at, updated_at, workout_exercise_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     exercise_id,
@@ -2499,6 +2825,7 @@ class RostamDatabase:
                     custom,
                     now,
                     now,
+                    workout_exercise_id,
                 ),
             )
             if active and day_value == self.today().isoformat():
@@ -2526,6 +2853,14 @@ class RostamDatabase:
                 if payload.time is None
                 else self._occurrence(current["entry_date"], payload.time)
             )
+            if current["workout_exercise_id"] is not None:
+                if getattr(payload, "occurredAt", None):
+                    occurred_at = self._workout_timestamp(payload.occurredAt)
+                self._validate_workout_set(
+                    connection, current["workout_exercise_id"], current["exercise_id"], occurred_at
+                )
+            elif getattr(payload, "occurredAt", None):
+                raise DomainError("Use time for standalone exercise sets.")
             reps, duration, hold, resistance, weight, equipment, custom = self._validate_set(
                 exercise,
                 payload.repetitions,
@@ -2538,11 +2873,15 @@ class RostamDatabase:
             )
             connection.execute(
                 """
-                UPDATE exercise_sets SET occurred_at = ?, repetitions = ?,
+                UPDATE exercise_sets SET entry_date = ?, occurred_at = ?, repetitions = ?,
                     duration_seconds = ?, hold_seconds = ?, resistance_kind = ?, weight_grams = ?,
                     equipment = ?, custom_equipment = ?, updated_at = ? WHERE id = ?
                 """,
                 (
+                    datetime.fromisoformat(occurred_at)
+                    .astimezone(self.settings.timezone)
+                    .date()
+                    .isoformat(),
                     occurred_at,
                     reps,
                     duration,
@@ -2555,7 +2894,10 @@ class RostamDatabase:
                     set_id,
                 ),
             )
-            if current["entry_date"] == self.today().isoformat():
+            if (
+                current["workout_exercise_id"] is None
+                and current["entry_date"] == self.today().isoformat()
+            ):
                 active = connection.execute("SELECT id FROM rotations WHERE active = 1").fetchone()
                 if active:
                     self._reorder_enrolled_today(connection, active["id"], current["entry_date"])
@@ -2575,7 +2917,7 @@ class RostamDatabase:
             connection.execute("DELETE FROM exercise_sets WHERE id = ?", (set_id,))
             if (
                 connection.execute(
-                    "SELECT 1 FROM exercise_sets WHERE entry_date = ? AND exercise_id = ? LIMIT 1",
+                    "SELECT 1 FROM exercise_sets WHERE workout_exercise_id IS NULL AND entry_date = ? AND exercise_id = ? LIMIT 1",
                     (row["entry_date"], row["exercise_id"]),
                 ).fetchone()
                 is None
@@ -2584,13 +2926,13 @@ class RostamDatabase:
                     "DELETE FROM day_exercises WHERE entry_date = ? AND exercise_id = ?",
                     (row["entry_date"], row["exercise_id"]),
                 )
-            if row["entry_date"] == self.today().isoformat():
+            if row["workout_exercise_id"] is None and row["entry_date"] == self.today().isoformat():
                 active = connection.execute("SELECT * FROM rotations WHERE active = 1").fetchone()
                 if active:
                     self._reorder_enrolled_today(connection, active["id"], row["entry_date"])
                 if active and active["due_exercise_id"] == row["exercise_id"]:
                     remaining = connection.execute(
-                        "SELECT 1 FROM exercise_sets WHERE entry_date = ? AND exercise_id = ?",
+                        "SELECT 1 FROM exercise_sets WHERE workout_exercise_id IS NULL AND entry_date = ? AND exercise_id = ?",
                         (row["entry_date"], row["exercise_id"]),
                     ).fetchone()
                     if not remaining and active["resolved_kind"] == "completed":
@@ -2658,7 +3000,7 @@ class RostamDatabase:
                     "SELECT 1 FROM rotation_members m WHERE m.rotation_id = ? "
                     "AND m.position = ? AND m.enrolled_date = ? AND EXISTS ("
                     "SELECT 1 FROM exercise_sets s WHERE s.exercise_id = m.exercise_id "
-                    "AND s.entry_date = m.enrolled_date)",
+                    "AND s.workout_exercise_id IS NULL AND s.entry_date = m.enrolled_date)",
                     (rotation_id, candidate_position, row["resolved_date"]),
                 ).fetchone()
                 if not newly_completed:
@@ -2678,7 +3020,7 @@ class RostamDatabase:
         if row["due_exercise_id"] is None:
             return
         logged = connection.execute(
-            "SELECT 1 FROM exercise_sets WHERE entry_date = ? AND exercise_id = ? LIMIT 1",
+            "SELECT 1 FROM exercise_sets WHERE workout_exercise_id IS NULL AND entry_date = ? AND exercise_id = ? LIMIT 1",
             (day, row["due_exercise_id"]),
         ).fetchone()
         if logged:
@@ -2749,7 +3091,7 @@ class RostamDatabase:
             key=lambda member_id: (
                 connection.execute(
                     "SELECT MIN(s.occurred_at) FROM exercise_sets s JOIN rotation_members m "
-                    "ON s.exercise_id = m.exercise_id WHERE m.member_id = ? AND entry_date = ?",
+                    "ON s.exercise_id = m.exercise_id WHERE s.workout_exercise_id IS NULL AND m.member_id = ? AND entry_date = ?",
                     (member_id, day),
                 ).fetchone()[0]
                 or "9999",
@@ -2823,7 +3165,7 @@ class RostamDatabase:
                 (exercise_id,),
             ).fetchone()
             last = connection.execute(
-                "SELECT MAX(entry_date) FROM exercise_sets WHERE exercise_id = ? "
+                "SELECT MAX(entry_date) FROM exercise_sets WHERE workout_exercise_id IS NULL AND exercise_id = ? "
                 "AND entry_date <= ?",
                 (exercise_id, today),
             ).fetchone()[0]

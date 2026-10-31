@@ -925,7 +925,7 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 17))
+        ] == list(range(1, 18))
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM exercises WHERE exercise_note IS NOT NULL"
@@ -961,7 +961,7 @@ def test_schema_v2_migration_adds_notes_without_changing_history(database):
     with migrated.connect() as connection:
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 17))
+        ] == list(range(1, 18))
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
@@ -1037,7 +1037,7 @@ def test_restore_validates_staged_database_before_atomic_replacement(database, m
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (17)", "schema is newer"),
+        ("INSERT INTO schema_migrations(version) VALUES (18)", "schema is newer"),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(
@@ -1069,7 +1069,9 @@ def test_restore_schema_v7_backup_migrates_side_plank_history(database):
         database.add_set(exercise["id"], today, set_payload(time=time_value, repetitions=4))
     source = database.create_backup("on-demand")
     with sqlite3.connect(database.backup_path(source["id"])) as connection:
-        connection.execute("DELETE FROM schema_migrations WHERE version IN (8, 9, 10)")
+        connection.execute("DELETE FROM schema_migrations WHERE version IN (8, 9, 10, 17)")
+        connection.execute("DROP TABLE workout_exercises")
+        connection.execute("DROP TABLE workouts")
         connection.commit()
 
     database.restore_backup(source["id"], "RESTORE")

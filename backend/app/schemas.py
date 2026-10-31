@@ -105,6 +105,7 @@ class BackupSettingsUpdate(BaseModel):
 class SetWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    occurredAt: str | None = None
     time: str | None = None
     repetitions: int | None = None
     durationMinutes: int | None = None
@@ -167,3 +168,23 @@ class ActivityNoteUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     note: str = Field(default="", max_length=20000)
+
+
+class WorkoutWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, max_length=100)
+    startedAt: str | None = None
+    endedAt: str | None = None
+
+
+class WorkoutExerciseAdd(BaseModel):
+    exerciseId: int
+
+
+class WorkoutOrder(BaseModel):
+    exerciseEntryIds: list[int]
+
+
+class WorkoutDelete(BaseModel):
+    confirmation: str | None = None

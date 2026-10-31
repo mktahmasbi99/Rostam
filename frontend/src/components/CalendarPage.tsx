@@ -50,11 +50,11 @@ export function CalendarPage({ today, onChooseDay, onClose }: Props) {
   return <AccessibleDialog backdropClassName="calendar-backdrop" className="" panelClassName="calendar-dialog" labelledBy="calendar-title" onClose={onClose} testId="calendar-backdrop">
       <header className="calendar-dialog-header"><h1 id="calendar-title">Calendar</h1><button className="icon-button" aria-label="Close calendar" onClick={onClose}><X /></button></header>
       <div className="calendar-dialog-body">
-        <p className="calendar-description">A dot means at least one exercise occurred.</p>
+        <p className="calendar-description">A green dot means activity was recorded.</p>
         <div className="month-header"><button className="icon-button" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft /></button><h2>{title}</h2><button className="icon-button" aria-label="Next month" disabled={month >= today.slice(0, 7)} onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight /></button></div>
         <div className="calendar-grid weekday-row">{weekdays.map((day) => <span key={day}>{day}</span>)}</div>
         <ReadState loading={loading} error={error} hasData={loaded && activeDatesMonth === month} onRetry={() => setRetry((value) => value + 1)} loadingText="Loading calendar…" />
-        <div className="calendar-grid">{cells.map((day, index) => day ? <button key={day} className={`calendar-day ${day === today ? "today" : ""}`} disabled={day > today} onClick={() => onChooseDay(day)} aria-label={`${day}${activeDatesMonth === month && activeDates.includes(day) ? ", exercise recorded" : ""}`}><span>{Number(day.slice(-2))}</span>{activeDatesMonth === month && activeDates.includes(day) && <i className="activity-dot" />}</button> : <span key={`blank-${index}`} />)}</div>
+        <div className="calendar-grid">{cells.map((day, index) => day ? <button key={day} className={`calendar-day ${day === today ? "today" : ""}`} disabled={day > today} onClick={() => onChooseDay(day)} aria-label={`${day}${activeDatesMonth === month && activeDates.includes(day) ? ", activity recorded" : ""}`}><span>{Number(day.slice(-2))}</span>{activeDatesMonth === month && activeDates.includes(day) && <i className="activity-dot" />}</button> : <span key={`blank-${index}`} />)}</div>
       </div>
       <button className="primary calendar-jump" onClick={() => onChooseDay(today)}>Jump to Today</button>
   </AccessibleDialog>;

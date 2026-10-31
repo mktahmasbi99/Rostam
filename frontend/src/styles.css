@@ -653,3 +653,40 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
   .modal-sheet { animation: rise .2s ease-out; }
   @keyframes rise { from { transform: translateY(18px); opacity: .8; } }
 }
+
+/* Session workouts share the exercise ledger while keeping their own grouping. */
+.workout-day-list, .workout-exercises { display: grid; gap: 16px; margin: 18px 0; }
+.workout-summary-card { width: 100%; text-align: left; justify-content: space-between; gap: 16px; padding: 20px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+.workout-summary-card h2 { margin: 6px 0; color: var(--heading); }
+.workout-summary-card p, .workout-overview p { margin: 6px 0; color: var(--muted); font-weight: 400; }
+.workout-status { color: var(--accent-dark); font-size: .8rem; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
+.workout-open-label { display: flex; align-items: center; color: var(--accent-dark); }
+.workout-editor { max-width: 820px; margin: 0 auto; padding-bottom: 24px; }
+.workout-overview { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; padding: 8px 0 18px; border-bottom: 1px solid var(--line); }
+.workout-exercise h3 { margin: 0 0 8px; color: var(--heading); }
+.workout-exercise-tools { display: flex; align-items: center; gap: 4px; margin-bottom: 8px; }
+.workout-exercise-tools > span { margin-right: auto; color: var(--muted); }
+.workout-actions { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 0; }
+.workout-delete { color: var(--danger); margin-left: auto; }
+.workout-details { display: grid; gap: 16px; }
+.workout-details label { display: grid; gap: 6px; }
+.workout-details input { width: 100%; min-width: 0; }
+.workout-numbered-set { position: relative; padding-left: 22px; }
+.workout-set-number { position: absolute; top: 18px; left: 8px; font-size: .75rem; color: var(--muted); }
+.workout-set-date { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; color: var(--muted); font-size: .8rem; }
+.workout-set-date input { max-width: 170px; }
+.workout-resume-banner { width: 100%; margin-top: 16px; background: var(--accent-soft); color: var(--accent-dark); }
+@media (max-width: 480px) {
+  .workout-summary-card { padding: 16px; }
+  .workout-open-label { font-size: .85rem; }
+  .workout-actions > button { flex: 1 1 auto; }
+  .workout-delete { margin-left: 0; }
+}
+.modal-sheet.modal-fullscreen:has(.workout-editor) { background: #eee4d2; }
+:root[data-theme="dark"] .modal-sheet.modal-fullscreen:has(.workout-editor) { background: #071a2d; }
+.modal-sheet.modal-fullscreen:has(.workout-editor) .modal-header { width: min(100%, 820px); align-self: center; }
+.workout-exercise-tools { margin: 0 16px 8px; }
+.workout-exercise .set-table-header { padding-left: 22px; }
+.workout-set-day { display: block; padding: 8px 18px 0; font-size: .75rem; color: var(--muted); }
+
+.workout-numbered-set:has(.workout-set-day) .workout-set-number { top: 42px; }
