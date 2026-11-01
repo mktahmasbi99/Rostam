@@ -548,6 +548,8 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
 .rotation-add-trigger span { font-weight: 750; }
 .rotation-picker-new { width: 100%; margin-top: 14px; }
 .rotation-picker-search { display: block; margin-bottom: 8px; }
+.rotation-member-search { display: block; margin: 12px 0 0; }
+.rotation-recommendation-search { display: block; margin: 12px 0 4px; }
 .rotation-badge { display: inline-block; border-radius: 99px; padding: 3px 9px; background: var(--accent-soft); color: var(--accent-dark); font-size: .76rem; font-style: normal; font-weight: 700; }
 .rotation-result.due { background: var(--accent-soft); border-radius: 12px; padding: 11px; }
 .rotation-result.muted { background: var(--surface); }

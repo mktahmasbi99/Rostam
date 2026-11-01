@@ -119,6 +119,28 @@ describe("RotationsPage", () => {
     expect(within(rotationDialog).getByText("2 exercises")).toBeInTheDocument();
   });
 
+  it("filters rotation members without changing their original positions", async () => {
+    const withMembers = rotation([
+      { exercise: squat, position: 0, lastDoneDate: null, daysSinceLastDone: null },
+      { exercise: bicepCurl, position: 1, lastDoneDate: null, daysSinceLastDone: null },
+    ]);
+    vi.mocked(api.rotations).mockImplementation(async (status) => status === "archived" ? [] : [withMembers]);
+    const user = userEvent.setup();
+    render(<RotationsPage />);
+    await user.click(await screen.findByRole("button", { name: "Open Morning" }));
+    const rotationDialog = screen.getByRole("dialog", { name: "Morning" });
+    await user.click(screen.getByRole("button", { name: "Edit Morning" }));
+    const search = within(rotationDialog).getByRole("searchbox", { name: "Search exercises in Morning" });
+    await user.type(search, "bicep");
+    expect(within(rotationDialog).getByText("Bicep curls")).toBeInTheDocument();
+    expect(within(rotationDialog).queryByText("Squats")).not.toBeInTheDocument();
+    await user.click(within(rotationDialog).getByRole("button", { name: "Remove Bicep curls" }));
+    await user.clear(search);
+    expect(within(rotationDialog).getByText("Squats")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(api.setRotationMembers).toHaveBeenCalledWith(1, [3]));
+  });
+
   it("discards staged member changes when the close button is used", async () => {
     const withOne = rotation([{ exercise: squat, position: 0, lastDoneDate: null, daysSinceLastDone: null }]);
     vi.mocked(api.rotations).mockImplementation(async (status) => status === "archived" ? [] : [withOne]);
