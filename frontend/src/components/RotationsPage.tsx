@@ -19,6 +19,7 @@ export function RotationsPage() {
   const [editing, setEditing] = useState(false);
   const [editingName, setEditingName] = useState("");
   const [draftMemberIds, setDraftMemberIds] = useState<number[]>([]);
+  const [memberQuery, setMemberQuery] = useState("");
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [choosingExerciseFor, setChoosingExerciseFor] = useState<number | null>(null);
   const [exerciseQuery, setExerciseQuery] = useState("");
@@ -125,6 +126,7 @@ export function RotationsPage() {
     setEditing(edit);
     setEditingName(rotation.name);
     setDraftMemberIds(rotation.members.map((member) => member.exercise.id));
+    setMemberQuery("");
     setChooseDifferentFirst(false);
   }
   function closeDetails() {
@@ -176,7 +178,11 @@ export function RotationsPage() {
   const memberIds = editing ? draftMemberIds : serverMemberIds;
   const displayMembers = editing && selectedRotation
     ? memberIds.map((id, index) => ({ exercise: exercises.find((exercise) => exercise.id === id) ?? selectedRotation.members.find((member) => member.exercise.id === id)?.exercise, position: index })).filter((member): member is { exercise: Exercise; position: number } => Boolean(member.exercise))
-    : selectedRotation?.members ?? [];
+    : selectedRotation?.members.map((member, index) => ({ ...member, position: member.position ?? index })) ?? [];
+  const normalizedMemberQuery = memberQuery.trim().toLocaleLowerCase();
+  const visibleMembers = displayMembers.filter(({ exercise }) =>
+    `${exercise.name} ${exerciseMuscleLabel(exercise)}`.toLocaleLowerCase().includes(normalizedMemberQuery),
+  );
   const labels = occurrenceLabels(memberIds);
   const memberCountLabel = `${memberIds.length} ${memberIds.length === 1 ? "exercise" : "exercises"}`;
   const selectedFirst = selectedRotation ? firstIds[selectedRotation.id] ?? "" : "";
@@ -222,8 +228,10 @@ export function RotationsPage() {
         </div>}
       </>}
 
-      {displayMembers.length > 0 ? <div className={editing ? "management-list rotation-editor-list" : "management-list rotation-detail-list"}>
-        {displayMembers.map((member, index) => {
+      {displayMembers.length > 0 && <label className="search-box rotation-member-search"><Search /><span className="sr-only">Search exercises in {selectedRotation.name}</span><input type="search" placeholder="Search exercises in this rotation" value={memberQuery} onChange={(event) => setMemberQuery(event.target.value)} /></label>}
+      {displayMembers.length > 0 ? visibleMembers.length > 0 ? <div className={editing ? "management-list rotation-editor-list" : "management-list rotation-detail-list"}>
+        {visibleMembers.map((member) => {
+          const index = member.position;
           const occurrence = labels[index].total > 1 ? ` · ${labels[index].count}` : "";
           const label = `${member.exercise.name}${occurrence}`;
           const muscles = exerciseMuscleLabel(member.exercise);
@@ -237,7 +245,7 @@ export function RotationsPage() {
             </div>}
           </article>;
         })}
-      </div> : !editing && <p className="empty-copy">No exercises in this rotation yet.</p>}
+      </div> : <p className="empty-copy">No exercises match your search.</p> : !editing && <p className="empty-copy">No exercises in this rotation yet.</p>}
 
       {!editing && !selectedIsArchived && <div className="rotation-activate">
         {memberIds.length > 0 && !selectedRotation.active && <label className="rotation-first-toggle"><input type="checkbox" role="switch" checked={chooseDifferentFirst} onChange={(event) => setChooseDifferentFirst(event.target.checked)} /><span>Choose a different starting exercise</span></label>}

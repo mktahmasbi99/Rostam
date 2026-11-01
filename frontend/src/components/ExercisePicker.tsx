@@ -1,6 +1,7 @@
 import { ChevronDown, Pause, Plus, Search, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { exerciseMuscleLabel } from "../lib/format";
 import { useDebouncedValue } from "../lib/useDebouncedValue";
 import type { Exercise, ExerciseRecommendations, MeasurementType, RecommendationItem, Rotation } from "../lib/types";
 import { ExerciseEditor } from "./ExerciseEditor";
@@ -69,6 +70,7 @@ export function ExercisePicker({ day, today, presentIds, onChoose, onClose }: Pr
   const [filter, setFilter] = useState<"" | MeasurementType>("");
   const [includePaused, setIncludePaused] = useState(false);
   const [recommendationMode, setRecommendationMode] = useState<RecommendationMode>("exercise");
+  const [rotationQuery, setRotationQuery] = useState("");
   const [neverOpen, setNeverOpen] = useState(false);
   const [openPauseId, setOpenPauseId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
@@ -193,6 +195,7 @@ export function ExercisePicker({ day, today, presentIds, onChoose, onClose }: Pr
         <button type="button" className={recommendationMode === "muscle" ? "selected" : ""} aria-pressed={recommendationMode === "muscle"} onClick={() => selectRecommendationMode("muscle")}>By muscle</button>
       </div>
       <p className="recommendation-intro">{recommendationMode === "rotation" ? "Your due exercise comes first, followed by the rest of your rotation." : recommendationMode === "exercise" ? "Suggestions are ordered by when you last did each exercise." : "Suggestions are ordered by the muscle groups you have trained least recently."}</p>
+      {recommendationMode === "rotation" && rotation && <label className="search-box rotation-recommendation-search"><Search /><span className="sr-only">Search exercises in {rotation.name}</span><input type="search" placeholder="Search exercises in this rotation" value={rotationQuery} onChange={(event) => setRotationQuery(event.target.value)} /></label>}
       {recommendationMode !== "rotation" && <label className="checkbox-row recommendation-paused"><input type="checkbox" checked={includePaused} onChange={(event) => setIncludePaused(event.target.checked)} />Show paused</label>}
       {notice && <p className="notice" role="status">{notice}</p>}
       <ReadState loading={loadingRecommendations} error={error} hasData={recommendations !== null} onRetry={() => setReadRetry((value) => value + 1)} loadingText="Loading recommendations…" />
@@ -207,17 +210,23 @@ export function ExercisePicker({ day, today, presentIds, onChoose, onClose }: Pr
           const seen = new Map<number, number>();
           const totals = new Map<number, number>();
           rotation.members.forEach((member) => totals.set(member.exercise.id, (totals.get(member.exercise.id) ?? 0) + 1));
-          return ordered.map((member, index) => {
+          const orderedRows = ordered.map((member) => {
             const memberPosition = member.position ?? rotation.members.indexOf(member);
             const occurrence = (seen.get(member.exercise.id) ?? 0) + 1;
             seen.set(member.exercise.id, occurrence);
-            const due = memberPosition === dueIndex;
+            return { member, memberPosition, occurrence, due: memberPosition === dueIndex };
+          });
+          const normalizedQuery = rotationQuery.trim().toLocaleLowerCase();
+          const visibleRows = orderedRows.filter(({ member }) =>
+            `${member.exercise.name} ${exerciseMuscleLabel(member.exercise)}`.toLocaleLowerCase().includes(normalizedQuery),
+          );
+          return visibleRows.length ? visibleRows.map(({ member, memberPosition, occurrence, due }) => {
             const added = presentIds.includes(member.exercise.id);
-            return <div className={due && day === today ? "rotation-due-row" : undefined} key={member.position ?? index}>
+            return <div className={due && day === today ? "rotation-due-row" : undefined} key={member.position ?? memberPosition}>
               <button className={`exercise-result rotation-result ${due ? "due" : ""} ${due && added ? "muted" : ""}`} disabled={added} onClick={() => choose(member.exercise)}><ExerciseImage imageKey={member.exercise.imageKey} name={member.exercise.name} /><span><strong>{member.exercise.name}{(totals.get(member.exercise.id) ?? 0) > 1 ? ` · ${occurrence}` : ""}</strong><small>{due && <b>Due · </b>}{elapsed(member.daysSinceLastDone, "Last done")}</small>{due && added && <em className="rotation-badge">Added today</em>}{!due && added && <small>Already added</small>}</span></button>
               {due && day === today && <div className="rotation-skip">{rotation.resolvedToday === "skipped" ? <><strong>Skipped today</strong><button className="secondary" onClick={async () => { try { setRotation(await api.undoRotationSkip(rotation.id)); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not undo skip."); } }}>Undo skip</button></> : !rotation.resolvedToday && <button className="secondary" onClick={async () => { try { setRotation(await api.skipRotation(rotation.id)); } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not skip exercise."); } }}>Skip exercise</button>}</div>}
             </div>;
-          });
+          }) : <p className="empty-copy">No exercises match your search.</p>;
         })()}</section>}
         {recommendationMode === "exercise"
           ? exerciseRuns.map((run, index) => <section className="recommendation-group" key={`${run.label}-${index}`}><h3>{run.label}</h3>{run.items.map(recommendationResult)}</section>)

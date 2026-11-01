@@ -63,6 +63,30 @@ describe("ExercisePicker", () => {
     expect(screen.queryByRole("button", { name: "Skip exercise" })).not.toBeInTheDocument();
   });
 
+  it("searches the active rotation and reloads its current members when reopened", async () => {
+    const squat = { ...exercise, id: 4, name: "Squat" };
+    const activeRotation = {
+      id: 1, name: "Morning", active: true, dueExerciseId: exercise.id, duePosition: 0,
+      resolvedToday: null,
+      members: [
+        { exercise, position: 0, lastDoneDate: null, daysSinceLastDone: null },
+        { exercise: squat, position: 1, lastDoneDate: null, daysSinceLastDone: null },
+      ],
+    };
+    vi.mocked(api.rotations).mockResolvedValue([activeRotation]);
+    const first = render(<ExercisePicker day="2026-09-17" today="2026-09-17" presentIds={[]} onChoose={vi.fn()} onClose={vi.fn()} />);
+    const search = await screen.findByRole("searchbox", { name: "Search exercises in Morning" });
+    await userEvent.setup().type(search, "squat");
+    expect(screen.getByRole("button", { name: /Squat/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Push-ups/ })).not.toBeInTheDocument();
+
+    first.unmount();
+    vi.mocked(api.rotations).mockResolvedValue([{ ...activeRotation, members: [activeRotation.members[1]], dueExerciseId: squat.id }]);
+    render(<ExercisePicker day="2026-09-17" today="2026-09-17" presentIds={[]} onChoose={vi.fn()} onClose={vi.fn()} />);
+    expect(await screen.findByRole("button", { name: /Squat/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Push-ups/ })).not.toBeInTheDocument();
+  });
+
   it("keeps the library and its measurement filters as the default view", async () => {
     const user = userEvent.setup();
     render(<ExercisePicker day="2026-09-17" presentIds={[]} onChoose={vi.fn()} onClose={vi.fn()} />);
