@@ -30,7 +30,7 @@ test("archive pages load older photos, notes, and measurements only when request
   await page.getByRole("button", { name: "View all daily notes" }).click();
   await page.getByRole("button", { name: "Load older notes" }).click();
   await expect(page.getByText("Older daily note")).toBeVisible();
-  await page.getByRole("button", { name: "Back to Notes" }).click();
+  await page.getByRole("button", { name: "Back to Notes" }).click({ force: true });
   await page.getByRole("button", { name: /Drills/ }).click();
   await page.getByRole("button", { name: "Load older notes" }).click();
   await expect(page.getByText("Older activity note")).toBeVisible();

@@ -449,9 +449,12 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
 .exercise-filter-toolbar > .rotation-create-icon { margin-top: 12px; }
 .notes-create-icon, .rotation-create-icon { width: 52px; min-width: 52px; height: 52px; min-height: 52px; padding: 0; border: 0; border-radius: 50%; background: linear-gradient(135deg, #ffd35d, #e7a421); color: #382504; box-shadow: 0 7px 16px rgba(117, 76, 8, .32); }
 .notes-create-icon svg, .rotation-create-icon svg { width: 27px; height: 27px; stroke-width: 3; }
-.backup-group { margin-top: 20px; }
-.backup-group h3 { margin-bottom: 5px; font-size: .82rem; text-transform: uppercase; color: var(--muted); letter-spacing: .07em; }
-.backup-row { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding: 8px 0; }
+.backup-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding: 8px 0; }
+.backup-info { min-width: 0; }
+.backup-tag { display: inline-block; margin-left: 5px; padding: 2px 7px; border-radius: 99px; font-size: .68rem; vertical-align: middle; white-space: nowrap; }
+.backup-tag-on-demand { background: #f4d98f; color: #49350a; }
+.backup-tag-daily { background: #c8e4ff; color: #123c62; }
+.backup-tag-weekly { background: #e1d2ff; color: #45266f; }
 .file-picker { display: flex; width: 100%; min-height: 48px; margin-top: 14px; padding: 11px 14px; align-items: center; justify-content: center; border: 1px solid color-mix(in srgb, var(--accent) 60%, var(--accent-dark)); border-radius: 12px; background: var(--accent-dark); color: var(--accent-ink); font-size: .92rem; font-weight: 800; text-align: center; box-shadow: 0 5px 13px rgba(89, 52, 10, .22); cursor: pointer; transition: transform .14s ease, box-shadow .14s ease; }
 .file-picker:hover { transform: translateY(-1px); box-shadow: 0 8px 16px rgba(89, 52, 10, .28); }
 .file-picker:focus-within { outline: none; border-color: color-mix(in srgb, var(--ink) 58%, var(--line)); }
