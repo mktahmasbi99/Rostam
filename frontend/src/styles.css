@@ -263,7 +263,7 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .set-completion { width: 44px; height: 44px; justify-self: center; display: grid; place-items: center; cursor: pointer; }
 .set-completion .set-checkbox { appearance: auto; width: 22px; height: 22px; min-height: 22px; padding: 0; margin: 0; accent-color: var(--save-surface); cursor: pointer; }
 .set-checkbox:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
-.set-swipe { position: relative; overflow: hidden; }
+.set-swipe { position: relative; z-index: 31; overflow: hidden; }
 .set-swipe-content { position: relative; z-index: 1; background: var(--surface); touch-action: pan-y; transition: transform .18s ease; }
 .set-swipe-content.swiping { transition: none; user-select: none; }
 .set-swipe-delete { position: absolute; right: 0; top: 0; bottom: 0; width: 100%; padding-right: 10px; justify-content: flex-end; border-radius: 0; color: white; background: #a52745; font-weight: 750; }
