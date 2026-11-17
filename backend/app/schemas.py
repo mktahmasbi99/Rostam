@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -75,6 +76,37 @@ class BodyMeasurementWrite(BaseModel):
     date: str
     weightKg: str | None = None
     waistCm: str | None = None
+
+
+class SupplementWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100)
+    brand: str = Field(default="", max_length=100)
+    form: str = Field(default="", max_length=60)
+    unit: str = Field(min_length=1, max_length=40)
+    amountPerUnit: str = Field(min_length=1, max_length=40)
+    amountUnit: str = Field(min_length=1, max_length=40)
+    dailyTarget: str | None = Field(default=None, max_length=40)
+    intervalDays: int = Field(default=1, ge=1, le=3652058)
+    startDate: date
+    rating: int | None = Field(default=None, ge=1, le=5)
+
+
+class SupplementStockWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    startingBalance: str = Field(max_length=40)
+    effectiveAt: str | None = Field(default=None, max_length=40)
+    packageSize: str | None = Field(default=None, max_length=40)
+    expiryDate: date | None = None
+
+
+class SupplementIntakeWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    takenAt: str = Field(min_length=1, max_length=40)
+    quantity: str = Field(min_length=1, max_length=40)
 
 
 class DeleteConfirmation(BaseModel):

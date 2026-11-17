@@ -147,6 +147,63 @@ export interface DayData {
   activities?: ActivityEntry[];
   dailyNote?: string | null;
   photoCount?: number;
+  supplements?: SupplementCard[];
+}
+
+export interface SupplementPayload {
+  name: string;
+  brand: string;
+  form: string;
+  unit: string;
+  amountPerUnit: string;
+  amountUnit: string;
+  dailyTarget: string | null;
+  intervalDays: number;
+  startDate: string;
+  rating: number | null;
+}
+
+export interface SupplementProduct extends SupplementPayload {
+  id: number;
+  archived: boolean;
+}
+
+export interface SupplementCard extends SupplementProduct {
+  quantity: string;
+  amount: string;
+  note: string | null;
+  due: boolean;
+}
+
+export interface SupplementIntakePayload {
+  takenAt: string;
+  quantity: string;
+}
+
+export interface SupplementIntake extends SupplementIntakePayload {
+  id: number;
+  amount: string;
+}
+
+export interface SupplementStockPayload {
+  startingBalance: string;
+  effectiveAt: string | null;
+  packageSize: string | null;
+  expiryDate: string | null;
+}
+
+interface SupplementDailyTotal {
+  date: string;
+  quantity: string;
+  amount: string;
+}
+
+export interface SupplementHistory {
+  product: SupplementProduct;
+  stock: (SupplementStockPayload & { balance: string; effectiveAt: string }) | null;
+  days: (SupplementDailyTotal & { intakes: SupplementIntake[] })[];
+  chart: SupplementDailyTotal[];
+  notes: { date: string; body: string }[];
 }
 
 export interface Activity { id: number; name: string; }

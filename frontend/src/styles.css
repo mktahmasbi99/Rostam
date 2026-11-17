@@ -703,3 +703,78 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
 .entry-kind-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .entry-kind-title > span { min-width: 0; overflow-wrap: anywhere; }
 .entry-kind-icon { width: 20px; height: 20px; flex-shrink: 0; color: var(--accent-dark); }
+
+.supplement-section, .supplement-stack, .supplement-form, .supplement-fields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.supplement-section { margin-bottom: 20px; }
+.supplement-stack > p, .supplement-stack h3, .supplement-fields p, .supplement-card p, .supplement-card h3 { margin: 0; }
+.supplement-section small, .supplement-stack small, .supplement-fields small { color: var(--muted); }
+.supplement-library-link { justify-self: start; padding-inline: 12px; }
+.supplement-library-link svg, .supplement-stack button svg { width: 17px; flex-shrink: 0; }
+.supplement-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+.supplement-card-heading, .supplement-card-total, .supplement-intake-row, .supplement-note-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.supplement-card-heading > :first-child { margin-right: auto; }
+.supplement-card-heading .journal-actions button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; }
+.supplement-name {
+  min-width: 0;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  text-align: left;
+}
+.supplement-name svg { width: 16px; flex: none; }
+.supplement-due {
+  border-radius: 8px;
+  padding: 3px 8px;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  font-size: .85rem;
+  font-weight: 750;
+}
+.supplement-library-row { padding: 10px 12px; justify-content: space-between; text-align: left; }
+.supplement-library-row span { display: grid; gap: 4px; overflow-wrap: anywhere; }
+.supplement-fields { border: 0; margin: 0; padding: 3px; }
+.supplement-fields-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.supplement-fields label { min-width: 0; }
+.supplement-fields input { min-width: 0; }
+.supplement-actions, .supplement-chart-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.supplement-actions button { padding-inline: 12px; }
+.supplement-form .supplement-actions { justify-content: flex-end; }
+.supplement-note-date { align-items: end; flex-wrap: wrap; }
+.supplement-note-date label { flex: 1; min-width: 0; }
+.supplement-note-date button, .supplement-stock button { padding-inline: 10px; }
+.supplement-intake-row { padding: 4px 12px; flex-wrap: wrap; }
+.supplement-intake-row span { flex: 1; overflow-wrap: anywhere; }
+.supplement-intake-row + .supplement-intake-row { border-top: 1px solid var(--line); }
+.supplement-chart-controls { flex-wrap: nowrap; }
+.supplement-chart-controls button { padding-inline: 8px; white-space: nowrap; }
+.supplement-chart-controls [aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-dark); }
+.supplement-bars {
+  list-style: none;
+  display: flex;
+  gap: 2px;
+  height: 104px;
+  margin: 6px 0 0;
+  padding: 0;
+  border-bottom: 1px solid var(--line);
+}
+.supplement-bars li { flex: 1; display: flex; align-items: end; background: var(--surface-2); }
+.supplement-bars span { width: 100%; background: var(--accent); border-radius: 3px 3px 0 0; }
+.supplement-chart figcaption { display: flex; justify-content: space-between; color: var(--muted); font-size: .78rem; }

@@ -7,10 +7,11 @@ import tempfile
 import threading
 import unicodedata
 import uuid
+from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, time, timedelta
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, localcontext
 from io import BytesIO
 from pathlib import Path
 
@@ -75,7 +76,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "rostam"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 MUSCLE_GROUPS = (
     ("abs", "Abs"),
     ("back", "Back"),
@@ -831,6 +832,38 @@ class RostamDatabase:
                     CREATE INDEX idx_sets_workout ON exercise_sets(workout_exercise_id, occurred_at);
                     CREATE INDEX idx_workouts_started ON workouts(started_at);
                     INSERT INTO schema_migrations(version) VALUES (17);
+                    COMMIT;
+                """)
+            if (
+                connection.execute("SELECT 1 FROM schema_migrations WHERE version = 18").fetchone()
+                is None
+            ):
+                connection.executescript("""
+                    BEGIN IMMEDIATE;
+                    CREATE TABLE supplement_products (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL, brand TEXT NOT NULL DEFAULT '', form TEXT NOT NULL DEFAULT '',
+                        unit TEXT NOT NULL, amount_per_unit TEXT NOT NULL, amount_unit TEXT NOT NULL,
+                        daily_target TEXT, interval_days INTEGER NOT NULL DEFAULT 1,
+                        start_date TEXT NOT NULL, rating INTEGER, stock TEXT, stock_effective_at TEXT,
+                        package_size TEXT, expiry_date TEXT, archived_at TEXT,
+                        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                    );
+                    CREATE TABLE supplement_intakes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        product_id INTEGER NOT NULL REFERENCES supplement_products(id),
+                        taken_at TEXT NOT NULL, quantity TEXT NOT NULL,
+                        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+                    );
+                    CREATE INDEX idx_supplement_intakes_product
+                        ON supplement_intakes(product_id, taken_at);
+                    CREATE INDEX idx_supplement_intakes_time ON supplement_intakes(taken_at);
+                    CREATE TABLE supplement_notes (
+                        product_id INTEGER NOT NULL REFERENCES supplement_products(id),
+                        entry_date TEXT NOT NULL, body TEXT NOT NULL,
+                        PRIMARY KEY(product_id, entry_date)
+                    );
+                    INSERT INTO schema_migrations(version) VALUES (18);
                     COMMIT;
                 """)
             connection.execute(
@@ -2174,8 +2207,320 @@ class RostamDatabase:
             (day, exercise_id),
         ).fetchall()
 
-    def day(self, day_value: str) -> dict:
+    @staticmethod
+    def _supplement_decimal(
+        value: str | None, label: str, *, zero: bool = False, grouped: bool = False
+    ) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if grouped and re.fullmatch(r"[1-9][0-9]{0,2}(?:,[0-9]{3})+(?:\.[0-9]+)?", value):
+            value = value.replace(",", "")
+        else:
+            value = value.replace(",", ".")
+        if not re.fullmatch(r"(?:[0-9]{1,12}(?:\.[0-9]{1,8})?|\.[0-9]{1,8})", value):
+            raise DomainError(f"{label} must have up to 12 whole digits and 8 decimal places.")
+        number = Decimal(value)
+        if not zero and number == 0:
+            raise DomainError(f"{label} must be greater than zero.")
+        return format(number.normalize(), "f")
+
+    @staticmethod
+    def _supplement_product(row: sqlite3.Row) -> dict:
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "brand": row["brand"],
+            "form": row["form"],
+            "unit": row["unit"],
+            "amountPerUnit": row["amount_per_unit"],
+            "amountUnit": row["amount_unit"],
+            "dailyTarget": row["daily_target"],
+            "intervalDays": row["interval_days"],
+            "startDate": row["start_date"],
+            "rating": row["rating"],
+            "archived": row["archived_at"] is not None,
+        }
+
+    @staticmethod
+    def _supplement_row(connection: sqlite3.Connection, product_id: int) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM supplement_products WHERE id = ?", (product_id,)
+        ).fetchone()
+        if row is None:
+            raise DomainError("Supplement product not found.")
+        return row
+
+    def list_supplements(self) -> list[dict]:
+        with self.connect() as connection:
+            return [
+                self._supplement_product(row)
+                for row in connection.execute(
+                    "SELECT * FROM supplement_products "
+                    "ORDER BY archived_at IS NOT NULL, name COLLATE NOCASE, brand, id"
+                )
+            ]
+
+    def save_supplement(self, payload, product_id: int | None = None) -> dict:
+        name, unit, amount_unit = (
+            payload.name.strip(),
+            payload.unit.strip(),
+            payload.amountUnit.strip(),
+        )
+        if not name or not unit or not amount_unit:
+            raise DomainError("Name, intake unit, and measurement unit are required.")
+        values = (
+            name,
+            payload.brand.strip(),
+            payload.form.strip(),
+            unit,
+            self._supplement_decimal(payload.amountPerUnit, "Amount per unit", grouped=True),
+            amount_unit,
+            self._supplement_decimal(payload.dailyTarget, "Daily target"),
+            payload.intervalDays,
+            payload.startDate.isoformat(),
+            payload.rating,
+        )
+        now = self._utc_now()
+        with self.connect() as connection, connection:
+            if product_id is None:
+                product_id = connection.execute(
+                    """INSERT INTO supplement_products(
+                        name, brand, form, unit, amount_per_unit, amount_unit, daily_target,
+                        interval_days, start_date, rating, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (*values, now, now),
+                ).lastrowid
+            else:
+                connection.execute(
+                    """UPDATE supplement_products SET name=?, brand=?, form=?, unit=?,
+                        amount_per_unit=?, amount_unit=?, daily_target=?, interval_days=?,
+                        start_date=?, rating=?, updated_at=? WHERE id=?""",
+                    (*values, now, product_id),
+                )
+            return self._supplement_product(self._supplement_row(connection, product_id))
+
+    def archive_supplement(self, product_id: int, archived: bool) -> None:
+        now = self._utc_now()
+        with self.connect() as connection, connection:
+            self._supplement_row(connection, product_id)
+            connection.execute(
+                "UPDATE supplement_products SET archived_at=?, updated_at=? WHERE id=?",
+                (now if archived else None, now, product_id),
+            )
+
+    def _supplement_timestamp(self, value: str) -> str:
+        try:
+            if "T" not in value:
+                raise ValueError
+            parsed = datetime.fromisoformat(value)
+        except ValueError as exc:
+            raise DomainError("Enter a valid intake or stock date and time.") from exc
+        try:
+            if parsed.tzinfo is None:
+                parsed = self._resolve_local_occurrence(parsed.date(), parsed.time())
+            instant = parsed.astimezone(UTC)
+            instant.astimezone(self.settings.timezone)
+        except OverflowError as exc:
+            raise DomainError("Intake or stock time is outside the supported date range.") from exc
+        if instant > self.now_local().astimezone(UTC):
+            raise DomainError("Intake and stock times cannot be in the future.")
+        return instant.isoformat(timespec="microseconds")
+
+    def reset_supplement_stock(self, product_id: int, payload) -> None:
+        balance = self._supplement_decimal(payload.startingBalance, "Starting balance", zero=True)
+        size = self._supplement_decimal(payload.packageSize, "Package size")
+        expiry = payload.expiryDate.isoformat() if payload.expiryDate else None
+        with self.connect() as connection, connection:
+            self._supplement_row(connection, product_id)
+            now = self._utc_now()
+            effective = (
+                self._supplement_timestamp(payload.effectiveAt) if payload.effectiveAt else now
+            )
+            connection.execute(
+                """UPDATE supplement_products SET stock=?, stock_effective_at=?, package_size=?,
+                    expiry_date=?, updated_at=? WHERE id=?""",
+                (balance, effective, size, expiry, now, product_id),
+            )
+
+    def save_supplement_intake(
+        self, product_id: int, payload, intake_id: int | None = None
+    ) -> None:
+        taken_at = self._supplement_timestamp(payload.takenAt)
+        quantity = self._supplement_decimal(payload.quantity, "Intake quantity")
+        now = self._utc_now()
+        with self.connect() as connection, connection:
+            self._supplement_row(connection, product_id)
+            if intake_id is None:
+                connection.execute(
+                    """INSERT INTO supplement_intakes(product_id, taken_at, quantity, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)""",
+                    (product_id, taken_at, quantity, now, now),
+                )
+            elif not connection.execute(
+                """UPDATE supplement_intakes SET taken_at=?, quantity=?, updated_at=?
+                WHERE product_id=? AND id=?""",
+                (taken_at, quantity, now, product_id, intake_id),
+            ).rowcount:
+                raise DomainError("Supplement intake not found.")
+
+    def delete_supplement_intake(self, product_id: int, intake_id: int) -> None:
+        with self.connect() as connection, connection:
+            if not connection.execute(
+                "DELETE FROM supplement_intakes WHERE product_id=? AND id=?",
+                (product_id, intake_id),
+            ).rowcount:
+                raise DomainError("Supplement intake not found.")
+
+    def save_supplement_note(self, product_id: int, day_value: str, body: str) -> None:
         self._parse_day(day_value)
+        if len(body) > MAX_DAILY_NOTE_LENGTH:
+            raise DomainError(
+                f"Supplement notes must be at most {MAX_DAILY_NOTE_LENGTH:,} characters."
+            )
+        with self.connect() as connection, connection:
+            self._supplement_row(connection, product_id)
+            if body.strip():
+                connection.execute(
+                    """INSERT INTO supplement_notes(product_id, entry_date, body) VALUES (?, ?, ?)
+                    ON CONFLICT(product_id, entry_date) DO UPDATE SET body=excluded.body""",
+                    (product_id, day_value, body),
+                )
+            else:
+                connection.execute(
+                    "DELETE FROM supplement_notes WHERE product_id=? AND entry_date=?",
+                    (product_id, day_value),
+                )
+
+    def _supplement_date(self, timestamp: str) -> str:
+        return (
+            datetime.fromisoformat(timestamp).astimezone(self.settings.timezone).date().isoformat()
+        )
+
+    def _supplement_intakes_between(
+        self, connection: sqlite3.Connection, first: date, end: date
+    ) -> list[sqlite3.Row]:
+        bounds = tuple(
+            (
+                datetime.min.replace(tzinfo=UTC)
+                if day == date.min
+                else datetime.combine(day, time.min, self.settings.timezone).astimezone(UTC)
+            ).isoformat(timespec="microseconds")
+            for day in (first, end)
+        )
+        return connection.execute(
+            "SELECT * FROM supplement_intakes WHERE taken_at >= ? AND taken_at < ?", bounds
+        ).fetchall()
+
+    def _supplements_for_day(self, connection: sqlite3.Connection, day: date) -> list[dict]:
+        today = day == self.today()
+        notes = {
+            row["product_id"]: row["body"]
+            for row in connection.execute(
+                "SELECT product_id, body FROM supplement_notes WHERE entry_date=?",
+                (day.isoformat(),),
+            )
+        }
+        totals: dict[int, Decimal] = defaultdict(Decimal)
+        with localcontext(prec=64):
+            for row in self._supplement_intakes_between(connection, day, day + timedelta(days=1)):
+                totals[row["product_id"]] += Decimal(row["quantity"])
+            cards = []
+            for row in connection.execute(
+                "SELECT * FROM supplement_products ORDER BY name COLLATE NOCASE, brand, id"
+            ):
+                product_id = row["id"]
+                elapsed = (day - date.fromisoformat(row["start_date"])).days
+                scheduled = (
+                    row["archived_at"] is None
+                    and elapsed >= 0
+                    and elapsed % row["interval_days"] == 0
+                )
+                if today and row["archived_at"] is not None:
+                    continue
+                if not scheduled and product_id not in totals and product_id not in notes:
+                    continue
+                quantity = totals[product_id]
+                cards.append(
+                    {
+                        **self._supplement_product(row),
+                        "quantity": format(quantity.normalize(), "f"),
+                        "amount": format(
+                            (quantity * Decimal(row["amount_per_unit"])).normalize(), "f"
+                        ),
+                        "note": notes.get(product_id),
+                        "due": today
+                        and scheduled
+                        and row["daily_target"] is not None
+                        and quantity < Decimal(row["daily_target"]),
+                    }
+                )
+        return cards
+
+    def supplement_history(self, product_id: int) -> dict:
+        with self.connect() as connection, localcontext(prec=64):
+            product = self._supplement_row(connection, product_id)
+            entries_by_day: dict[str, list[dict]] = defaultdict(list)
+            totals: dict[str, Decimal] = defaultdict(Decimal)
+            used = Decimal(0)
+            per_unit = Decimal(product["amount_per_unit"])
+            effective = product["stock_effective_at"]
+            for row in connection.execute(
+                """SELECT id, taken_at, quantity FROM supplement_intakes WHERE product_id=?
+                ORDER BY taken_at DESC, id DESC""",
+                (product_id,),
+            ):
+                day = self._supplement_date(row["taken_at"])
+                quantity = Decimal(row["quantity"])
+                totals[day] += quantity
+                if effective is not None and row["taken_at"] >= effective:
+                    used += quantity
+                entries_by_day[day].append(
+                    {
+                        "id": row["id"],
+                        "takenAt": row["taken_at"],
+                        "quantity": row["quantity"],
+                        "amount": format((quantity * per_unit).normalize(), "f"),
+                    }
+                )
+
+            def daily_total(day: str) -> dict:
+                quantity = totals.get(day, Decimal(0))
+                return {
+                    "date": day,
+                    "quantity": format(quantity.normalize(), "f"),
+                    "amount": format((quantity * per_unit).normalize(), "f"),
+                }
+
+            notes = connection.execute(
+                "SELECT entry_date AS date, body FROM supplement_notes "
+                "WHERE product_id=? ORDER BY entry_date DESC",
+                (product_id,),
+            )
+            today = self.today()
+            return {
+                "product": self._supplement_product(product),
+                "stock": None
+                if effective is None
+                else {
+                    "startingBalance": product["stock"],
+                    "balance": format((Decimal(product["stock"]) - used).normalize(), "f"),
+                    "effectiveAt": effective,
+                    "packageSize": product["package_size"],
+                    "expiryDate": product["expiry_date"],
+                },
+                "days": [
+                    {**daily_total(day), "intakes": entries_by_day[day]}
+                    for day in sorted(entries_by_day, reverse=True)
+                ],
+                "chart": [
+                    daily_total((today - timedelta(days=i)).isoformat()) for i in range(29, -1, -1)
+                ],
+                "notes": [dict(row) for row in notes],
+            }
+
+    def day(self, day_value: str) -> dict:
+        day = self._parse_day(day_value)
         with self.connect() as connection:
             note = connection.execute(
                 "SELECT body FROM daily_notes WHERE entry_date = ?", (day_value,)
@@ -2183,6 +2528,7 @@ class RostamDatabase:
             photo_count = connection.execute(
                 "SELECT COUNT(*) FROM daily_photos WHERE entry_date = ?", (day_value,)
             ).fetchone()[0]
+            supplements = self._supplements_for_day(connection, day)
             activities = self._activity_entries_for_day(connection, day_value)
             workouts = self._workouts_for_day(connection, day_value)
             active_row = connection.execute(
@@ -2230,6 +2576,7 @@ class RostamDatabase:
             "activeWorkout": active_workout,
             "dailyNote": note["body"] if note else None,
             "photoCount": photo_count,
+            "supplements": supplements,
         }
 
     def _activity_time(self, value: str) -> datetime:
@@ -2639,7 +2986,19 @@ class RostamDatabase:
                     local_end.isoformat(timespec="microseconds"),
                 ),
             ).fetchall()
-        active_dates = {row["entry_date"] for row in rows}
+            supplement_dates = {
+                self._supplement_date(row["taken_at"])
+                for row in self._supplement_intakes_between(connection, first, next_month)
+            }
+            supplement_dates.update(
+                row["entry_date"]
+                for row in connection.execute(
+                    "SELECT DISTINCT entry_date FROM supplement_notes "
+                    "WHERE entry_date >= ? AND entry_date < ?",
+                    (first.isoformat(), next_month.isoformat()),
+                )
+            )
+        active_dates = supplement_dates | {row["entry_date"] for row in rows}
         active_dates.update(
             datetime.fromisoformat(row["started_at"])
             .astimezone(self.settings.timezone)

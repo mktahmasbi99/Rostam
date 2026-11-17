@@ -1,5 +1,6 @@
 import type { Workout, WorkoutSummary, WorkoutPayload, ExerciseSet, Activity, ActivityEntry, ActivityNoteGroup, ActivityNotePage, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPage, BodyMeasurementPayload, Config, DailyNotePage, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, MeasurementTrends, PhotoPage, Profile, ProfilePayload, RestoreResult, Rotation, RotationRecommendation, SetPayload } from "./types";
 import { trackWrite } from "./restartSafety";
+import type { SupplementHistory, SupplementIntakePayload, SupplementPayload, SupplementProduct, SupplementStockPayload } from "./types";
 import { reportServerReachability, reportUncertainWrite, requireReachableServer, ServerConnectionError } from "./connectivity";
 
 async function request<T>(path: string, init?: RequestInit, options: { clearDraftOnSuccess?: boolean } = {}): Promise<T> {
@@ -42,6 +43,23 @@ const json = (method: string, body?: unknown): RequestInit => ({
 });
 
 export const api = {
+  supplements: (signal?: AbortSignal) => request<SupplementProduct[]>("/api/supplements", { signal }),
+  supplement: (id: number, signal?: AbortSignal) => request<SupplementHistory>(`/api/supplements/${id}`, { signal }),
+  saveSupplement: (payload: SupplementPayload, id?: number) => id === undefined
+    ? request<SupplementProduct>("/api/supplements", json("POST", payload))
+    : request<SupplementProduct>(`/api/supplements/${id}`, json("PUT", payload)),
+  archiveSupplement: (id: number, archived: boolean) =>
+    request<void>(`/api/supplements/${id}/${archived ? "archive" : "restore"}`, json("POST")),
+  resetSupplementStock: (id: number, payload: SupplementStockPayload) =>
+    request<void>(`/api/supplements/${id}/stock`, json("PUT", payload)),
+  logSupplementIntake: (id: number, payload: SupplementIntakePayload) =>
+    request<void>(`/api/supplements/${id}/intakes`, json("POST", payload)),
+  correctSupplementIntake: (id: number, intakeId: number, payload: SupplementIntakePayload) =>
+    request<void>(`/api/supplements/${id}/intakes/${intakeId}`, json("PUT", payload)),
+  deleteSupplementIntake: (id: number, intakeId: number) =>
+    request<void>(`/api/supplements/${id}/intakes/${intakeId}`, json("DELETE")),
+  saveSupplementNote: (id: number, day: string, body: string) =>
+    request<void>(`/api/supplements/${id}/notes/${day}`, json("PUT", { body })),
   workouts: (beforeId?: number) => request<{ items: WorkoutSummary[]; nextBeforeId: number | null }>(`/api/workouts${beforeId ? `?beforeId=${beforeId}` : ""}`),
   activeWorkout: () => request<Workout | null>("/api/workouts/active"),
   workout: (id: number) => request<Workout>(`/api/workouts/${id}`),

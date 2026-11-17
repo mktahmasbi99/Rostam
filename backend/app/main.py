@@ -44,6 +44,9 @@ from .schemas import (
     RotationMembers,
     RotationName,
     SetWrite,
+    SupplementIntakeWrite,
+    SupplementStockWrite,
+    SupplementWrite,
     WorkoutDelete,
     WorkoutExerciseAdd,
     WorkoutOrder,
@@ -182,6 +185,63 @@ def delete_body_measurement(measurement_id: int) -> None:
 @app.get("/api/days/{day}")
 def get_day(day: str) -> dict:
     return database.day(day)
+
+
+@app.get("/api/supplements")
+def list_supplements() -> list[dict]:
+    return database.list_supplements()
+
+
+@app.post("/api/supplements", status_code=201)
+def create_supplement(payload: SupplementWrite) -> dict:
+    return database.save_supplement(payload)
+
+
+@app.get("/api/supplements/{product_id}")
+def supplement_history(product_id: int) -> dict:
+    return database.supplement_history(product_id)
+
+
+@app.put("/api/supplements/{product_id}")
+def update_supplement(product_id: int, payload: SupplementWrite) -> dict:
+    return database.save_supplement(payload, product_id)
+
+
+@app.post("/api/supplements/{product_id}/archive", status_code=204)
+def archive_supplement(product_id: int) -> None:
+    database.archive_supplement(product_id, True)
+
+
+@app.post("/api/supplements/{product_id}/restore", status_code=204)
+def restore_supplement(product_id: int) -> None:
+    database.archive_supplement(product_id, False)
+
+
+@app.put("/api/supplements/{product_id}/stock", status_code=204)
+def reset_supplement_stock(product_id: int, payload: SupplementStockWrite) -> None:
+    database.reset_supplement_stock(product_id, payload)
+
+
+@app.post("/api/supplements/{product_id}/intakes", status_code=204)
+def log_supplement_intake(product_id: int, payload: SupplementIntakeWrite) -> None:
+    database.save_supplement_intake(product_id, payload)
+
+
+@app.put("/api/supplements/{product_id}/intakes/{intake_id}", status_code=204)
+def correct_supplement_intake(
+    product_id: int, intake_id: int, payload: SupplementIntakeWrite
+) -> None:
+    database.save_supplement_intake(product_id, payload, intake_id)
+
+
+@app.delete("/api/supplements/{product_id}/intakes/{intake_id}", status_code=204)
+def delete_supplement_intake(product_id: int, intake_id: int) -> None:
+    database.delete_supplement_intake(product_id, intake_id)
+
+
+@app.put("/api/supplements/{product_id}/notes/{day}", status_code=204)
+def write_supplement_note(product_id: int, day: str, payload: DailyNoteUpdate) -> None:
+    database.save_supplement_note(product_id, day, payload.body)
 
 
 @app.get("/api/activities")

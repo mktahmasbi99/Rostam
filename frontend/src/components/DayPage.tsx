@@ -11,6 +11,7 @@ import { SetRow } from "./SetRow";
 import { ActivityEntryCard } from "./ActivityEntry";
 import { ReadState } from "./ReadState";
 
+const Supplements = lazy(() => import("./Supplements").then((module) => ({ default: module.Supplements })));
 const WorkoutEditor = lazy(() => import("./WorkoutEditor").then((module) => ({ default: module.WorkoutEditor })));
 const WorkoutDetailsForm = lazy(() => import("./WorkoutEditor").then((module) => ({ default: module.WorkoutDetailsForm })));
 const ExerciseNote = lazy(() => import("./ExerciseNote").then((module) => ({ default: module.ExerciseNote })));
@@ -205,7 +206,11 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       {loaded && <div className="day-journal-actions"><Suspense fallback={<span className="deferred-loading" role="status">Loading journal…</span>}><DailyJournal day={day} today={today} note={data.dailyNote ?? null} photoCount={data.photoCount ?? 0} onChanged={() => void load()} /></Suspense></div>}
 
       <ReadState loading={loading} error={error} hasData={loaded} onRetry={() => void load()} loadingText="Loading sets…" />
-      {loaded && !loading && !error && data.sections.length === 0 && !(data.activities?.length) && !(data.workouts?.length) && !pendingExercise && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise, activity, or workout.</p></div>}
+
+      {loaded && data.date === day && (day === today || Boolean(data.supplements?.length)) &&
+        <Suspense fallback={null}><Supplements key={day} cards={data.supplements ?? []} day={day} today={today} timezone={timezone} onChanged={() => void load()} /></Suspense>}
+
+      {loaded && !loading && !error && data.sections.length === 0 && !(data.activities?.length) && !(data.workouts?.length) && !pendingExercise && !data.supplements?.length && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise, activity, or workout.</p></div>}
 
       {workoutError && <p className="error" role="alert">{workoutError}</p>}
       {data.activeWorkout && !data.workouts?.some((item) => item.id === data.activeWorkout?.id) && <button className="workout-resume-banner" onClick={() => setWorkoutId(data.activeWorkout!.id)}>Resume {data.activeWorkout.name} · workout in progress</button>}

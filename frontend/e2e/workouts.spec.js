@@ -1,30 +1,16 @@
 import { expect, test } from "@playwright/test";
-import { existsSync } from "node:fs";
-import { spawn } from "node:child_process";
-import { mkdtemp, mkdir, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
+import { startLedgerFixture } from "./ledger-fixture.mjs";
 
-// Real API and SQLite, isolated from every user database and the PWA fixtures.
-const origin = "http://127.0.0.1:4187";
-let backend;
-let directory;
-let backendOutput = "";
+let ledger;
+let origin;
 test.use({ serviceWorkers: "block", screenshot: "only-on-failure" });
 test.beforeAll(async () => {
-  directory = await mkdtemp(resolve(tmpdir(), "rostam-workout-e2e-"));
-  backend = spawn(existsSync(resolve("../.venv/bin/python")) ? resolve("../.venv/bin/python") : "python3", ["-m", "uvicorn", "app.main:app", "--app-dir", resolve("../backend"), "--host", "127.0.0.1", "--port", "4187"], {
-    env: { ...process.env, ROSTAM_DB: resolve(directory, "ledger.sqlite3"), TZ: "Europe/Warsaw" },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  backend.stdout.on("data", (chunk) => { backendOutput += chunk; });
-  backend.stderr.on("data", (chunk) => { backendOutput += chunk; });
-  await expect.poll(async () => { try { return (await fetch(`${origin}/api/config`)).status; } catch { return 0; } }, { message: "Temporary workout backend must start", timeout: 15000 }).toBe(200);
+  ledger = await startLedgerFixture(4187);
+  origin = ledger.origin;
 });
-test.afterAll(async () => {
-  if (backend && backend.exitCode === null) { backend.kill("SIGTERM"); await new Promise((done) => backend.once("exit", done)); }
-  if (directory) await rm(directory, { recursive: true, force: true });
-});
+test.afterAll(async () => { await ledger?.close(); });
 test.beforeEach(async ({ request }) => {
   const { items } = await (await request.get(`${origin}/api/workouts?limit=50`)).json();
   for (const item of items) await request.delete(`${origin}/api/workouts/${item.id}`, { data: { confirmation: "DELETE" } });
@@ -105,7 +91,7 @@ for (const width of [390, 1280]) {
       const day = await (await request.get(`${origin}/api/days/${today}`)).json();
       expect(day.sections).toHaveLength(0);
       expect(day.workouts[0].setCount).toBe(3);
-      expect(backendOutput).not.toContain("Traceback");
+      expect(ledger.output).not.toContain("Traceback");
     });
   }
 }

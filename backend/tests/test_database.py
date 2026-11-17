@@ -15,6 +15,7 @@ from pillow_heif import from_pillow
 from app.config import Settings
 from app.database import (
     PHOTO_SUMMARY_COLUMNS,
+    SCHEMA_VERSION,
     DomainError,
     RostamDatabase,
     parse_weight_grams,
@@ -925,7 +926,7 @@ def test_schema_v1_migration_converts_recorded_exercises_without_losing_history(
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 18))
+        ] == list(range(1, SCHEMA_VERSION + 1))
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM exercises WHERE exercise_note IS NOT NULL"
@@ -961,7 +962,7 @@ def test_schema_v2_migration_adds_notes_without_changing_history(database):
     with migrated.connect() as connection:
         assert [
             row[0] for row in connection.execute("SELECT version FROM schema_migrations")
-        ] == list(range(1, 18))
+        ] == list(range(1, SCHEMA_VERSION + 1))
         assert connection.execute("PRAGMA foreign_key_check").fetchone() is None
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
@@ -1037,7 +1038,10 @@ def test_restore_validates_staged_database_before_atomic_replacement(database, m
     ("statement", "message"),
     [
         ("UPDATE backup_metadata SET app_id = 'other-app' WHERE id = 1", "not a Rostam"),
-        ("INSERT INTO schema_migrations(version) VALUES (18)", "schema is newer"),
+        (
+            f"INSERT INTO schema_migrations(version) VALUES ({SCHEMA_VERSION + 1})",
+            "schema is newer",
+        ),
     ],
 )
 def test_restore_rejects_incompatible_backup_without_creating_a_safety_backup(
