@@ -1,11 +1,11 @@
-import { Archive, ChevronRight, FileText, Notebook, Pill, Plus } from "lucide-react";
+import { Archive, ChevronRight, FileText, Notebook, Plus } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import type { SupplementCard, SupplementHistory, SupplementIntake, SupplementProduct } from "../lib/types";
 import { workoutLocalTime } from "../lib/workoutTime";
 import { Modal } from "./Modal";
 import { ReadState } from "./ReadState";
-import { SupplementForm, SupplementIntakeForm, SupplementNoteForm, SupplementProductForm, SupplementStockForm } from "./SupplementForms";
+import { SupplementForm, SupplementIntakeForm, SupplementNoteForm, SupplementProductForm, SupplementRatingForm, SupplementStockForm } from "./SupplementForms";
 
 interface DayContext {
   day: string;
@@ -44,11 +44,10 @@ function useSupplementRead<T>(read: (signal: AbortSignal) => Promise<T>) {
 }
 
 function productLabel(product: SupplementProduct) {
-  return [product.brand, product.form, `${product.amountPerUnit} ${product.amountUnit} per intake unit`].filter(Boolean).join(" · ");
+  return [product.brand, `${product.amountPerUnit} ${product.amountUnit} per intake unit`].filter(Boolean).join(" · ");
 }
 
 export function Supplements({ cards, ...context }: DayContext & { cards: SupplementCard[] }) {
-  const [library, setLibrary] = useState(false);
   const [selected, setSelected] = useState<{ card: SupplementCard; view: "details" | "intake" | "note" } | null>(null);
 
   function saved() {
@@ -56,36 +55,34 @@ export function Supplements({ cards, ...context }: DayContext & { cards: Supplem
     context.onChanged();
   }
 
-  return <section className="supplement-section" aria-label="Supplements">
-    {context.day === context.today && <button className="supplement-library-link" onClick={() => setLibrary(true)}>
-      <Pill aria-hidden="true" />Supplement library<ChevronRight aria-hidden="true" />
-    </button>}
-    {cards.map((card) => <article className="supplement-card" key={card.id}>
-      <div className="supplement-card-heading">
-        <button className="supplement-name" onClick={() => setSelected({ card, view: "details" })} aria-label={`View ${card.name} details`}>
-          <strong>{card.name}</strong><ChevronRight aria-hidden="true" />
-        </button>
-        <div className="journal-actions">
-          <button aria-label={`Open ${card.name} note${card.note ? " (saved)" : ""}`} title="Open supplement note"
-            className={card.note ? "journal-active" : ""} onClick={() => setSelected({ card, view: "note" })}><FileText /></button>
+  return <>
+    {cards.length > 0 && <section className="supplement-section" aria-label="Supplements">
+      {cards.map((card) => <article className="supplement-card" key={card.id}>
+        <div className="supplement-card-heading">
+          <button className="supplement-name" onClick={() => setSelected({ card, view: "details" })} aria-label={`View ${card.name} details`}>
+            <strong>{card.name}</strong><ChevronRight aria-hidden="true" />
+          </button>
+          <div className="journal-actions">
+            <button aria-label={`Open ${card.name} note${card.note ? " (saved)" : ""}`} title="Open supplement note"
+              className={card.note ? "journal-active" : ""} onClick={() => setSelected({ card, view: "note" })}><FileText /></button>
+          </div>
+          <button className="icon-button" aria-label={`Log ${card.name} intake`} title="Log intake" onClick={() => setSelected({ card, view: "intake" })}><Plus /></button>
         </div>
-        <button className="icon-button" aria-label={`Log ${card.name} intake`} title="Log intake" onClick={() => setSelected({ card, view: "intake" })}><Plus /></button>
-      </div>
-      <small>{productLabel(card)}{card.archived && " · Archived"}</small>
-      <div className="supplement-card-total">
-        <strong>{card.quantity}{card.dailyTarget && ` / ${card.dailyTarget}`} {card.unit}</strong>
-        {card.due && <span className="supplement-due">Due</span>}
-      </div>
-      {card.quantity !== "0" && <small>{card.amount} {card.amountUnit}</small>}
-    </article>)}
-    {library && <SupplementLibrary {...context} onClose={() => setLibrary(false)} />}
+        <small>{productLabel(card)}{card.archived && " · Archived"}</small>
+        <div className="supplement-card-total">
+          <strong>{card.quantity}{card.dailyTarget && ` / ${card.dailyTarget}`} {card.unit}</strong>
+          {card.due && <span className="supplement-due">Due</span>}
+        </div>
+        {card.quantity !== "0" && <small>{card.amount} {card.amountUnit}</small>}
+      </article>)}
+    </section>}
     {selected?.view === "details" && <SupplementDetails {...context} product={selected.card} onClose={() => setSelected(null)} />}
     {selected?.view === "intake" && <SupplementIntakeForm {...context} product={selected.card} onClose={() => setSelected(null)} onSaved={saved} />}
     {selected?.view === "note" && <SupplementNoteForm product={selected.card} date={context.day} body={selected.card.note ?? ""} onClose={() => setSelected(null)} onSaved={saved} />}
-  </section>;
+  </>;
 }
 
-function SupplementLibrary({ onClose, ...context }: DayContext & { onClose: () => void }) {
+export function SupplementLibrary({ onClose, ...context }: DayContext & { onClose: () => void }) {
   const { data, reload, status } = useSupplementRead(api.supplements);
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<SupplementProduct | null>(null);
@@ -102,7 +99,7 @@ function SupplementLibrary({ onClose, ...context }: DayContext & { onClose: () =
         <span>
           <strong>{product.name}</strong>
           <small>{productLabel(product)}</small>
-          <small>{product.rating === null ? "Unrated" : `★ ${product.rating} / 5`}{product.archived && " · Archived"}</small>
+          {product.archived && <small>Archived</small>}
         </span>
         <ChevronRight aria-hidden="true" />
       </button>)}
@@ -112,7 +109,7 @@ function SupplementLibrary({ onClose, ...context }: DayContext & { onClose: () =
   </Modal>;
 }
 
-type DetailEditor = { kind: "intake"; intake?: SupplementIntake } | { kind: "product" | "stock" | "archive" };
+type DetailEditor = { kind: "intake"; intake?: SupplementIntake } | { kind: "product" | "rating" | "stock" | "archive" };
 
 function SupplementDetails({ product: initialProduct, onClose, ...context }: DayContext & {
   product: SupplementProduct;
@@ -143,6 +140,10 @@ function SupplementDetails({ product: initialProduct, onClose, ...context }: Day
         <button className="primary" disabled={blocked} onClick={() => setEditor({ kind: "intake" })}><Plus aria-hidden="true" />Log intake</button>
         <button disabled={blocked} onClick={() => setEditor({ kind: "product" })}>Edit product</button>
         <button disabled={blocked} onClick={() => setEditor({ kind: "archive" })}><Archive aria-hidden="true" />{archiveLabel}</button>
+      </div>
+      <div className="supplement-card-heading">
+        <p>Rating · {product.rating === null ? "Unrated" : `${product.rating} / 5 stars`}</p>
+        <button className="supplement-edit-rating" disabled={blocked} onClick={() => setEditor({ kind: "rating" })}>Edit rating</button>
       </div>
       <section className="supplement-card supplement-stock" aria-label="Stock">
         <div className="supplement-card-heading">
@@ -180,6 +181,7 @@ function SupplementDetails({ product: initialProduct, onClose, ...context }: Day
     </div>}
     {editor?.kind === "intake" && <SupplementIntakeForm {...context} {...actions} product={product} intake={editor.intake} />}
     {editor?.kind === "product" && <SupplementProductForm {...actions} today={context.today} product={product} />}
+    {editor?.kind === "rating" && <SupplementRatingForm {...actions} product={product} />}
     {editor?.kind === "stock" && data && <SupplementStockForm {...context} {...actions} product={product} stock={data.stock} />}
     {editor?.kind === "archive" && <SupplementForm {...actions} title={archiveLabel} saveLabel={archiveLabel} save={() => api.archiveSupplement(product.id, !product.archived)}>
       <p>{product.archived ? `Restore ${product.name} to its schedule?` : `Archive ${product.name}? Its history, notes, and rating will stay in the library.`}</p>

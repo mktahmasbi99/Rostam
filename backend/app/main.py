@@ -45,6 +45,7 @@ from .schemas import (
     RotationName,
     SetWrite,
     SupplementIntakeWrite,
+    SupplementRatingWrite,
     SupplementStockWrite,
     SupplementWrite,
     WorkoutDelete,
@@ -205,6 +206,11 @@ def supplement_history(product_id: int) -> dict:
 @app.put("/api/supplements/{product_id}")
 def update_supplement(product_id: int, payload: SupplementWrite) -> dict:
     return database.save_supplement(payload, product_id)
+
+
+@app.put("/api/supplements/{product_id}/rating", status_code=204)
+def rate_supplement(product_id: int, payload: SupplementRatingWrite) -> None:
+    database.rate_supplement(product_id, payload.rating)
 
 
 @app.post("/api/supplements/{product_id}/archive", status_code=204)

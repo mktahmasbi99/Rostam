@@ -22,7 +22,7 @@ test("day add menu opens its existing pickers and stays visible on a narrow scre
       expect(menuBox.x).toBeGreaterThanOrEqual(0);
       expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(width);
       const items = menu.getByRole("menuitem");
-      await expect(items).toHaveCount(3);
+      await expect(items).toHaveCount(4);
       const iconBoxes = await items.locator(".day-add-menu-icon > svg").evaluateAll((icons) =>
         icons.map((icon) => icon.getBoundingClientRect().x),
       );

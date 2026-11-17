@@ -712,8 +712,8 @@ fieldset.dialog-content-controls { display: contents; min-width: 0; margin: 0; p
 .supplement-section { margin-bottom: 20px; }
 .supplement-stack > p, .supplement-stack h3, .supplement-fields p, .supplement-card p, .supplement-card h3 { margin: 0; }
 .supplement-section small, .supplement-stack small, .supplement-fields small { color: var(--muted); }
-.supplement-library-link { justify-self: start; padding-inline: 12px; }
-.supplement-library-link svg, .supplement-stack button svg { width: 17px; flex-shrink: 0; }
+.supplement-stack button svg { width: 17px; flex-shrink: 0; }
+.supplement-edit-rating { padding-inline: 10px; }
 .supplement-card {
   display: grid;
   gap: 6px;

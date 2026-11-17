@@ -153,18 +153,17 @@ export interface DayData {
 export interface SupplementPayload {
   name: string;
   brand: string;
-  form: string;
   unit: string;
   amountPerUnit: string;
   amountUnit: string;
   dailyTarget: string | null;
   intervalDays: number;
   startDate: string;
-  rating: number | null;
 }
 
 export interface SupplementProduct extends SupplementPayload {
   id: number;
+  rating: number | null;
   archived: boolean;
 }
 

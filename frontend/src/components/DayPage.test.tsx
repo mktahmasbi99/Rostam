@@ -148,7 +148,7 @@ describe("DayPage exercise notes", () => {
     await user.keyboard("{Home}");
     expect(workoutItem).toHaveFocus();
     await user.keyboard("{End}");
-    expect(exerciseItem).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: /Supplement library/ })).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(trigger).toHaveFocus();
     expect(trigger).toHaveAttribute("aria-expanded", "false");

@@ -227,3 +227,16 @@ def test_migrate_existing_database_to_supplements(database):
         product["id"], SupplementIntakeWrite(takenAt="2026-01-01T12:00", quantity="0.5")
     )
     assert database.supplement_history(product["id"])["days"][0]["amount"] == "500"
+
+
+def test_product_settings_preserve_rating_and_legacy_form(client):
+    settings = {key: value for key, value in PRODUCT.items() if key not in {"form", "rating"}}
+    created = client.post("/api/supplements", json={**settings, "form": "Powder"}).json()
+    assert created["rating"] is None
+    path = f"/api/supplements/{created['id']}"
+    assert client.put(f"{path}/rating", json={"rating": 6}).status_code == 422
+    assert client.put(f"{path}/rating", json={"rating": 4}).status_code == 204
+    edited = client.put(path, json={**settings, "brand": "Corrected"}).json()
+    assert (edited["brand"], edited["rating"], edited["form"]) == ("Corrected", 4, "Powder")
+    assert client.put(f"{path}/rating", json={"rating": None}).status_code == 204
+    assert client.get(path).json()["product"]["rating"] is None

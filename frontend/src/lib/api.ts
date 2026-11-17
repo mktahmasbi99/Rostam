@@ -48,6 +48,8 @@ export const api = {
   saveSupplement: (payload: SupplementPayload, id?: number) => id === undefined
     ? request<SupplementProduct>("/api/supplements", json("POST", payload))
     : request<SupplementProduct>(`/api/supplements/${id}`, json("PUT", payload)),
+  rateSupplement: (id: number, rating: number | null) =>
+    request<void>(`/api/supplements/${id}/rating`, json("PUT", { rating })),
   archiveSupplement: (id: number, archived: boolean) =>
     request<void>(`/api/supplements/${id}/${archived ? "archive" : "restore"}`, json("POST")),
   resetSupplementStock: (id: number, payload: SupplementStockPayload) =>

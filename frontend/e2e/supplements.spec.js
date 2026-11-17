@@ -9,21 +9,31 @@ test.afterAll(async () => { await ledger?.close(); });
 test("create, log, note, and review a supplement at iPhone size", async ({ page, request }) => {
   const { today } = await (await request.get(`${ledger.origin}/api/config`)).json();
   await page.goto(ledger.origin);
-  await page.getByRole("button", { name: "Supplement library" }).click();
+  await expect(page.getByRole("button", { name: "Supplement library", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Add to day" }).click();
+  await page.getByRole("menuitem", { name: /Supplement library/ }).click();
   await page.getByRole("button", { name: "Add supplement" }).click();
   const form = page.getByRole("dialog", { name: "New supplement" });
   await form.getByLabel("Name", { exact: true }).fill("Magnesium powder");
   await form.getByLabel("Brand").fill("Example");
-  await form.getByLabel("Form").fill("Powder");
-  await form.getByLabel("Intake unit", { exact: true }).fill("scoops");
+  await expect(form.getByLabel("Form", { exact: true })).toHaveCount(0);
+  await expect(form.getByLabel("Rating")).toHaveCount(0);
+  const unit = form.getByLabel("Intake unit", { exact: true });
+  const fields = form.locator("input");
+  const fieldCount = await fields.count();
+  await unit.selectOption({ label: "Other" });
+  await expect(unit).toHaveValue("units");
+  await expect(fields).toHaveCount(fieldCount);
+  await unit.selectOption({ label: "Scoops" });
   await form.getByLabel("Amount per unit").fill("300");
   await form.getByLabel("Measurement unit").fill("mg");
-  await form.getByLabel("Daily target").fill("0.5");
-  await form.getByLabel("Rating").selectOption("4");
+  const target = form.getByLabel("Daily target (optional)", { exact: true });
+  await expect(target).toHaveAttribute("placeholder", "Enter number of units");
+  await target.fill("0.5");
   await form.getByRole("button", { name: "Save product" }).click();
 
   const library = page.getByRole("dialog", { name: "Supplement library" });
-  await expect(library.getByRole("button", { name: /Magnesium powder.*4 \/ 5/ })).toBeVisible();
+  await expect(library.getByRole("button", { name: /Magnesium powder/ })).toBeVisible();
   await library.getByRole("button", { name: "Close Supplement library" }).click();
   const cards = page.getByRole("region", { name: "Supplements" });
   await expect(cards.getByText("Due", { exact: true })).toBeVisible();
@@ -49,6 +59,13 @@ test("create, log, note, and review a supplement at iPhone size", async ({ page,
   await expect(detail.getByRole("list", { name: "Recorded intake over 30 days" }).getByRole("listitem")).toHaveCount(30);
   await expect(detail.getByRole("listitem", { name: `${today}: 150 mg` })).toBeAttached();
   expect(await detail.locator(".modal-content").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+
+  await expect(detail.getByText("Rating · Unrated")).toBeVisible();
+  await detail.getByRole("button", { name: "Edit rating" }).click();
+  const rating = page.getByRole("dialog", { name: "Supplement rating" });
+  await rating.getByRole("combobox", { name: "Rating", exact: true }).selectOption("4");
+  await rating.getByRole("button", { name: "Save rating" }).click();
+  await expect(detail.getByText("Rating · 4 / 5 stars")).toBeVisible();
 
   await detail.getByRole("button", { name: "Open supplement notebook" }).click();
   const notebook = page.getByRole("dialog", { name: "Magnesium powder notebook" });

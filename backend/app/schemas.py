@@ -102,6 +102,12 @@ class SupplementStockWrite(BaseModel):
     expiryDate: date | None = None
 
 
+class SupplementRatingWrite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rating: int | None = Field(ge=1, le=5)
+
+
 class SupplementIntakeWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

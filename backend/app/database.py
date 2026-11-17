@@ -2272,33 +2272,48 @@ class RostamDatabase:
         values = (
             name,
             payload.brand.strip(),
-            payload.form.strip(),
             unit,
             self._supplement_decimal(payload.amountPerUnit, "Amount per unit", grouped=True),
             amount_unit,
             self._supplement_decimal(payload.dailyTarget, "Daily target"),
             payload.intervalDays,
             payload.startDate.isoformat(),
-            payload.rating,
         )
+        form = payload.form.strip()
         now = self._utc_now()
         with self.connect() as connection, connection:
             if product_id is None:
                 product_id = connection.execute(
                     """INSERT INTO supplement_products(
-                        name, brand, form, unit, amount_per_unit, amount_unit, daily_target,
-                        interval_days, start_date, rating, created_at, updated_at
+                        name, brand, unit, amount_per_unit, amount_unit, daily_target,
+                        interval_days, start_date, form, rating, created_at, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (*values, now, now),
+                    (*values, form, payload.rating, now, now),
                 ).lastrowid
             else:
                 connection.execute(
-                    """UPDATE supplement_products SET name=?, brand=?, form=?, unit=?,
+                    """UPDATE supplement_products SET name=?, brand=?, unit=?,
                         amount_per_unit=?, amount_unit=?, daily_target=?, interval_days=?,
-                        start_date=?, rating=?, updated_at=? WHERE id=?""",
-                    (*values, now, product_id),
+                        start_date=?, form=COALESCE(?, form), rating=CASE WHEN ? THEN ? ELSE rating END,
+                        updated_at=? WHERE id=?""",
+                    (
+                        *values,
+                        form if "form" in payload.model_fields_set else None,
+                        "rating" in payload.model_fields_set,
+                        payload.rating,
+                        now,
+                        product_id,
+                    ),
                 )
             return self._supplement_product(self._supplement_row(connection, product_id))
+
+    def rate_supplement(self, product_id: int, rating: int | None) -> None:
+        with self.connect() as connection, connection:
+            if not connection.execute(
+                "UPDATE supplement_products SET rating=?, updated_at=? WHERE id=?",
+                (rating, self._utc_now(), product_id),
+            ).rowcount:
+                raise DomainError("Supplement product not found.")
 
     def archive_supplement(self, product_id: int, archived: bool) -> None:
         now = self._utc_now()

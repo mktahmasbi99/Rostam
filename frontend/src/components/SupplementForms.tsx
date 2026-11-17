@@ -57,36 +57,56 @@ function field(fields: FormData, key: string): string {
   return String(fields.get(key) ?? "").trim();
 }
 
+const intakeUnits = [
+  { value: "capsules", label: "Capsules" },
+  { value: "tablets", label: "Tablets" },
+  { value: "scoops", label: "Scoops" },
+  { value: "drops", label: "Drops" },
+  { value: "droppers", label: "Droppers" },
+  { value: "units", label: "Other" },
+];
+
 export function SupplementProductForm({ product, today, ...actions }: SupplementEditorActions & {
   product?: SupplementProduct;
   today: string;
 }) {
   return <SupplementForm title={product ? "Edit supplement" : "New supplement"} saveLabel="Save product" {...actions}
     save={(fields) => api.saveSupplement({
-      name: field(fields, "name"), brand: field(fields, "brand"), form: field(fields, "form"),
+      name: field(fields, "name"), brand: field(fields, "brand"),
       unit: field(fields, "unit"), amountPerUnit: field(fields, "amountPerUnit"),
       amountUnit: field(fields, "amountUnit"), dailyTarget: field(fields, "dailyTarget") || null,
       intervalDays: Number(field(fields, "intervalDays")), startDate: field(fields, "startDate"),
-      rating: Number(field(fields, "rating")) || null,
     }, product?.id)}>
     <label>Name<input name="name" defaultValue={product?.name} maxLength={100} required /></label>
-    <div className="supplement-fields-pair">
-      <label>Brand<input name="brand" defaultValue={product?.brand} maxLength={100} /></label>
-      <label>Form<input name="form" defaultValue={product?.form} placeholder="Capsule, powder…" maxLength={60} /></label>
-    </div>
-    <label>Intake unit<input name="unit" defaultValue={product?.unit} placeholder="capsules, scoops, droppers…" maxLength={40} required /></label>
+    <label>Brand<input name="brand" defaultValue={product?.brand} maxLength={100} /></label>
+    <label>Intake unit
+      <select name="unit" aria-label="Intake unit" defaultValue={product?.unit ?? ""} required>
+        <option value="" disabled>Choose a unit</option>
+        {intakeUnits.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
+        {product && !intakeUnits.some(({ value }) => value === product.unit) &&
+          <option value={product.unit}>{product.unit}</option>}
+      </select>
+    </label>
     <div className="supplement-fields-pair">
       <label>Amount per unit<input name="amountPerUnit" inputMode="decimal" defaultValue={product?.amountPerUnit} maxLength={40} required /></label>
       <label>Measurement unit<input name="amountUnit" defaultValue={product?.amountUnit} placeholder="mg, IU…" maxLength={40} required /></label>
     </div>
     {product && <small>Label corrections update historical amounts. Add a separate product for a different brand, form, or strength.</small>}
-    <label>Daily target ({product?.unit ?? "intake units"}, optional)<input name="dailyTarget" inputMode="decimal" defaultValue={product?.dailyTarget ?? ""} maxLength={40} /></label>
+    <label>Daily target (optional)<input name="dailyTarget" inputMode="decimal" placeholder="Enter number of units" defaultValue={product?.dailyTarget ?? ""} maxLength={40} /></label>
     <div className="supplement-fields-pair">
       <label>Repeat every (days)<input type="number" name="intervalDays" min={1} max={3652058} step={1} defaultValue={product?.intervalDays ?? 1} required /></label>
       <label>Start date<input type="date" name="startDate" defaultValue={product?.startDate ?? today} required /></label>
     </div>
+  </SupplementForm>;
+}
+
+export function SupplementRatingForm({ product, ...actions }: SupplementEditorActions & {
+  product: SupplementProduct;
+}) {
+  return <SupplementForm title="Supplement rating" saveLabel="Save rating" {...actions}
+    save={(fields) => api.rateSupplement(product.id, Number(field(fields, "rating")) || null)}>
     <label>Rating
-      <select name="rating" defaultValue={product?.rating ?? ""}>
+      <select name="rating" aria-label="Rating" defaultValue={product.rating ?? ""}>
         <option value="">Unrated</option>
         {[1, 2, 3, 4, 5].map((rating) => <option key={rating} value={rating}>{rating} {rating === 1 ? "star" : "stars"}</option>)}
       </select>

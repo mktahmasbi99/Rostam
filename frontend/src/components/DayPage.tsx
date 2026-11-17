@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, ClipboardList, Clock3, Dumbbell, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, ClipboardList, Clock3, Dumbbell, Pill, Plus } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { workoutTimeRange } from "../lib/workoutTime";
 import { api } from "../lib/api";
@@ -12,6 +12,7 @@ import { ActivityEntryCard } from "./ActivityEntry";
 import { ReadState } from "./ReadState";
 
 const Supplements = lazy(() => import("./Supplements").then((module) => ({ default: module.Supplements })));
+const SupplementLibrary = lazy(() => import("./Supplements").then((module) => ({ default: module.SupplementLibrary })));
 const WorkoutEditor = lazy(() => import("./WorkoutEditor").then((module) => ({ default: module.WorkoutEditor })));
 const WorkoutDetailsForm = lazy(() => import("./WorkoutEditor").then((module) => ({ default: module.WorkoutDetailsForm })));
 const ExerciseNote = lazy(() => import("./ExerciseNote").then((module) => ({ default: module.ExerciseNote })));
@@ -45,6 +46,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
   const [pickerOpen, setPickerOpen] = useState(false);
   const [activityPickerOpen, setActivityPickerOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [supplementLibraryOpen, setSupplementLibraryOpen] = useState(false);
   const [pendingExercise, setPendingExercise] = useState<Exercise | null>(null);
   const [rotationPrompt, setRotationPrompt] = useState<{ exercise: Exercise; rotation: Rotation } | null>(null);
   const [rotationPromptBusy, setRotationPromptBusy] = useState(false);
@@ -82,6 +84,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
     setAddingTo(null);
     setEditingSet(null);
     setAddMenuOpen(false);
+    setSupplementLibraryOpen(false);
     void load(controller.signal);
     return () => controller.abort();
   }, [load]);
@@ -209,6 +212,9 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
 
       {loaded && data.date === day && (day === today || Boolean(data.supplements?.length)) &&
         <Suspense fallback={null}><Supplements key={day} cards={data.supplements ?? []} day={day} today={today} timezone={timezone} onChanged={() => void load()} /></Suspense>}
+      {supplementLibraryOpen && <Suspense fallback={<div role="status">Loading supplement library…</div>}>
+        <SupplementLibrary day={day} today={today} timezone={timezone} onClose={() => setSupplementLibraryOpen(false)} onChanged={() => void load()} />
+      </Suspense>}
 
       {loaded && !loading && !error && data.sections.length === 0 && !(data.activities?.length) && !(data.workouts?.length) && !pendingExercise && !data.supplements?.length && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise, activity, or workout.</p></div>}
 
@@ -241,6 +247,11 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
           <button className="day-add-menu-item" role="menuitem" disabled={startingWorkout} onClick={() => void startWorkout()}><span className="day-add-menu-icon" aria-hidden="true"><ClipboardList /></span><span><strong>Start workout</strong><small>{day === today ? "Exercises and sets in one session" : "Record a workout for this day"}</small></span></button>
           <button className="day-add-menu-item" role="menuitem" onClick={openActivityPicker}><span className="day-add-menu-icon" aria-hidden="true"><Clock3 /></span><span><strong>Add activity</strong><small>BJJ, walking, and other activities</small></span></button>
           <button className="day-add-menu-item" role="menuitem" onClick={openExercisePicker}><span className="day-add-menu-icon" aria-hidden="true"><Dumbbell /></span><span><strong>Add exercise</strong><small>Sets throughout the day</small></span></button>
+          {day === today && <button className="day-add-menu-item" role="menuitem" onClick={() => {
+            setAddMenuOpen(false);
+            addTriggerRef.current?.focus();
+            setSupplementLibraryOpen(true);
+          }}><span className="day-add-menu-icon" aria-hidden="true"><Pill /></span><span><strong>Supplement library</strong><small>Add and manage supplements</small></span></button>}
         </div>}
         <button ref={addTriggerRef} className={`add-exercise ${addMenuOpen ? "menu-open" : ""}`} aria-label={addMenuOpen ? "Close add menu" : "Add to day"} aria-haspopup="menu" aria-expanded={addMenuOpen} aria-controls="day-add-menu" onClick={() => setAddMenuOpen((open) => !open)}><Plus /></button>
       </div>
