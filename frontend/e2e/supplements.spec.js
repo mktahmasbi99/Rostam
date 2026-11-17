@@ -96,4 +96,16 @@ test("create, log, note, and review a supplement at iPhone size", async ({ page,
   await intake.getByRole("button", { name: "Save intake" }).click();
   await expect(detail.getByText("-0.25 scoops remaining")).toBeVisible();
   await expect(detail.getByText("Negative balance. Reconcile stock.")).toBeVisible();
+
+  await detail.getByRole("button", { name: "Close Magnesium powder", exact: true }).click();
+  await savedNote.click();
+  await note.getByRole("button", { name: "Delete note", exact: true }).click();
+  const confirmDelete = page.getByRole("dialog", { name: "Delete note?", exact: true });
+  await expect(confirmDelete).toBeVisible();
+  await confirmDelete.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(note.getByRole("textbox", { name: "Note", exact: true })).toHaveValue("Mixed in water.");
+  await note.getByRole("button", { name: "Delete note", exact: true }).click();
+  await confirmDelete.getByRole("button", { name: "Delete note", exact: true }).click();
+  await expect(note).toBeHidden();
+  await expect(emptyNote.locator("svg.lucide-file")).toBeVisible();
 });

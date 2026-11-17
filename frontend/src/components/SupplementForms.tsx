@@ -18,6 +18,13 @@ export function SupplementForm({ title, saveLabel, onClose, onSaved, save, child
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  function closeConfirmation() {
+    if (saving) return;
+    setConfirmingDelete(false);
+    setError("");
+  }
 
   async function submit(action: () => Promise<unknown>) {
     if (saving) return;
@@ -40,16 +47,29 @@ export function SupplementForm({ title, saveLabel, onClose, onSaved, save, child
     }}>
       <fieldset className="supplement-fields" disabled={saving}>
         {children}
-        {error && <p className="error" role="alert">{error}</p>}
+        {error && !confirmingDelete && <p className="error" role="alert">{error}</p>}
         <div className="supplement-actions">
           {remove && <button type="button" className="danger" onClick={() => {
-            if (window.confirm(remove.confirm)) void submit(remove.action);
+            setError("");
+            setConfirmingDelete(true);
           }}>{remove.label}</button>}
           <button type="button" onClick={onClose}>Cancel</button>
           <button className="primary">{saving ? "Saving…" : saveLabel}</button>
         </div>
       </fieldset>
     </form>
+    {confirmingDelete && remove && <Modal title={`${remove.label}?`} onClose={closeConfirmation}>
+      <div className="stack">
+        <p>{remove.confirm} This cannot be undone.</p>
+        {error && <p className="error" role="alert">{error}</p>}
+        <div className="form-actions">
+          <button className="secondary" disabled={saving} onClick={closeConfirmation}>Cancel</button>
+          <button className="danger-button" disabled={saving} onClick={() => void submit(remove.action)}>
+            {saving ? "Deleting…" : remove.label}
+          </button>
+        </div>
+      </div>
+    </Modal>}
   </Modal>;
 }
 
