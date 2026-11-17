@@ -1,4 +1,4 @@
-import { Archive, ChevronRight, FileText, Notebook, Plus } from "lucide-react";
+import { Archive, ChevronRight, File, FileText, NotebookPen, Plus } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import type { SupplementCard, SupplementHistory, SupplementIntake, SupplementProduct } from "../lib/types";
@@ -58,13 +58,16 @@ export function Supplements({ cards, ...context }: DayContext & { cards: Supplem
   return <>
     {cards.length > 0 && <section className="supplement-section" aria-label="Supplements">
       {cards.map((card) => <article className="supplement-card" key={card.id}>
+        <button className="supplement-card-open" onClick={() => setSelected({ card, view: "details" })} aria-label={`View ${card.name} details`} />
         <div className="supplement-card-heading">
-          <button className="supplement-name" onClick={() => setSelected({ card, view: "details" })} aria-label={`View ${card.name} details`}>
+          <div className="supplement-name">
             <strong>{card.name}</strong><ChevronRight aria-hidden="true" />
-          </button>
+          </div>
           <div className="journal-actions">
             <button aria-label={`Open ${card.name} note${card.note ? " (saved)" : ""}`} title="Open supplement note"
-              className={card.note ? "journal-active" : ""} onClick={() => setSelected({ card, view: "note" })}><FileText /></button>
+              className={card.note ? "journal-active" : ""} onClick={() => setSelected({ card, view: "note" })}>
+              {card.note ? <FileText /> : <File />}
+            </button>
           </div>
           <button className="icon-button" aria-label={`Log ${card.name} intake`} title="Log intake" onClick={() => setSelected({ card, view: "intake" })}><Plus /></button>
         </div>
@@ -132,7 +135,7 @@ function SupplementDetails({ product: initialProduct, onClose, ...context }: Day
   };
   const archiveLabel = product.archived ? "Restore supplement" : "Archive supplement";
   return <Modal title={product.name} onClose={onClose} wide groupHeaderActionWithClose
-    headerAction={<button className="icon-button" title="Supplement notebook" aria-label="Open supplement notebook" disabled={!data || blocked} onClick={() => setNotebookOpen(true)}><Notebook /></button>}>
+    headerAction={<button className="icon-button" title="Supplement notebook" aria-label="Open supplement notebook" disabled={!data || blocked} onClick={() => setNotebookOpen(true)}><NotebookPen /></button>}>
     {status}
     {data && <div className="supplement-stack">
       <p className="supplement-product-label">{productLabel(product)}{product.archived && " · Archived"}</p>

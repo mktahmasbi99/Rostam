@@ -11,7 +11,7 @@ test("create, log, note, and review a supplement at iPhone size", async ({ page,
   await page.goto(ledger.origin);
   await expect(page.getByRole("button", { name: "Supplement library", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Add to day" }).click();
-  await page.getByRole("menuitem", { name: /Supplement library/ }).click();
+  await page.getByRole("menuitem", { name: "Supplement", exact: true }).click();
   await page.getByRole("button", { name: "Add supplement" }).click();
   const form = page.getByRole("dialog", { name: "New supplement" });
   await form.getByLabel("Name", { exact: true }).fill("Magnesium powder");
@@ -45,13 +45,18 @@ test("create, log, note, and review a supplement at iPhone size", async ({ page,
   await expect(cards.getByText("0.5 / 0.5 scoops")).toBeVisible();
   await expect(cards.getByText("Due", { exact: true })).toHaveCount(0);
 
-  await cards.getByRole("button", { name: "Open Magnesium powder note", exact: true }).click();
+  const emptyNote = cards.getByRole("button", { name: "Open Magnesium powder note", exact: true });
+  await expect(emptyNote.locator("svg.lucide-file")).toBeVisible();
+  await expect(emptyNote).not.toHaveClass(/journal-active/);
+  await emptyNote.click();
   const note = page.getByRole("dialog", { name: "Magnesium powder note" });
   await note.getByLabel("Note", { exact: true }).fill("Mixed in water.");
   await note.getByRole("button", { name: "Save note" }).click();
-  await expect(cards.getByRole("button", { name: "Open Magnesium powder note (saved)" })).toHaveClass("journal-active");
+  const savedNote = cards.getByRole("button", { name: "Open Magnesium powder note (saved)" });
+  await expect(savedNote.locator("svg.lucide-file-text")).toBeVisible();
+  await expect(savedNote).toHaveClass("journal-active");
 
-  await cards.getByRole("button", { name: "View Magnesium powder details" }).click();
+  await cards.getByRole("article").click();
   const detail = page.getByRole("dialog", { name: "Magnesium powder", exact: true });
   await expect(detail.getByRole("region", { name: "Intake history" }).getByText("0.5 scoops · 150 mg").first()).toBeVisible();
   await expect(detail.getByRole("list", { name: "Recorded intake over 7 days" }).getByRole("listitem")).toHaveCount(7);
@@ -67,7 +72,9 @@ test("create, log, note, and review a supplement at iPhone size", async ({ page,
   await rating.getByRole("button", { name: "Save rating" }).click();
   await expect(detail.getByText("Rating · 4 / 5 stars")).toBeVisible();
 
-  await detail.getByRole("button", { name: "Open supplement notebook" }).click();
+  const notebookButton = detail.getByRole("button", { name: "Open supplement notebook" });
+  await expect(notebookButton.locator("svg.lucide-notebook-pen")).toBeVisible();
+  await notebookButton.click();
   const notebook = page.getByRole("dialog", { name: "Magnesium powder notebook" });
   await expect(notebook.getByText("Mixed in water.")).toBeVisible();
   const yesterday = new Date(Date.parse(today) - 86400000).toISOString().slice(0, 10);
