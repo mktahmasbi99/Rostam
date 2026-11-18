@@ -2,6 +2,7 @@ import { workoutLocalTime } from "../lib/workoutTime";
 import { RotateCcw } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useSetDeletion } from "../lib/useSetDeletion";
+import { clearDirtyOwner } from "../lib/restartSafety";
 import { api } from "../lib/api";
 import type { Exercise, ExerciseSet, SetPayload } from "../lib/types";
 import { durationValue, parseDurationValue } from "../lib/duration";
@@ -11,6 +12,9 @@ import { TimeWheelField } from "./TimeWheelField";
 
 interface Props {
   workout?: { id: number; entryId: number; startedAt: string; endedAt: string | null; timezone: string };
+  saveWorkoutSet?: (payload: SetPayload & { occurredAt: string }) => Promise<void>;
+  offline?: boolean;
+  prefillVersion?: number;
   exercise: Exercise;
   day: string;
   existing?: ExerciseSet;
@@ -19,7 +23,7 @@ interface Props {
   onDelete?: () => Promise<void> | void;
 }
 
-export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, workout }: Props) {
+export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, workout, saveWorkoutSet, offline, prefillVersion }: Props) {
   const form = useRef<HTMLFormElement>(null);
   const writing = useRef(false);
   const initialLocal = workout ? workoutLocalTime(existing?.occurredAt ?? (workout.endedAt ? workout.startedAt : new Date().toISOString()), workout.timezone) : "";
@@ -86,7 +90,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, 
   }
 
   async function refreshPrefill(atTime: string) {
-    if (existing || !atTime) return;
+    if (existing || !atTime || offline) return;
     try {
       applyPrefill(await api.prefill(exercise.id, setDate, atTime));
     } catch (caught) {
@@ -96,6 +100,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, 
 
   useEffect(() => {
     if (existing) return;
+    if (offline) { setLoading(false); setPrefillLoaded(true); setReadError(""); return; }
     let active = true;
     setLoading(true);
     setReadError("");
@@ -114,7 +119,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, 
       .catch((caught) => active && setReadError(caught instanceof Error ? caught.message : "Could not load previous set."))
       .finally(() => { if (active) { setLoading(false); setPrefillLoaded(true); } });
     return () => { active = false; };
-  }, [day, exercise.id, existing, prefillRetry]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [day, exercise.id, existing, prefillRetry, offline, prefillVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function save() {
     if (writing.current) return;
@@ -152,6 +157,10 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, 
           : !existing && !timeEdited && !dateEdited ? (workout.endedAt ? workout.startedAt : null) : `${setDate}T${time}`;
       }
       if (existing) await api.updateSet(existing.id, payload);
+      else if (saveWorkoutSet) {
+        await saveWorkoutSet({ ...payload, occurredAt: payload.occurredAt ?? new Date().toISOString() });
+        if (form.current?.dataset.updateDirty) clearDirtyOwner(form.current.dataset.updateDirty);
+      }
       else if (workout) await api.addWorkoutSet(workout.id, workout.entryId, payload);
       else await api.addSet(day, exercise.id, { ...payload, enrollInRotation: false });
       onSaved();

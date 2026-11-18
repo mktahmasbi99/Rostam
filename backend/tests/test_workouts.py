@@ -210,7 +210,7 @@ def test_workout_api_pagination_validation_and_version(database, clock, monkeypa
 
     monkeypatch.setattr(main, "database", database)
     client = TestClient(main.app)
-    assert client.get("/api/config").json()["version"] == "2.1.0"
+    assert client.get("/api/config").json()["version"] == "2.2.0"
     created = client.post(
         "/api/workouts", json={"startedAt": "2026-10-30T09:00", "endedAt": "2026-10-30T10:00"}
     ).json()
@@ -257,3 +257,81 @@ def test_historical_workout_does_not_replace_or_resume_live_workout(database, cl
     assert historical["endedAt"] is not None
     assert database.active_workout()["id"] == live["id"]
     assert database.day("2026-10-30")["workouts"][0]["id"] == historical["id"]
+
+
+def test_queued_workout_set_retries_after_finish_and_deletion(database, clock, monkeypatch):
+    from uuid import uuid4
+
+    from app import main
+
+    monkeypatch.setattr(main, "database", database)
+    client = TestClient(main.app)
+    workout = workout_with_exercise(database, "2026-10-31T11:00", None)
+    entry = workout["exercises"][0]
+    url = f"/api/workouts/{workout['id']}/exercises/{entry['id']}/sets"
+    payload = {
+        "occurredAt": "2026-10-31T10:30:00Z",
+        "resistanceKind": "bodyweight",
+        "repetitions": 5,
+        "operationId": str(uuid4()),
+        "ledgerGeneration": workout["ledgerGeneration"],
+    }
+    assert client.post(url, json={**payload, "ledgerGeneration": None}).status_code == 422
+    assert client.post(url, json={**payload, "occurredAt": None}).status_code == 422
+    log(database, workout, "2026-10-31T11:10")
+    database.update_workout(workout["id"], WorkoutWrite(), finish=True)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first, retry = pool.map(lambda _: client.post(url, json=payload), range(2))
+    assert first.status_code == retry.status_code == 201
+    saved = first.json()
+    assert saved == retry.json()
+    assert saved["operationId"] == payload["operationId"]
+    assert saved["occurredAt"] == "2026-10-31T10:30:00.000000+00:00"
+    assert database.workout(workout["id"])["setCount"] == 2
+    assert client.post(url, json={**payload, "repetitions": 8}).status_code == 409
+    assert (
+        client.post(
+            url, json={**payload, "operationId": str(uuid4()), "occurredAt": "2026-10-31T09:59:00Z"}
+        ).status_code
+        == 400
+    )
+    database.delete_workout(workout["id"], "DELETE")
+    assert client.post(url, json=payload).json() == saved
+    assert client.post(url, json={**payload, "operationId": str(uuid4())}).status_code == 400
+
+
+def test_sync_generation_migrates_older_backups_and_changes_on_each_replacement(database, clock):
+    from uuid import uuid4
+
+    from app.database import WorkoutSetConflict
+    from app.schemas import WorkoutSetWrite
+
+    workout = workout_with_exercise(database)
+    entry = workout["exercises"][0]
+    payload = WorkoutSetWrite(
+        occurredAt="2026-10-30T09:15",
+        repetitions=5,
+        resistanceKind="bodyweight",
+        operationId=uuid4(),
+        ledgerGeneration=workout["ledgerGeneration"],
+    )
+    saved = database.add_workout_set(workout["id"], entry["id"], payload)
+    marked = database.create_backup("on-demand")
+    database.restore_backup(marked["id"], "RESTORE")
+    restored = database.ledger_generation()
+    assert restored != workout["ledgerGeneration"]
+    assert database.workout(workout["id"])["exercises"][0]["sets"] == [saved]
+    with pytest.raises(WorkoutSetConflict, match="ledger was replaced"):
+        database.add_workout_set(workout["id"], entry["id"], payload)
+
+    source = database.backup_path(marked["id"])
+    with sqlite3.connect(source) as connection:
+        connection.execute("DROP TABLE workout_sync_generation")
+        connection.execute("DROP TABLE workout_set_receipts")
+        connection.execute("ALTER TABLE exercise_sets DROP COLUMN operation_id")
+        connection.execute("DELETE FROM schema_migrations WHERE version = 19")
+        connection.execute("DROP TABLE backup_metadata")
+    database.import_path(source, "IMPORT", source="2.1.0.sqlite3")
+    assert database.ledger_generation() not in (restored, workout["ledgerGeneration"])
+    assert database.workout(workout["id"])["setCount"] == 1

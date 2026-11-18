@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { reportServerReachability } from "../lib/connectivity";
 import { api } from "../lib/api";
 import type { Workout } from "../lib/types";
 import { WorkoutDetailsForm, WorkoutEditor } from "./WorkoutEditor";
@@ -10,7 +11,7 @@ vi.mock("../lib/api", () => ({ api: {
 } }));
 const workout: Workout = { id: 1, name: "Gym", startedAt: "2026-10-30T08:00:23Z", endedAt: null, exerciseCount: 0, setCount: 0, exercises: [] };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); reportServerReachability("reachable"); });
 
 describe("WorkoutEditor", () => {
   it("retries failed loads and prevents finishing empty workouts", async () => {

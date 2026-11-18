@@ -129,19 +129,45 @@ test("backfilled workout preserves the live workout and supports confirmed remov
   expect((await (await request.get(`${origin}/api/workouts`)).json()).items.map((item) => item.id)).toEqual([live.id]);
 });
 
-test("connection loss retains unsaved set values without retrying", async ({ page, request }) => {
+test("a lost save response retries the same operation without creating another set", async ({ page, request }) => {
   await page.goto(origin);
   await page.getByRole("button", { name: "Add to day" }).click();
   await page.getByRole("menuitem", { name: /Start workout/ }).click();
   await addExercise(page, "Push-ups");
-  let attempts = 0;
-  await page.route("**/api/workouts/*/exercises/*/sets", (route) => { attempts++; return route.abort("connectionfailed"); });
+  const attempts = [];
+  await page.route("**/api/workouts/*/exercises/*/sets", async (route) => {
+    attempts.push(route.request().postDataJSON());
+    const response = await route.fetch();
+    if (attempts.length === 1) return route.abort("connectionfailed");
+    return route.fulfill({ response });
+  });
   await page.getByLabel("Reps", { exact: true }).fill("17");
   await page.getByRole("checkbox", { name: "Save set" }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("change may have reached Rostam");
+  await expect(page.getByText("Pending workout sets (1)", { exact: true })).toHaveCount(1);
+  await expect.poll(async () => (await (await request.get(`${origin}/api/workouts/active`)).json()).setCount).toBe(1);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.getByLabel("17 reps", { exact: true })).toBeVisible();
+  await expect.poll(() => attempts.length).toBe(2);
+  expect(attempts[1]).toEqual(attempts[0]);
+  expect((await (await request.get(`${origin}/api/workouts/active`)).json()).setCount).toBe(1);
+});
+
+test("a failed local save leaves the set form intact", async ({ page, request }) => {
+  await page.goto(origin);
+  await page.getByRole("button", { name: "Add to day" }).click();
+  await page.getByRole("menuitem", { name: /Start workout/ }).click();
+  await addExercise(page, "Push-ups");
+  await page.evaluate(() => {
+    const add = IDBObjectStore.prototype.add;
+    IDBObjectStore.prototype.add = function (...args) {
+      if (this.name === "pendingSets") throw new DOMException("Test disk quota failure", "QuotaExceededError");
+      return add.apply(this, args);
+    };
+  });
+  await page.getByLabel("Reps", { exact: true }).fill("17");
+  await page.getByRole("checkbox", { name: "Save set" }).click();
+  await expect(page.getByRole("alert")).toContainText("Could not save this set on this device.");
   await expect(page.getByLabel("Reps", { exact: true })).toHaveValue("17");
-  await expect(page.getByRole("checkbox", { name: "Save set" })).toBeDisabled();
-  expect(attempts).toBe(1);
-  const active = await (await request.get(`${origin}/api/workouts/active`)).json();
-  expect(active.setCount).toBe(0);
+  await expect(page.getByText("Saved on this device · Pending sync")).toHaveCount(0);
+  expect((await (await request.get(`${origin}/api/workouts/active`)).json()).setCount).toBe(0);
 });

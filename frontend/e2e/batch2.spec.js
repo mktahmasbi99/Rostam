@@ -257,3 +257,50 @@ test("captures loading and error states in light/dark phone/desktop layouts", as
     }
   }
 });
+
+test("a pending set survives an app update while the API is unreachable", async ({ page }) => {
+  const today = "2026-10-25";
+  const ledgerGeneration = "08497300-f41d-4c05-9be4-f66760d669c1";
+  const workout = {
+    id: 1, name: "Update workout", startedAt: `${today}T07:00:00Z`, endedAt: null,
+    ledgerGeneration, exerciseCount: 1, setCount: 0,
+    exercises: [{ id: 1, position: 0, sets: [], exercise: {
+      id: 1, name: "Push-ups", measurementType: "repetitions", allowBodyweight: true,
+    } }],
+  };
+  let apiOffline = false;
+  await page.route("**/api/**", async (route) => {
+    if (apiOffline) return route.abort("connectionfailed");
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/config") return route.fulfill({ json: { today, timezone: "Europe/Warsaw", version: "2.2.0", ledgerGeneration } });
+    if (path === `/api/days/${today}`) return route.fulfill({ json: { date: today, sections: [], workouts: [workout], activeWorkout: workout } });
+    if (path === "/api/workouts/1" || path === "/api/workouts/active") return route.fulfill({ json: workout });
+    if (path.endsWith("/sets")) {
+      const payload = route.request().postDataJSON();
+      const set = { ...payload, id: 1, exerciseId: 1, date: today, time: "09:00", createdAt: payload.occurredAt };
+      workout.exercises[0].sets.push(set);
+      workout.setCount = 1;
+      return route.fulfill({ json: set, status: 201 });
+    }
+    return route.fulfill({ json: {} });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Update workout.*Resume/ }).click();
+  await page.getByRole("button", { name: "Add set", exact: true }).click();
+  await page.getByLabel("Reps", { exact: true }).fill("16");
+  apiOffline = true;
+  await page.getByRole("checkbox", { name: "Save set" }).click();
+  await expect(page.getByText("Saved on this device · Pending sync")).toBeVisible();
+  await expect(page.getByText("Offline · You can log sets in this workout.")).toBeVisible();
+  await page.getByRole("button", { name: "Close Update workout" }).click();
+  await page.request.post("/__test/switch?version=2");
+  await waitForWaitingWorker(page);
+  await page.getByRole("button", { name: "Restart to update" }).click();
+  await expect(page.locator('meta[name="rostam-build"]')).toHaveAttribute("content", "production-fixture-build-2");
+  await page.getByRole("button", { name: "Resume Update workout offline" }).click();
+  await expect(page.getByText("Saved on this device · Pending sync")).toBeVisible();
+  await expect(page.getByText(/16 reps/)).toBeVisible();
+  apiOffline = false;
+  await page.getByRole("button", { name: "Check connection" }).click();
+  await expect(page.getByLabel("16 reps", { exact: true })).toBeVisible();
+});

@@ -18,6 +18,7 @@ export interface Config {
   today: string;
   timezone: string;
   version: string;
+  ledgerGeneration?: string;
 }
 
 export interface Profile { heightCm: string | null; dateOfBirth: string | null; age: number | null; }
@@ -86,6 +87,7 @@ export interface Rotation {
 }
 
 export interface ExerciseSet {
+  operationId?: string;
   workoutExerciseId?: number | null;
   id: number;
   exerciseId: number;
@@ -136,7 +138,7 @@ export interface WorkoutExercise {
   exercise: Exercise;
   sets: ExerciseSet[];
 }
-export interface Workout extends WorkoutSummary { exercises: WorkoutExercise[]; }
+export interface Workout extends WorkoutSummary { exercises: WorkoutExercise[]; ledgerGeneration?: string; }
 export interface WorkoutPayload { name?: string; startedAt?: string; endedAt?: string; }
 
 export interface DayData {

@@ -14,13 +14,12 @@ This document tracks the agreed work across chats, commits, and pull requests. P
 
 ### Connection and storage contract
 
-- Require a reachable Rostam server for edits and saves. Browser `online` status alone is insufficient.
-- Detect disconnection, show a clear persistent warning, and disable editing and mutation actions while disconnected or while initial reachability is unconfirmed.
-- Do not persist ledger changes/drafts to localStorage, IndexedDB, service-worker caches, or an offline write queue. Do not replay or automatically retry writes after reconnection.
-- Existing unsaved input may remain in the currently open form's memory, with editing blocked while disconnected. It is not saved locally and must not be silently submitted on reconnect. Warn before a user-requested reload would discard it.
-- Report a save as successful only after the server confirms it. An interrupted response can leave the result uncertain: refresh/reconcile from the server before offering a retry that could duplicate a record.
-- Static app files and bundled illustrations may be cached for delivery efficiency. Do not add an offline ledger-data cache or precache private uploaded photos.
-- When an update is ready, offer “Restart to update”; do not force a reload over unsaved input or a pending write.
+- Require a reachable Rostam server for ledger writes other than new workout sets. Browser `online` status alone is insufficient. Show a clear warning when disconnected and keep online-only mutations disabled.
+- Starting in 2.2.0, cache the last active workout in IndexedDB and persist new workout sets in a local queue. Enable offline logging for exercises already in that workout. Confirm the local transaction before showing **Saved on this device · Pending sync**.
+- Sync queued sets when Rostam can reach the server. Use a stable operation ID across retries, preserve the original set timestamp, and retain entries that need review. The server rejects queued writes against a ledger generation that predates a restore or import.
+- Keep unsaved form values in memory. Unqueued saves succeed only after server confirmation. When an unqueued response is interrupted, reconcile server data before retrying.
+- Cache static app files and bundled illustrations for delivery and offline startup. Keep API responses and private photos out of service-worker caches.
+- Offer **Restart to update** when a build is ready. Protect dirty forms and in-flight writes during restart coordination. Retain the committed IndexedDB queue across updates.
 
 ## How to track progress
 

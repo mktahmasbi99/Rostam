@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import sqlite3
@@ -76,7 +77,7 @@ SEED_EXERCISES = (
 
 BACKUP_APP_ID = "rostam"
 BACKUP_FORMAT_VERSION = 1
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 MUSCLE_GROUPS = (
     ("abs", "Abs"),
     ("back", "Back"),
@@ -121,6 +122,10 @@ register_heif_opener()
 
 
 class DomainError(ValueError):
+    pass
+
+
+class WorkoutSetConflict(DomainError):
     pass
 
 
@@ -866,6 +871,27 @@ class RostamDatabase:
                     INSERT INTO schema_migrations(version) VALUES (18);
                     COMMIT;
                 """)
+            if not connection.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = 19"
+            ).fetchone():
+                connection.executescript("""
+                    BEGIN IMMEDIATE;
+                    CREATE TABLE workout_sync_generation (
+                        id INTEGER PRIMARY KEY CHECK (id = 1),
+                        generation TEXT NOT NULL
+                    );
+                    ALTER TABLE exercise_sets ADD COLUMN operation_id TEXT;
+                    CREATE TABLE workout_set_receipts (
+                        operation_id TEXT PRIMARY KEY,
+                        request TEXT NOT NULL,
+                        response TEXT NOT NULL
+                    );
+                """)
+                connection.execute(
+                    "INSERT INTO workout_sync_generation VALUES (1, ?)", (str(uuid.uuid4()),)
+                )
+                connection.execute("INSERT INTO schema_migrations(version) VALUES (19)")
+                connection.commit()
             connection.execute(
                 """
                 INSERT OR IGNORE INTO backup_metadata(
@@ -875,6 +901,12 @@ class RostamDatabase:
                 (BACKUP_APP_ID, BACKUP_FORMAT_VERSION, self._utc_now()),
             )
             connection.commit()
+
+    def ledger_generation(self, connection: sqlite3.Connection | None = None) -> str:
+        if connection is None:
+            with self.connect() as current:
+                return self.ledger_generation(current)
+        return connection.execute("SELECT generation FROM workout_sync_generation").fetchone()[0]
 
     def _workout_timestamp(self, value: str) -> str:
         try:
@@ -914,6 +946,7 @@ class RostamDatabase:
 
     def _workout_detail(self, connection: sqlite3.Connection, workout_id: int) -> dict:
         result = self._workout_summary(connection, self._workout_row(connection, workout_id))
+        result["ledgerGeneration"] = self.ledger_generation(connection)
         result["exercises"] = []
         for row in connection.execute(
             "SELECT * FROM workout_exercises WHERE workout_id = ? ORDER BY position, id",
@@ -1129,11 +1162,34 @@ class RostamDatabase:
             raise DomainError("Set time must be within the workout's start and end times.")
 
     def add_workout_set(self, workout_id: int, entry_id: int, payload) -> dict:
-        # Validate both identifiers; add_set repeats membership/time validation in its transaction.
-        with self._database_lock:
-            with self.connect() as connection:
-                member = self._workout_member(connection, workout_id, entry_id)
-            return self.add_set(member["exercise_id"], "", payload, workout_exercise_id=entry_id)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            receipt = None
+            if getattr(payload, "operationId", None) is not None:
+                if str(payload.ledgerGeneration) != self.ledger_generation(connection):
+                    raise WorkoutSetConflict("This set was saved before the ledger was replaced.")
+                operation_id = str(payload.operationId)
+                request = json.dumps(
+                    [workout_id, entry_id, payload.model_dump(mode="json")], sort_keys=True
+                )
+                existing = connection.execute(
+                    "SELECT request, response FROM workout_set_receipts WHERE operation_id = ?",
+                    (operation_id,),
+                ).fetchone()
+                if existing is not None:
+                    if existing["request"] != request:
+                        raise WorkoutSetConflict("This save ID belongs to a different set.")
+                    return json.loads(existing["response"])
+                receipt = (operation_id, request)
+            member = self._workout_member(connection, workout_id, entry_id)
+            return self._add_set(
+                connection,
+                member["exercise_id"],
+                "",
+                payload,
+                workout_exercise_id=entry_id,
+                receipt=receipt,
+            )
 
     def _utc_now(self) -> str:
         return datetime.now(UTC).isoformat(timespec="microseconds")
@@ -1805,6 +1861,7 @@ class RostamDatabase:
         duration = row["duration_seconds"]
         hold = row["hold_seconds"]
         return {
+            **({"operationId": row["operation_id"]} if row["operation_id"] else {}),
             "id": row["id"],
             "exerciseId": row["exercise_id"],
             "workoutExerciseId": row["workout_exercise_id"],
@@ -3158,8 +3215,20 @@ class RostamDatabase:
             )
             connection.commit()
 
-    def add_set(
-        self, exercise_id: int, day_value: str, payload, *, workout_exercise_id: int | None = None
+    def add_set(self, exercise_id: int, day_value: str, payload) -> dict:
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            return self._add_set(connection, exercise_id, day_value, payload)
+
+    def _add_set(
+        self,
+        connection: sqlite3.Connection,
+        exercise_id: int,
+        day_value: str,
+        payload,
+        *,
+        workout_exercise_id: int | None = None,
+        receipt: tuple[str, str] | None = None,
     ) -> dict:
         if workout_exercise_id is not None:
             occurred_at = (
@@ -3178,86 +3247,89 @@ class RostamDatabase:
                 raise DomainError("Use time for standalone exercise sets.")
             occurred_at = self._occurrence(day_value, payload.time)
         now = self._utc_now()
-        with self.connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
-            if workout_exercise_id is not None:
-                self._validate_workout_set(
-                    connection, workout_exercise_id, exercise_id, occurred_at
-                )
-            exercise = self._exercise_row(connection, exercise_id)
-            if exercise["archived_at"] is not None:
-                raise DomainError("Restore this exercise before adding a set.")
-            active = connection.execute(
-                "SELECT * FROM rotations WHERE active = 1 AND ? IS NULL", (workout_exercise_id,)
+        if workout_exercise_id is not None:
+            self._validate_workout_set(connection, workout_exercise_id, exercise_id, occurred_at)
+        exercise = self._exercise_row(connection, exercise_id)
+        if exercise["archived_at"] is not None:
+            raise DomainError("Restore this exercise before adding a set.")
+        active = connection.execute(
+            "SELECT * FROM rotations WHERE active = 1 AND ? IS NULL", (workout_exercise_id,)
+        ).fetchone()
+        first_today = (
+            connection.execute(
+                "SELECT 1 FROM exercise_sets WHERE entry_date = ? AND exercise_id = ? AND workout_exercise_id IS NULL",
+                (day_value, exercise_id),
             ).fetchone()
-            first_today = (
-                connection.execute(
-                    "SELECT 1 FROM exercise_sets WHERE entry_date = ? AND exercise_id = ? AND workout_exercise_id IS NULL",
-                    (day_value, exercise_id),
-                ).fetchone()
-                is None
-            )
-            member = (
-                active
-                and connection.execute(
-                    "SELECT 1 FROM rotation_members WHERE rotation_id = ? AND exercise_id = ?",
-                    (active["id"], exercise_id),
-                ).fetchone()
-            )
-            if (
-                active
-                and first_today
-                and not member
-                and day_value == self.today().isoformat()
-                and getattr(payload, "enrollInRotation", None) is None
-            ):
-                raise DomainError("Choose Add to rotation or Just record it before saving.")
-            reps, duration, hold, resistance, weight, equipment, custom = self._validate_set(
-                exercise,
-                payload.repetitions,
-                payload.durationMinutes,
-                payload.durationSeconds,
-                payload.holdMinutes,
-                payload.holdSeconds,
-                payload.resistanceKind,
-                payload.weightKg,
-            )
-            if workout_exercise_id is None:
-                self._ensure_day_exercise(connection, day_value, exercise_id, now)
-            cursor = connection.execute(
-                """
-                INSERT INTO exercise_sets(
-                    exercise_id, entry_date, occurred_at, repetitions,
-                    duration_seconds, hold_seconds, resistance_kind, weight_grams, equipment,
-                    custom_equipment, created_at, updated_at, workout_exercise_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    exercise_id,
-                    day_value,
-                    occurred_at,
-                    reps,
-                    duration,
-                    hold,
-                    resistance,
-                    weight,
-                    equipment,
-                    custom,
-                    now,
-                    now,
-                    workout_exercise_id,
-                ),
-            )
-            if active and day_value == self.today().isoformat():
-                self._roll_rotation(connection, active["id"])
-                if first_today and not member and getattr(payload, "enrollInRotation", None):
-                    self._enroll_today(connection, active["id"], exercise_id, day_value)
-                self._resolve_due_if_logged(connection, active["id"], day_value)
-            connection.commit()
-            row = connection.execute(
-                "SELECT * FROM exercise_sets WHERE id = ?", (cursor.lastrowid,)
+            is None
+        )
+        member = (
+            active
+            and connection.execute(
+                "SELECT 1 FROM rotation_members WHERE rotation_id = ? AND exercise_id = ?",
+                (active["id"], exercise_id),
             ).fetchone()
-            return self._serialize_set(row)
+        )
+        if (
+            active
+            and first_today
+            and not member
+            and day_value == self.today().isoformat()
+            and getattr(payload, "enrollInRotation", None) is None
+        ):
+            raise DomainError("Choose Add to rotation or Just record it before saving.")
+        reps, duration, hold, resistance, weight, equipment, custom = self._validate_set(
+            exercise,
+            payload.repetitions,
+            payload.durationMinutes,
+            payload.durationSeconds,
+            payload.holdMinutes,
+            payload.holdSeconds,
+            payload.resistanceKind,
+            payload.weightKg,
+        )
+        if workout_exercise_id is None:
+            self._ensure_day_exercise(connection, day_value, exercise_id, now)
+        cursor = connection.execute(
+            """
+            INSERT INTO exercise_sets(
+                exercise_id, entry_date, occurred_at, repetitions,
+                duration_seconds, hold_seconds, resistance_kind, weight_grams, equipment,
+                custom_equipment, created_at, updated_at, workout_exercise_id, operation_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                exercise_id,
+                day_value,
+                occurred_at,
+                reps,
+                duration,
+                hold,
+                resistance,
+                weight,
+                equipment,
+                custom,
+                now,
+                now,
+                workout_exercise_id,
+                receipt[0] if receipt else None,
+            ),
+        )
+        if active and day_value == self.today().isoformat():
+            self._roll_rotation(connection, active["id"])
+            if first_today and not member and getattr(payload, "enrollInRotation", None):
+                self._enroll_today(connection, active["id"], exercise_id, day_value)
+            self._resolve_due_if_logged(connection, active["id"], day_value)
+        row = connection.execute(
+            "SELECT * FROM exercise_sets WHERE id = ?", (cursor.lastrowid,)
+        ).fetchone()
+        result = self._serialize_set(row)
+        if receipt is not None:
+            connection.execute(
+                "INSERT INTO workout_set_receipts VALUES (?, ?, ?)",
+                (*receipt, json.dumps(result)),
+            )
+        connection.commit()
+        return result
 
     def update_set(self, set_id: int, payload) -> dict:
         with self.connect() as connection:
@@ -4078,6 +4150,12 @@ class RostamDatabase:
                 safety_backup = self.create_backup(category)
                 # Keep policy owned by the live server, never by historical data.
                 staged_db.update_backup_settings(current_settings)
+                with staged_db.connect(staged) as connection:
+                    connection.execute(
+                        "UPDATE workout_sync_generation SET generation = ?", (str(uuid.uuid4()),)
+                    )
+                    connection.execute("DELETE FROM workout_set_receipts")
+                    connection.commit()
                 os.replace(staged, self.path)
                 for suffix in ("-wal", "-shm"):
                     Path(f"{self.path}{suffix}").unlink(missing_ok=True)

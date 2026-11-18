@@ -1,6 +1,10 @@
 import { ArrowDown, ArrowUp, Check, Pencil, Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { api } from "../lib/api";
+import { getServerReachability, getWriteOutcomeUncertain, subscribeServerReachability } from "../lib/connectivity";
+import { cacheActiveWorkout, getOfflineWorkout, savePendingSet, subscribeOfflineWorkout, supportsOfflineWorkout, syncWorkoutSets } from "../lib/offlineWorkout";
+import { DialogControlsContext } from "./dialogContext";
+import { PendingWorkoutSets } from "./PendingWorkoutSets";
 import { getRestartSnapshot } from "../lib/restartSafety";
 import type { Exercise, ExerciseSet, Workout, WorkoutPayload } from "../lib/types";
 import { workoutElapsed, workoutLocalTime, workoutTimeRange } from "../lib/workoutTime";
@@ -77,12 +81,21 @@ function WorkoutTimeForm({ workout, timezone, onSave, onClose }: {
   </Modal>;
 }
 
-export function WorkoutEditor({ id, today, timezone, onClose, onChanged }: {
-  id: number; today: string; timezone: string; onClose: () => void; onChanged: () => void;
+export function WorkoutEditor({ id, today, timezone, onClose, onChanged, initialWorkout }: {
+  initialWorkout?: Workout; id: number; today: string; timezone: string; onClose: () => void; onChanged: () => void;
 }) {
-  const [workout, setWorkout] = useState<Workout | null>(null);
+  const [workout, setWorkout] = useState<Workout | null>(initialWorkout ?? null);
+  const reachability = useSyncExternalStore(subscribeServerReachability, getServerReachability, getServerReachability);
+  const uncertain = useSyncExternalStore(subscribeServerReachability, getWriteOutcomeUncertain, getWriteOutcomeUncertain);
+  const { pending } = useSyncExternalStore(subscribeOfflineWorkout, getOfflineWorkout, getOfflineWorkout);
+  const offline = reachability !== "reachable";
+  const readOnly = offline || uncertain;
+  const queueGeneration = supportsOfflineWorkout ? workout?.ledgerGeneration : undefined;
+  const canQueue = Boolean(queueGeneration && !uncertain && (!offline || !workout?.endedAt));
+  const setOperations = pending.filter((set) => set.workoutId === id && set.ledgerGeneration === workout?.ledgerGeneration);
+  const loadVersion = useRef(0);
   const [clockNow, setClockNow] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialWorkout);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const writing = useRef(false);
@@ -92,13 +105,38 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged }: {
   const [draft, setDraft] = useState<{ entryId: number; existing?: ExerciseSet } | null>(null);
   const [draftKey, setDraftKey] = useState(0);
   const [confirmation, setConfirmation] = useState<{ title: string; message: string; action: () => void | Promise<void> } | null>(null);
-  const load = useCallback(async () => {
-    setLoading(true); setError("");
-    try { setWorkout(await api.workout(id)); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : "Could not load workout."); }
-    finally { setLoading(false); }
-  }, [id]);
-  useEffect(() => { void load(); }, [load]);
+  const load = useCallback(async (background = false) => {
+    const version = ++loadVersion.current;
+    if (!background) { setLoading(true); setError(""); }
+    try {
+      const next = await api.workout(id);
+      if (version !== loadVersion.current) return;
+      if (background && getRestartSnapshot().dirty.length) {
+        setWorkout((current) => {
+          if (!current || current.ledgerGeneration !== next.ledgerGeneration) return current;
+          const exercises = current.exercises.map((entry) => ({
+            ...entry, sets: next.exercises.find((item) => item.id === entry.id)?.sets ?? entry.sets,
+          }));
+          return { ...current, exercises, setCount: exercises.reduce((total, entry) => total + entry.sets.length, 0) };
+        });
+        return;
+      }
+      setWorkout(next);
+      if (next.ledgerGeneration && !next.endedAt) void cacheActiveWorkout(next, timezone).catch(() => {});
+    } catch (caught) {
+      if (!background && version === loadVersion.current) setError(caught instanceof Error ? caught.message : "Could not load workout.");
+    } finally {
+      if (version === loadVersion.current) setLoading(false);
+    }
+  }, [id, timezone]);
+  useEffect(() => { if (!initialWorkout) void load(); }, [load, initialWorkout]);
+  useEffect(() => {
+    const refresh = () => {
+      if (getServerReachability() === "reachable" && !writing.current && !details && !editingTime && !picker) void load(true);
+    };
+    window.addEventListener("rostam-workout-refresh", refresh);
+    return () => window.removeEventListener("rostam-workout-refresh", refresh);
+  }, [load, details, editingTime, picker]);
   useEffect(() => {
     if (!workout || workout.endedAt) return;
     setClockNow(Date.now());
@@ -107,7 +145,8 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged }: {
   }, [workout]);
 
   async function mutate(action: () => Promise<void>) {
-    if (writing.current) return;
+    if (writing.current || readOnly) return;
+    ++loadVersion.current;
     writing.current = true; setBusy(true); setError("");
     try { await action(); onChanged(); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "Could not save workout."); }
@@ -121,7 +160,7 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged }: {
   }
   const close = () => { if (!writing.current) guardDraft(onClose); };
   async function refreshSets() {
-    setWorkout(await api.workout(id)); onChanged();
+    await load(); onChanged();
   }
   async function chooseExercise(exercise: Exercise) {
     const existing = workout?.exercises.find((entry) => entry.exercise.id === exercise.id);
@@ -133,45 +172,82 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged }: {
     }
     await mutate(async () => {
       const next = await api.addWorkoutExercise(id, exercise.id);
+      if (next.ledgerGeneration && !next.endedAt) await cacheActiveWorkout(next, timezone).catch(() => {});
       setWorkout(next); setPicker(false);
       const member = next.exercises.find((item) => item.exercise.id === exercise.id)!;
       setDraft({ entryId: member.id }); setDraftKey((value) => value + 1);
       requestAnimationFrame(() => document.getElementById(`workout-exercise-${member.id}`)?.scrollIntoView?.({ block: "center", behavior: "smooth" }));
     });
   }
+  function updateWorkout(next: Workout) {
+    setWorkout(next);
+    if (next.ledgerGeneration && !next.endedAt) void cacheActiveWorkout(next, timezone).catch(() => {});
+  }
   async function move(index: number, direction: number) {
     if (!workout) return;
     const ids = workout.exercises.map((item) => item.id);
     [ids[index], ids[index + direction]] = [ids[index + direction], ids[index]];
-    await mutate(async () => setWorkout(await api.orderWorkoutExercises(id, ids)));
+    await mutate(async () => updateWorkout(await api.orderWorkoutExercises(id, ids)));
   }
-  return <Modal title={workout?.name ?? "Workout"} fullScreen onClose={close}>
+  return <DialogControlsContext.Provider value={false}><Modal title={workout?.name ?? "Workout"} fullScreen onClose={close}>
     <div className="workout-editor">
       <ReadState loading={loading} error={error} hasData={Boolean(workout)} onRetry={() => void load()} loadingText="Loading workout…" />
       {workout && <>
-        <header className="workout-overview"><div><span className="workout-status">{workout.endedAt ? "Recorded workout" : "Workout in progress"}</span><button type="button" className="workout-time-trigger" aria-label="Edit workout time" disabled={busy} onClick={() => guardDraft(() => { setDraft(null); setEditingTime(true); })}>{workoutTimeRange(workout.startedAt, workout.endedAt, timezone)}</button><span className="workout-elapsed" aria-label="Workout elapsed time">{workoutElapsed(workout.startedAt, workout.endedAt, clockNow)}</span><strong>{workout.exerciseCount} exercises · {workout.setCount} sets</strong></div><button className="icon-button" aria-label="Edit workout details" disabled={busy} onClick={() => guardDraft(() => { setDraft(null); setDetails(true); })}><Pencil /></button></header>
+        {uncertain && <div className="workout-exercise-tools" role="alert">
+          <p>A save result is uncertain. Reload Rostam to reconcile the server data.</p>
+          <button className="secondary" onClick={() => window.location.reload()}>Reload to reconcile</button>
+        </div>}
+        {offline && !uncertain && <div className="workout-exercise-tools">
+          <p role="status">{canQueue ? "Offline · You can log sets in this workout." : "Offline · Workout changes are paused."}</p>
+          <button className="secondary" onClick={() => window.dispatchEvent(new Event("rostam-check-connection"))}>Check connection</button>
+        </div>}
+        <PendingWorkoutSets sets={setOperations.filter((operation) =>
+          !workout.exercises.some((entry) => entry.sets.some((set) => set.operationId === operation.operationId))
+        )} />
+        <header className="workout-overview"><div><span className="workout-status">{workout.endedAt ? "Recorded workout" : "Workout in progress"}</span><button type="button" className="workout-time-trigger" aria-label="Edit workout time" disabled={busy || readOnly} onClick={() => guardDraft(() => { setDraft(null); setEditingTime(true); })}>{workoutTimeRange(workout.startedAt, workout.endedAt, timezone)}</button><span className="workout-elapsed" aria-label="Workout elapsed time">{workoutElapsed(workout.startedAt, workout.endedAt, clockNow)}</span><strong>{workout.exerciseCount} exercises · {workout.setCount} sets</strong></div><button className="icon-button" aria-label="Edit workout details" disabled={busy || readOnly} onClick={() => guardDraft(() => { setDraft(null); setDetails(true); })}><Pencil /></button></header>
         <div className="workout-exercises">{workout.exercises.map((entry, index) => <section className="exercise-card workout-exercise" id={`workout-exercise-${entry.id}`} key={entry.id}>
-          <header className="exercise-card-header"><ExerciseImage imageKey={entry.exercise.imageKey} name={entry.exercise.name} size="large" /><div className="exercise-card-main"><h3>{index + 1}. {entry.exercise.name}</h3><ExerciseHistory exercise={entry.exercise} day={workoutLocalTime(workout.startedAt, timezone).slice(0, 10)} /></div></header>
-          <div className="workout-exercise-tools"><span>{entry.sets.length} {entry.sets.length === 1 ? "set" : "sets"}</span><button className="icon-button" aria-label={`Move ${entry.exercise.name} earlier`} disabled={busy || index === 0} onClick={() => void move(index, -1)}><ArrowUp /></button><button className="icon-button" aria-label={`Move ${entry.exercise.name} later`} disabled={busy || index === workout.exercises.length - 1} onClick={() => void move(index, 1)}><ArrowDown /></button><button className="icon-button" aria-label={`Remove ${entry.exercise.name}`} disabled={busy} onClick={() => {
+          <header className="exercise-card-header"><ExerciseImage imageKey={entry.exercise.imageKey} name={entry.exercise.name} size="large" /><div className="exercise-card-main"><h3>{index + 1}. {entry.exercise.name}</h3>{!offline && <ExerciseHistory exercise={entry.exercise} day={workoutLocalTime(workout.startedAt, timezone).slice(0, 10)} />}</div></header>
+          <div className="workout-exercise-tools"><span>{entry.sets.length} {entry.sets.length === 1 ? "set" : "sets"}</span><button className="icon-button" aria-label={`Move ${entry.exercise.name} earlier`} disabled={busy || readOnly || index === 0} onClick={() => void move(index, -1)}><ArrowUp /></button><button className="icon-button" aria-label={`Move ${entry.exercise.name} later`} disabled={busy || readOnly || index === workout.exercises.length - 1} onClick={() => void move(index, 1)}><ArrowDown /></button><button className="icon-button" aria-label={`Remove ${entry.exercise.name}`} disabled={busy || readOnly} onClick={() => {
             const action = () => mutate(async () => { await api.removeWorkoutExercise(id, entry.id, true); if (draft?.entryId === entry.id) setDraft(null); await refreshSets(); });
             if (entry.sets.length) setConfirmation({ title: "Remove exercise?", message: `Remove ${entry.exercise.name} and its ${entry.sets.length} saved sets?`, action });
             else guardDraft(action);
           }}><Trash2 /></button></div>
-          <ExerciseNote exercise={entry.exercise} />
+          <DialogControlsContext.Provider value={readOnly}>
+            <fieldset className="dialog-content-controls" disabled={readOnly}><ExerciseNote exercise={entry.exercise} /></fieldset>
+          </DialogControlsContext.Provider>
           <SetTable exercise={entry.exercise} editable>
-            {entry.sets.map((set, setIndex) => draft?.existing?.id === set.id ? null : <div key={set.id} className="workout-numbered-set">{set.date !== workoutLocalTime(workout.startedAt, timezone).slice(0, 10) && <time className="workout-set-day">{set.date}</time>}<span className="workout-set-number" aria-label={`Set ${setIndex + 1}`}>{setIndex + 1}</span><SetRow exercise={entry.exercise} set={set} index={setIndex} onEdit={() => guardDraft(() => { setDraft({ entryId: entry.id, existing: set }); setDraftKey((value) => value + 1); })} onDelete={async () => { await api.deleteSet(set.id); await refreshSets(); }} /></div>)}
-            {draft?.entryId === entry.id && <SetForm key={`${entry.id}-${draftKey}`} workout={{ id, entryId: entry.id, startedAt: workout.startedAt, endedAt: workout.endedAt, timezone }} exercise={entry.exercise} day={workoutLocalTime(workout.startedAt, timezone).slice(0, 10)} existing={draft.existing} onSaved={() => { const editing = Boolean(draft.existing); setDraft(editing ? null : { entryId: entry.id }); setDraftKey((value) => value + 1); void refreshSets().catch((caught) => setError(String(caught))); }} onCancel={() => setDraft(null)} onDelete={draft.existing ? async () => { await api.deleteSet(draft.existing!.id); setDraft(null); await refreshSets(); } : undefined} />}
-            {draft?.entryId !== entry.id && <button className="add-set" disabled={busy || Boolean(entry.exercise.archivedAt)} onClick={() => guardDraft(() => { setDraft({ entryId: entry.id }); setDraftKey((value) => value + 1); })}><Plus />Add set</button>}
+            {entry.sets.map((set, setIndex) => draft?.existing?.id === set.id ? null : <div key={set.id} className="workout-numbered-set">{set.date !== workoutLocalTime(workout.startedAt, timezone).slice(0, 10) && <time className="workout-set-day">{set.date}</time>}<span className="workout-set-number" aria-label={`Set ${setIndex + 1}`}>{setIndex + 1}</span><SetRow exercise={entry.exercise} set={set} index={setIndex} onEdit={readOnly ? undefined : () => guardDraft(() => { setDraft({ entryId: entry.id, existing: set }); setDraftKey((value) => value + 1); })} onDelete={readOnly ? undefined : async () => { await api.deleteSet(set.id); await refreshSets(); }} /></div>)}
+            {draft?.entryId === entry.id && <fieldset className="dialog-content-controls" disabled={readOnly && (Boolean(draft.existing) || !canQueue)}>
+              <SetForm key={`${entry.id}-${draftKey}`} workout={{ id, entryId: entry.id, startedAt: workout.startedAt, endedAt: workout.endedAt, timezone }}
+                exercise={entry.exercise} day={workoutLocalTime(workout.startedAt, timezone).slice(0, 10)} existing={draft.existing}
+                offline={offline} prefillVersion={entry.sets.length} saveWorkoutSet={queueGeneration ? async (payload) => {
+                  await savePendingSet({ ledgerGeneration: queueGeneration, workoutId: id, workoutName: workout.name,
+                    entryId: entry.id, exerciseName: entry.exercise.name, payload, timezone });
+                  if (getServerReachability() === "reachable") {
+                    void syncWorkoutSets().then(() => { void load(true); onChanged(); }).catch(() => {});
+                  }
+                } : undefined}
+                onSaved={() => {
+                  const editing = Boolean(draft.existing);
+                  setDraft(editing ? null : { entryId: entry.id });
+                  setDraftKey((value) => value + 1);
+                  if (editing || !queueGeneration) void refreshSets();
+                }}
+                onCancel={() => setDraft(null)} onDelete={draft.existing ? async () => { await api.deleteSet(draft.existing!.id); setDraft(null); await refreshSets(); } : undefined} />
+            </fieldset>}
+            {draft?.entryId !== entry.id && <button className="add-set" disabled={busy || (readOnly && !canQueue) || Boolean(entry.exercise.archivedAt)} onClick={() => guardDraft(() => { setDraft({ entryId: entry.id }); setDraftKey((value) => value + 1); })}><Plus />Add set</button>}
           </SetTable>
           {entry.exercise.archivedAt && <p className="muted">Restore this exercise in the library to add sets.</p>}
         </section>)}</div>
         {!workout.exercises.length && <div className="empty-state"><h3>Your workout starts here</h3><p>Add an exercise, log your sets, then move to the next exercise.</p></div>}
-        <div className="workout-actions"><button disabled={busy} onClick={() => guardDraft(() => { setDraft(null); setPicker(true); })}><Plus />Add exercise</button>{!workout.endedAt && <button className="primary" disabled={busy || !workout.setCount} onClick={() => guardDraft(() => mutate(async () => { setDraft(null); setWorkout(await api.finishWorkout(id)); }))}><Check />Finish workout</button>}<button className="workout-delete" disabled={busy} onClick={() => setConfirmation({ title: workout.setCount ? "Delete workout?" : "Discard empty workout?", message: workout.setCount ? "This permanently deletes the workout and all its saved sets." : "This workout has no saved sets.", action: () => mutate(async () => { await api.deleteWorkout(id, true); onClose(); }) })}><Trash2 />{workout.setCount ? "Delete workout" : "Discard workout"}</button></div>
+        <div className="workout-actions"><button disabled={busy || readOnly} onClick={() => guardDraft(() => { setDraft(null); setPicker(true); })}><Plus />Add exercise</button>{!workout.endedAt && <button className="primary" disabled={busy || readOnly || !workout.setCount || setOperations.some((set) => !set.error)} onClick={() => guardDraft(() => mutate(async () => { setDraft(null); setWorkout(await api.finishWorkout(id)); void cacheActiveWorkout(null, timezone).catch(() => {}); }))}><Check />Finish workout</button>}<button className="workout-delete" disabled={busy || readOnly} onClick={() => setConfirmation({ title: workout.setCount ? "Delete workout?" : "Discard empty workout?", message: workout.setCount ? "This permanently deletes the workout and all its saved sets." : "This workout has no saved sets.", action: () => mutate(async () => { await api.deleteWorkout(id, true); if (!workout.endedAt) void cacheActiveWorkout(null, timezone).catch(() => {}); onClose(); }) })}><Trash2 />{workout.setCount ? "Delete workout" : "Discard workout"}</button></div>
       </>}
     </div>
+    <DialogControlsContext.Provider value={readOnly}>
     {picker && <ExercisePicker day={today} today={today} presentIds={[]} onClose={() => setPicker(false)} onChoose={(exercise) => void chooseExercise(exercise)} />}
-    {details && workout && <WorkoutDetailsForm workout={workout} day={today} today={today} timezone={timezone} onClose={() => setDetails(false)} onSave={async (payload) => { setWorkout(await api.updateWorkout(id, payload)); setDetails(false); onChanged(); }} />}
-    {editingTime && workout && <WorkoutTimeForm workout={workout} timezone={timezone} onClose={() => setEditingTime(false)} onSave={async (payload) => { setWorkout(await api.updateWorkout(id, payload)); setEditingTime(false); onChanged(); }} />}
+    {details && workout && <WorkoutDetailsForm workout={workout} day={today} today={today} timezone={timezone} onClose={() => setDetails(false)} onSave={async (payload) => { updateWorkout(await api.updateWorkout(id, payload)); setDetails(false); onChanged(); }} />}
+    {editingTime && workout && <WorkoutTimeForm workout={workout} timezone={timezone} onClose={() => setEditingTime(false)} onSave={async (payload) => { updateWorkout(await api.updateWorkout(id, payload)); setEditingTime(false); onChanged(); }} />}
+    </DialogControlsContext.Provider>
     {confirmation && <Modal title={confirmation.title} onClose={() => setConfirmation(null)}><p>{confirmation.message}</p><div className="draft-actions"><button onClick={() => setConfirmation(null)}>Cancel</button><button className="primary" onClick={() => { const action = confirmation.action; setConfirmation(null); void action(); }}>Confirm</button></div></Modal>}
-  </Modal>;
+  </Modal></DialogControlsContext.Provider>;
 }

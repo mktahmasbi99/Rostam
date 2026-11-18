@@ -10,6 +10,7 @@ import { ExerciseImage } from "./ExerciseImage";
 import { SetTable } from "./SetTable";
 import { SetRow } from "./SetRow";
 import { ActivityEntryCard } from "./ActivityEntry";
+import { Modal } from "./Modal";
 import { ReadState } from "./ReadState";
 
 const Supplements = lazy(() => import("./Supplements").then((module) => ({ default: module.Supplements })));
@@ -22,7 +23,6 @@ const ExercisePicker = lazy(() => import("./ExercisePicker").then((module) => ({
 const SetForm = lazy(() => import("./SetForm").then((module) => ({ default: module.SetForm })));
 const ExerciseHistory = lazy(() => import("./ExerciseHistory").then((module) => ({ default: module.ExerciseHistory })));
 const ActivityPicker = lazy(() => import("./ActivityPicker").then((module) => ({ default: module.ActivityPicker })));
-const Modal = lazy(() => import("./Modal").then((module) => ({ default: module.Modal })));
 
 interface Props {
   day: string;
@@ -101,6 +101,12 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       if (!signal?.aborted && loadId === latestLoad.current) setLoading(false);
     }
   }, [day]);
+
+  useEffect(() => {
+    const refresh = () => { void load(); };
+    window.addEventListener("rostam-workout-refresh", refresh);
+    return () => window.removeEventListener("rostam-workout-refresh", refresh);
+  }, [load]);
 
   useEffect(() => {
     const controller = new AbortController();

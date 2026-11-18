@@ -22,6 +22,7 @@ from .database import (
     MAX_PHOTOS_PER_DAY,
     DomainError,
     RostamDatabase,
+    WorkoutSetConflict,
 )
 from .schemas import (
     ActivityCreate,
@@ -51,6 +52,7 @@ from .schemas import (
     WorkoutDelete,
     WorkoutExerciseAdd,
     WorkoutOrder,
+    WorkoutSetWrite,
     WorkoutWrite,
 )
 
@@ -81,7 +83,7 @@ async def lifespan(_: FastAPI):
             await task
 
 
-app = FastAPI(title="Rostam API", version="2.1.0", lifespan=lifespan)
+app = FastAPI(title="Rostam API", version="2.2.0", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 
 
@@ -127,7 +129,10 @@ def response_cache_control(
 
 @app.exception_handler(DomainError)
 async def domain_error_handler(_, exc: DomainError):
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
+    return JSONResponse(
+        status_code=409 if isinstance(exc, WorkoutSetConflict) else 400,
+        content={"detail": str(exc)},
+    )
 
 
 @app.get("/api/health")
@@ -141,6 +146,7 @@ def config() -> dict[str, str]:
         "today": database.today().isoformat(),
         "timezone": settings.timezone_name,
         "version": app.version,
+        "ledgerGeneration": database.ledger_generation(),
     }
 
 
@@ -397,7 +403,7 @@ def remove_workout_exercise(workout_id: int, entry_id: int, payload: WorkoutDele
 
 
 @app.post("/api/workouts/{workout_id}/exercises/{entry_id}/sets", status_code=201)
-def add_workout_set(workout_id: int, entry_id: int, payload: SetWrite) -> dict:
+def add_workout_set(workout_id: int, entry_id: int, payload: WorkoutSetWrite) -> dict:
     return database.add_workout_set(workout_id, entry_id, payload)
 
 

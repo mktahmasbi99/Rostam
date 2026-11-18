@@ -3,7 +3,11 @@ import { trackWrite } from "./restartSafety";
 import type { SupplementHistory, SupplementIntakePayload, SupplementPayload, SupplementProduct, SupplementStockPayload } from "./types";
 import { reportServerReachability, reportUncertainWrite, requireReachableServer, ServerConnectionError } from "./connectivity";
 
-async function request<T>(path: string, init?: RequestInit, options: { clearDraftOnSuccess?: boolean } = {}): Promise<T> {
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) { super(message); }
+}
+
+async function request<T>(path: string, init?: RequestInit, options: { clearDraftOnSuccess?: boolean; retryableWrite?: boolean } = {}): Promise<T> {
   const isWrite = Boolean(init?.method && !["GET", "HEAD"].includes(init.method.toUpperCase()));
   if (isWrite) requireReachableServer();
   const operation = () => fetch(path, {
@@ -23,7 +27,7 @@ async function request<T>(path: string, init?: RequestInit, options: { clearDraf
     if (init?.signal?.aborted) throw caught;
     if (!(caught instanceof TypeError)) throw caught;
     reportServerReachability("disconnected");
-    if (isWrite) {
+    if (isWrite && !options.retryableWrite) {
       reportUncertainWrite();
       throw new ServerConnectionError("Connection lost while saving. The change may have reached Rostam; reconnect and refresh the data before deciding whether to retry.");
     }
@@ -31,7 +35,8 @@ async function request<T>(path: string, init?: RequestInit, options: { clearDraf
   }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `Request failed (${response.status})`);
+    const detail = typeof body.detail === "string" ? body.detail : body.detail?.[0]?.msg;
+    throw new ApiError(detail || `Request failed (${response.status})`, response.status);
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -74,6 +79,10 @@ export const api = {
   addWorkoutExercise: (id: number, exerciseId: number) => request<Workout>(`/api/workouts/${id}/exercises`, json("POST", { exerciseId })),
   orderWorkoutExercises: (id: number, exerciseEntryIds: number[]) => request<Workout>(`/api/workouts/${id}/order`, json("PUT", { exerciseEntryIds })),
   removeWorkoutExercise: (id: number, entryId: number, confirmed = false) => request<void>(`/api/workouts/${id}/exercises/${entryId}`, json("DELETE", { confirmation: confirmed ? "DELETE" : null })),
+  syncWorkoutSet: (id: number, entryId: number, payload: SetPayload & { operationId: string; ledgerGeneration: string }) =>
+    request<ExerciseSet>(`/api/workouts/${id}/exercises/${entryId}/sets`,
+      { ...json("POST", payload), signal: AbortSignal.timeout(10000) },
+      { retryableWrite: true, clearDraftOnSuccess: false }),
   addWorkoutSet: (id: number, entryId: number, payload: SetPayload) => request<ExerciseSet>(`/api/workouts/${id}/exercises/${entryId}/sets`, json("POST", payload)),
   rotations: (status: "active" | "archived" | "all" = "active") => request<Rotation[]>(`/api/rotations?status=${status}`),
   createRotation: (name: string) => request<Rotation>("/api/rotations", json("POST", { name })),

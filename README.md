@@ -22,7 +22,7 @@ Rostam is named after the legendary hero of Ferdowsi’s *Shahnameh* (*Book of K
 - Creates WAL-safe SQLite snapshots in `/data/backups`: daily (7 retained), weekly (8 retained), safety snapshots (8 shared across restore/import/delete), and on-demand backups that persist until manually deleted.
 - Installs as a connected-only PWA from the Settings page, with browser-specific guidance when a native install prompt is unavailable.
 
-Reusable workout routines and rest timers are deferred; supersets are excluded. There are no goals, reminders, streaks, perceived-effort fields, or offline write queue. See [the 2.0.0 release notes](docs/RELEASE_2.0.0.md) for workout behavior and compatibility.
+Reusable workout routines and rest timers are deferred; supersets are excluded. There are no goals, reminders, streaks, or perceived-effort fields. See [the 2.0.0 release notes](docs/RELEASE_2.0.0.md) for workout behavior and compatibility.
 
 ## Run locally
 
@@ -53,14 +53,23 @@ Keep the existing private network boundary when configuring HTTPS.
 - **iPhone / iPad:** Open the address in Safari, choose **Share → Add to Home
   Screen**, keep **Open as Web App** enabled if shown, and tap **Add**.
 
-The home-screen icon launches Rostam in a standalone window. The production
-service worker caches the app shell, but ledger data and writes require a live
-connection to the server. Installation does not copy the database to the phone.
-Vite development mode does not register the service worker.
+The home-screen icon launches Rostam in a standalone window. Open it online
+first so the production service worker can cache the app. Start a workout
+and add its exercises online. If you lose the connection, use **Resume workout
+offline** to log sets for the exercises already in that workout. Vite
+development mode does not register the service worker.
+
+**Saved on this device · Pending sync** means the set is stored on the device
+and survives an ordinary restart. Open Rostam when the server is reachable
+to sync pending sets. Other browsers see them after the server accepts them.
+Keep the app’s website data until your sets have synced. Start and finish
+workouts, manage exercises, and edit or delete synced entries while online.
 
 To verify a deployment, check that `/manifest.webmanifest`, its icons, and
 `/sw.js` return successfully over HTTPS. Install and launch from the home screen
-on each target device, then log a set and reopen the app to confirm it persists.
+on each target device. Log a workout set while offline, restart the device,
+and reopen the app while still offline. Reconnect and check that the logged
+set appears once in both the app and a separate browser.
 
 ## Verify
 

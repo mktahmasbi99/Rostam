@@ -1073,7 +1073,10 @@ def test_restore_schema_v7_backup_migrates_side_plank_history(database):
         database.add_set(exercise["id"], today, set_payload(time=time_value, repetitions=4))
     source = database.create_backup("on-demand")
     with sqlite3.connect(database.backup_path(source["id"])) as connection:
-        connection.execute("DELETE FROM schema_migrations WHERE version IN (8, 9, 10, 17)")
+        connection.execute("DELETE FROM schema_migrations WHERE version IN (8, 9, 10, 17, 19)")
+        connection.execute("DROP TABLE workout_sync_generation")
+        connection.execute("DROP TABLE workout_set_receipts")
+        connection.execute("ALTER TABLE exercise_sets DROP COLUMN operation_id")
         connection.execute("DROP TABLE workout_exercises")
         connection.execute("DROP TABLE workouts")
         connection.commit()

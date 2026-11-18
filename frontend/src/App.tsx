@@ -1,9 +1,13 @@
 import { Activity, Dumbbell, Images, ListChecks, NotebookPen, RotateCw, Ruler, Settings } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { DayPage } from "./components/DayPage";
 import { DeferredBoundary } from "./components/DeferredBoundary";
+import { Modal } from "./components/Modal";
+import { PendingWorkoutSets } from "./components/PendingWorkoutSets";
+import { getOfflineWorkout, readOfflineWorkout, refreshActiveWorkout, subscribeOfflineWorkout, supportsOfflineWorkout, syncWorkoutSets } from "./lib/offlineWorkout";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { DialogControlsContext } from "./components/dialogContext";
+const WorkoutEditor = lazy(() => import("./components/WorkoutEditor").then((module) => ({ default: module.WorkoutEditor })));
 const ExercisesPage = lazy(() => import("./components/ExercisesPage").then((module) => ({ default: module.ExercisesPage })));
 const ActivitiesPage = lazy(() => import("./components/ActivitiesPage").then((module) => ({ default: module.ActivitiesPage })));
 const SettingsPage = lazy(() => import("./components/SettingsPage").then((module) => ({ default: module.SettingsPage })));
@@ -16,6 +20,7 @@ import { usePwaInstall } from "./hooks/usePwaInstall";
 import { api } from "./lib/api";
 import { getRestartSnapshot } from "./lib/restartSafety";
 import type { Config } from "./lib/types";
+import { workoutLocalTime } from "./lib/workoutTime";
 import { artwork } from "./artwork";
 import { getServerReachability, getWriteOutcomeUncertain, reportServerReachability, subscribeServerReachability } from "./lib/connectivity";
 import { applyThemePreference, readThemePreference, saveThemePreference, systemThemeQuery, type ThemePreference } from "./lib/theme";
@@ -54,6 +59,10 @@ export default function App() {
   const reachability = useSyncExternalStore(subscribeServerReachability, getServerReachability, getServerReachability);
   const uncertainWrite = useSyncExternalStore(subscribeServerReachability, getWriteOutcomeUncertain, getWriteOutcomeUncertain);
   const pwaInstall = usePwaInstall();
+  const { snapshot, pending } = useSyncExternalStore(subscribeOfflineWorkout, getOfflineWorkout, getOfflineWorkout);
+  const [offlineResume, setOfflineResume] = useState<typeof snapshot>();
+  const [reviewPending, setReviewPending] = useState(false);
+  const latestConfig = useRef(0);
   const dialogControlsDisabled = reachability !== "reachable" || uncertainWrite;
 
   useLayoutEffect(() => {
@@ -66,8 +75,10 @@ export default function App() {
   }, [themePreference]);
 
   const loadConfig = useCallback(async () => {
+    const revision = ++latestConfig.current;
     try {
       const next = await api.config();
+      if (revision !== latestConfig.current) return;
       reportServerReachability("reachable");
       setConfig((current) => {
         const { dirty, pendingWrites } = getRestartSnapshot();
@@ -75,24 +86,46 @@ export default function App() {
         return next;
       });
       setError("");
+      if (next.ledgerGeneration) {
+        if (supportsOfflineWorkout && !getWriteOutcomeUncertain()) await syncWorkoutSets().catch(() => {});
+        if (revision !== latestConfig.current) return;
+        window.dispatchEvent(new Event("rostam-workout-refresh"));
+        if (supportsOfflineWorkout) void refreshActiveWorkout(next.ledgerGeneration, next.timezone).catch(() => {});
+      }
     } catch (caught) {
+      if (revision !== latestConfig.current) return;
       setError(caught instanceof Error ? caught.message : "Could not reach Rostam.");
     }
   }, [selectedDay]);
 
-  useEffect(() => { void loadConfig(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (supportsOfflineWorkout) void readOfflineWorkout().catch(() => {}); void loadConfig(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const refresh = () => void loadConfig();
     window.addEventListener("focus", refresh);
     window.addEventListener("online", refresh);
+    window.addEventListener("rostam-check-connection", refresh);
     document.addEventListener("visibilitychange", refresh);
     const timer = window.setInterval(refresh, 30000);
-    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("online", refresh); document.removeEventListener("visibilitychange", refresh); window.clearInterval(timer); };
+    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("online", refresh); window.removeEventListener("rostam-check-connection", refresh); document.removeEventListener("visibilitychange", refresh); window.clearInterval(timer); };
   }, [loadConfig]);
 
-  if (!config) return <><Backdrop /><div className="startup"><Logo className="app-logo startup-logo" sizes="112px" /><h1>Rostam</h1>{error ? <><p className="error">{error}</p><button onClick={() => void loadConfig()}>Retry</button></> : <p>Loading your ledger…</p>}</div></>;
+  const offlineControls = <div className="offline-workout-controls">
+    {reachability !== "reachable" && snapshot && !uncertainWrite &&
+      <button className="secondary" onClick={() => setOfflineResume(snapshot)}>Resume {snapshot.workout.name} offline</button>}
+    {pending.length > 0 &&
+      <button className="secondary" onClick={() => setReviewPending(true)}>Pending workout sets ({pending.length})</button>}
+  </div>;
+  const workoutDialogs = <DialogControlsContext.Provider value={false}>
+    {offlineResume && <WorkoutEditor id={offlineResume.workout.id} initialWorkout={offlineResume.workout}
+      today={config?.today ?? workoutLocalTime(new Date().toISOString(), offlineResume.timezone).slice(0, 10)}
+      timezone={offlineResume.timezone} onClose={() => setOfflineResume(undefined)} onChanged={() => {}} />}
+    {reviewPending && <Modal title="Pending workout sets" onClose={() => setReviewPending(false)}>
+      {pending.length ? <PendingWorkoutSets sets={pending} /> : <p>All workout sets have synced.</p>}
+    </Modal>}
+  </DialogControlsContext.Provider>;
 
   const goToToday = () => {
+    if (!config) return;
     setSelectedDay(config.today);
     setTab("today");
     setCalendarOpen(false);
@@ -104,8 +137,15 @@ export default function App() {
   };
 
   return <DialogControlsContext.Provider value={dialogControlsDisabled}><><Backdrop /><UpdateBanner />
-    {(reachability !== "reachable" || uncertainWrite) && <div className="connection-banner" role="alert"><span>{uncertainWrite ? "A save result is uncertain. Rostam is locked until you reload and reconcile the server data." : reachability === "unknown" ? "Confirming connection to Rostam…" : "Rostam is disconnected. Editing and saves are paused."}</span>{reachability !== "reachable" && <button className="secondary" onClick={() => void loadConfig()}>Check connection</button>}{uncertainWrite && <button className="secondary" onClick={() => window.location.reload()}>Reload to reconcile</button>}</div>}
-    <div data-rostam-app className="app-shell">
+    <Suspense fallback={<div role="status">Loading workout…</div>}>{workoutDialogs}</Suspense>
+    {config && (reachability !== "reachable" || uncertainWrite) && <div className="connection-banner" role="alert"><span>{uncertainWrite ? "A save result is uncertain. Rostam is locked until you reload and reconcile the server data." : reachability === "unknown" ? "Confirming connection to Rostam…" : snapshot ? "Rostam is disconnected. You can log sets in your cached workout." : "Rostam is disconnected. Editing and saves are paused."}</span>{reachability !== "reachable" && <button className="secondary" onClick={() => void loadConfig()}>Check connection</button>}{uncertainWrite && <button className="secondary" onClick={() => window.location.reload()}>Reload to reconcile</button>}</div>}
+    <div data-rostam-app className={config ? "app-shell" : "startup"}>
+    {!config ? <>
+      <Logo className="app-logo startup-logo" sizes="112px" /><h1>Rostam</h1>
+      {error ? <><p className="error">{error}</p><button onClick={() => void loadConfig()}>Retry</button></> : <p>Loading your ledger…</p>}
+      {offlineControls}
+    </> : <>
+    {offlineControls}
     <div className="brand"><button className="brand-home" aria-label="Go to Today" title="Go to Today" onClick={goToToday}><Logo className="app-logo brand-logo" sizes="44px" /></button></div>
     <fieldset className="app-content-controls" disabled={reachability !== "reachable" || uncertainWrite}>
     <div className="content">
@@ -140,6 +180,7 @@ export default function App() {
       <button aria-label="Measurements" title="Measurements" className={tab === "measurements" ? "active" : ""} onClick={() => { setTab("measurements"); setCalendarOpen(false); }}><Ruler /></button>
       <button aria-label="Settings" title="Settings" className={tab === "settings" ? "active" : ""} onClick={() => { setTab("settings"); setCalendarOpen(false); }}><Settings /></button>
     </nav>
+    </>}
     </div>
   </></DialogControlsContext.Provider>;
 }

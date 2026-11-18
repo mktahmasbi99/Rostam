@@ -19,6 +19,9 @@ function addStaticTree(item) {
   for (const imported of item.imports ?? []) addStaticTree(frontendManifest[imported]);
 }
 addStaticTree(entry);
+const offlineWorkout = frontendManifest["src/components/WorkoutEditor.tsx"];
+if (!offlineWorkout) throw new Error("Vite manifest has no offline workout editor.");
+addStaticTree(offlineWorkout);
 for (const file of ["manifest.webmanifest", "favicon.png", "icons/icon-192.webp", "icons/icon-512.webp", "icons/apple-touch-icon.png"]) staticFiles.add(file);
 
 const files = [];

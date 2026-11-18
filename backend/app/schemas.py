@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from datetime import date
 from typing import Literal
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 MeasurementType = Literal["repetitions", "duration", "timed_repetitions"]
 ResistanceKind = Literal["bodyweight", "external"]
@@ -153,6 +154,19 @@ class SetWrite(BaseModel):
     resistanceKind: ResistanceKind
     weightKg: str | None = None
     enrollInRotation: bool | None = None
+
+
+class WorkoutSetWrite(SetWrite):
+    operationId: UUID | None = None
+    ledgerGeneration: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_queue_fields(self) -> WorkoutSetWrite:
+        if (self.operationId is None) != (self.ledgerGeneration is None):
+            raise ValueError("Provide both operationId and ledgerGeneration.")
+        if self.operationId is not None and not self.occurredAt:
+            raise ValueError("Provide occurredAt for queued sets.")
+        return self
 
 
 class RotationName(BaseModel):
