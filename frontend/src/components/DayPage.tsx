@@ -9,7 +9,6 @@ import { useSetDeletion } from "../lib/useSetDeletion";
 import { ExerciseImage } from "./ExerciseImage";
 import { SetTable } from "./SetTable";
 import { SetRow } from "./SetRow";
-import { SwipeSetRow } from "./SwipeSetRow";
 import { ActivityEntryCard } from "./ActivityEntry";
 import { ReadState } from "./ReadState";
 
@@ -44,7 +43,7 @@ function DayExerciseCard({ section, day, onChooseDay, onRemove, children }: {
 }) {
   const { exercise, sets, total } = section;
   const { deleting, error, remove } = useSetDeletion(onRemove);
-  const card = <section className={onRemove ? "exercise-card pending-card" : "exercise-card"}>
+  return <section className={onRemove ? "exercise-card pending-card" : "exercise-card"}>
     <header className={`exercise-card-header${exercise.hasHistory ? " has-history" : ""}`}>
       <ExerciseImage imageKey={exercise.imageKey} name={exercise.name} size="large" />
       <div className="exercise-card-main">
@@ -58,8 +57,8 @@ function DayExerciseCard({ section, day, onChooseDay, onRemove, children }: {
     </header>
     <Suspense fallback={null}><ExerciseNote exercise={exercise} /></Suspense>
     <SetTable exercise={exercise} editable>{children}</SetTable>
+    {error && <p className="set-delete-error" role="alert">{error}</p>}
   </section>;
-  return onRemove ? <SwipeSetRow className="exercise-card-swipe" onDelete={remove} disabled={deleting} error={error}>{card}</SwipeSetRow> : card;
 }
 
 export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar, onPreviousDay, onNextDay, onChooseDay }: Props) {
