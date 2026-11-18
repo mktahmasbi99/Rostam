@@ -188,6 +188,16 @@ def get_day(day: str) -> dict:
     return database.day(day)
 
 
+@app.put("/api/days/{day}/exercises/{exercise_id}", status_code=204)
+def add_day_exercise(day: str, exercise_id: int) -> None:
+    database.add_day_exercise(day, exercise_id)
+
+
+@app.delete("/api/days/{day}/exercises/{exercise_id}", status_code=204)
+def remove_day_exercise(day: str, exercise_id: int) -> None:
+    database.remove_day_exercise(day, exercise_id)
+
+
 @app.get("/api/supplements")
 def list_supplements() -> list[dict]:
     return database.list_supplements()

@@ -136,7 +136,7 @@ it("keeps the selected day while a save is pending at midnight", async () => {
   vi.mocked(api.config).mockResolvedValue({ today: "2026-10-30", timezone: "Europe/Warsaw", version: "2.0.0" });
   vi.mocked(api.day).mockResolvedValue({ date: "2026-10-30", sections: [] });
   render(<App />);
-  await screen.findByRole("heading", { name: "Today" });
+  await screen.findByText("No activity recorded");
   let finish!: () => void;
   const saving = trackWrite(() => new Promise<void>((resolve) => { finish = resolve; }));
   try {

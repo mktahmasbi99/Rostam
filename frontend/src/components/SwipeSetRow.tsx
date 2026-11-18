@@ -5,10 +5,11 @@ interface Props {
   onDelete?: () => void;
   error?: string;
   disabled?: boolean;
+  className?: string;
   children: ReactNode;
 }
 
-export function SwipeSetRow({ onDelete, disabled = false, error, children }: Props) {
+export function SwipeSetRow({ onDelete, disabled = false, error, className, children }: Props) {
   const [swiping, setSwiping] = useState(false);
   const [offset, setOffset] = useState(0);
   const distance = useRef(0);
@@ -19,11 +20,13 @@ export function SwipeSetRow({ onDelete, disabled = false, error, children }: Pro
     move(0);
     onDelete();
   }
-  return <div className="set-swipe" aria-busy={disabled || undefined}>
+  return <div className={className ? `set-swipe ${className}` : "set-swipe"} aria-busy={disabled || undefined}>
     {onDelete && <button type="button" className="set-swipe-delete" style={{ width: Math.max(72, -offset), visibility: offset < 0 ? "visible" : "hidden" }} tabIndex={offset < 0 ? 0 : -1} aria-hidden={offset === 0} disabled={disabled || offset === 0} onClick={() => void remove()}>Delete</button>}
     <div className={`set-swipe-content${swiping ? " swiping" : ""}`} style={{ transform: `translateX(${offset}px)` }} onFocusCapture={() => { if (distance.current) move(0); }} onPointerDown={(event) => {
       if (!onDelete || disabled || event.button !== 0 || !event.isPrimary) return;
-      if ((event.target as Element).closest("input, button, a, textarea, select, label, [role=menu], [role=checkbox], [role=spinbutton]")) { move(0); return; }
+      const target = event.target as Element;
+      if (target.closest(".set-swipe-content") !== event.currentTarget) return;
+      if (target.closest("input, button, a, textarea, select, label, [role=menu], [role=checkbox], [role=spinbutton]")) { move(0); return; }
       gesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY, initial: distance.current, locked: false };
     }} onPointerMove={(event) => {
       const current = gesture.current;

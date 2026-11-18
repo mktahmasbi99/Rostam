@@ -160,8 +160,14 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .notes-group > h2 { font-size: 1.15rem; }
 .exercise-card { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 25px; overflow: hidden; box-shadow: var(--shadow); }
 .pending-card { border: 2px dashed var(--accent); }
+.exercise-card-swipe { border-radius: 25px; box-shadow: var(--shadow); }
+.set-swipe.exercise-card-swipe:not(:has(.set-draft)) { z-index: 0; }
+.day-add-actions:has(.day-add-menu) { z-index: 32; }
+.exercise-card-swipe > .set-swipe-content { background: transparent; }
 .exercise-card-header { display: flex; align-items: center; gap: 14px; padding: 16px 18px 12px; }
 .exercise-card-header.has-history { padding-right: 64px; }
+.pending-card .exercise-card-header { padding-right: 64px; }
+.pending-card .exercise-card-header.has-history { padding-right: 102px; }
 .exercise-card-header h2 { font-size: 1.35rem; margin: 0 0 3px; letter-spacing: -.025em; }
 .exercise-card-main { min-width: 0; flex: 1; }
 .exercise-card-title-row { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
@@ -170,6 +176,8 @@ svg { width: 21px; height: 21px; stroke-width: 2.25; }
 .exercise-history-summary { min-width: 0; max-width: 100%; display: flex; align-items: center; gap: 7px; }
 .history-button { position: absolute; top: 16px; right: 18px; width: 38px; min-width: 38px; min-height: 34px; padding: 0; color: var(--accent-dark); background: transparent; box-shadow: none; }
 .history-button svg { width: 16px; height: 16px; }
+.pending-card .exercise-history-summary .history-button { right: 56px; }
+.remove-day-exercise { color: var(--danger); }
 .previous-session { display: block; min-width: 0; color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
 .exercise-image { flex: 0 0 auto; width: 52px; height: 52px; border-radius: 15px; background: var(--surface-2); overflow: hidden; display: grid; place-items: center; }
 .exercise-image.large { width: 68px; height: 68px; border-radius: 19px; }

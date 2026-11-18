@@ -99,6 +99,10 @@ export const api = {
   deleteBodyMeasurement: (id: number) => request<void>(`/api/body-measurements/${id}`, { method: "DELETE" }),
   day: (day: string, signal?: AbortSignal) =>
     request<DayData>(`/api/days/${day}`, { signal }),
+  addDayExercise: (day: string, exerciseId: number) =>
+    request<void>(`/api/days/${day}/exercises/${exerciseId}`, { method: "PUT" }),
+  removeDayExercise: (day: string, exerciseId: number) =>
+    request<void>(`/api/days/${day}/exercises/${exerciseId}`, { method: "DELETE" }),
   activities: (status: "active" | "archived" = "active") => request<Activity[]>(`/api/activities?status=${status}`),
   createActivity: (name: string) => request<Activity>("/api/activities", json("POST", { name })),
   updateActivityDefinition: (id: number, name: string) => request<Activity>(`/api/activities/${id}`, json("PATCH", { name })),

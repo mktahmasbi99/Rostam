@@ -1,12 +1,30 @@
 import { History as HistoryIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "../lib/api";
+import { formatDuration } from "../lib/format";
 import type { Exercise, ExerciseHistorySession } from "../lib/types";
 
 const ExerciseHistoryDialog = lazy(() => import("./ExerciseHistoryDialog").then((module) => ({ default: module.ExerciseHistoryDialog })));
 interface Props { exercise: Exercise; day: string; onChooseDay?: (day: string) => void }
 function dateLabel(value: string): string {
   return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${value}T12:00:00Z`));
+}
+
+function sessionSummary(session: ExerciseHistorySession): string {
+  const summary = ["Last session", dateLabel(session.date)];
+  const reps = session.sets.reduce((total, set) => total + (set.repetitions ?? 0), 0);
+  if (reps) summary.push(`${reps} ${reps === 1 ? "rep" : "reps"} total`);
+  const last = session.sets.at(-1);
+  if (last) {
+    const details = [];
+    if (last.repetitions) details.push(`${last.repetitions} ${last.repetitions === 1 ? "rep" : "reps"}`);
+    if (last.resistanceKind === "external") details.push(`${last.weightKg} kg`);
+    else if (last.repetitions) details.push("BW");
+    const hold = (last.holdMinutes ?? last.durationMinutes ?? 0) * 60 + (last.holdSeconds ?? last.durationSeconds ?? 0);
+    if (hold) details.push(`${formatDuration(hold)} hold`);
+    if (details.length) summary.push(`Last set: ${details.join(", ")}`);
+  }
+  return summary.join(" · ");
 }
 export function ExerciseHistory({ exercise, day, onChooseDay }: Props) {
   const [previous, setPrevious] = useState<ExerciseHistorySession | null>(null);
@@ -29,7 +47,7 @@ export function ExerciseHistory({ exercise, day, onChooseDay }: Props) {
     {exercise.hasHistory && <div className="exercise-history-summary">
       {loadingPrevious && !previous && <small className="previous-session" role="status">Loading…</small>}
       {previousError && <button className="previous-session-error" title={previousError} onClick={() => setRetryPrevious((value) => value + 1)}>Retry</button>}
-      {previous && <span className="previous-session">Last session · {dateLabel(previous.date)}</span>}
+      {previous && <span className="previous-session">{sessionSummary(previous)}</span>}
       <button className="history-button" aria-label={`History for ${exercise.name}`} title="History" onClick={() => setOpen(true)}><HistoryIcon /></button>
     </div>}
     {open && <Suspense fallback={<span className="deferred-loading" role="status">Loading history…</span>}><ExerciseHistoryDialog exercise={exercise} onClose={() => setOpen(false)} onChooseDay={onChooseDay} /></Suspense>}

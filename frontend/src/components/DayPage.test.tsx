@@ -9,6 +9,7 @@ vi.mock("../lib/api", () => ({
   api: {
     rotations: vi.fn().mockResolvedValue([]),
     day: vi.fn(),
+    addDayExercise: vi.fn(),
     exercises: vi.fn(),
     exerciseRecommendations: vi.fn(),
     config: vi.fn(),
@@ -116,9 +117,13 @@ describe("DayPage exercise notes", () => {
     expect(await screen.findByRole("button", { name: "Add exercise note" })).toBeInTheDocument();
   });
 
-  it("shows the note action on a pending exercise card", async () => {
+  it("saves a newly selected exercise before opening its first set editor", async () => {
     const user = userEvent.setup();
-    vi.mocked(api.day).mockResolvedValue({ date: "2026-09-17", sections: [] });
+    vi.mocked(api.day).mockResolvedValueOnce({ date: "2026-09-17", sections: [] }).mockResolvedValue({
+      date: "2026-09-17",
+      sections: [{ exercise, displayOrder: 1, total: 0, sets: [] }],
+    });
+    vi.mocked(api.addDayExercise).mockResolvedValue(undefined);
     vi.mocked(api.exercises).mockResolvedValue([exercise]);
     render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
 
@@ -126,7 +131,9 @@ describe("DayPage exercise notes", () => {
     await user.click(screen.getByRole("menuitem", { name: /Add exercise/ }));
     await user.click(await screen.findByRole("button", { name: /Push-ups/ }));
 
-    expect(screen.getByRole("button", { name: "Add exercise note" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Add exercise note" })).toBeInTheDocument();
+    expect(api.addDayExercise).toHaveBeenCalledWith("2026-09-17", exercise.id);
+    expect(await screen.findByRole("checkbox", { name: "Save set" })).not.toBeChecked();
   });
 
   it("opens the add menu with keyboard navigation and restores focus on Escape", async () => {

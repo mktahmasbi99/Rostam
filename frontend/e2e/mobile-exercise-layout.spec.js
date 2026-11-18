@@ -169,12 +169,17 @@ test("history buttons stay at the card's top right with short/long titles and no
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/config") return route.fulfill({ json: { today: "2026-10-27", timezone: "Europe/Warsaw", version: "1" } });
     if (path === "/api/days/2026-10-27") return route.fulfill({ json: { date: "2026-10-27", sections: exercises.map((exercise) => ({ exercise, sets: [{ ...set, exerciseId: exercise.id }], total: 10 })), activities: [] } });
-    if (path.endsWith("/history")) return route.fulfill({ json: { sessions: path.includes("/2/") ? [] : [{ date: "2026-10-22", sets: [set], total: 10 }], nextBeforeDate: null } });
+    if (path.endsWith("/history")) {
+      const previousSets = path.includes("/3/") ? [set, { ...set, repetitions: 8, resistanceKind: "external", weightKg: "12.5", holdMinutes: 0, holdSeconds: 45 }] : [{ ...set, repetitions: null, durationMinutes: 0, durationSeconds: 45 }];
+      return route.fulfill({ json: { sessions: path.includes("/2/") ? [] : [{ date: "2026-10-22", sets: previousSets, total: path.includes("/3/") ? 18 : 45 }], nextBeforeDate: null } });
+    }
     return route.fulfill({ json: [] });
   });
   await page.goto("/");
   await expect(page.locator(".history-button")).toHaveCount(3);
   await expect(page.locator(".previous-session")).toHaveCount(2);
+  await expect(page.getByText(/Last session · .* · Last set: 0:45 hold/)).toBeVisible();
+  await expect(page.getByText(/18 reps total · Last set: 8 reps, 12.5 kg, 0:45 hold/)).toBeVisible();
   for (const width of [320, 393, 430, 907, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     for (const fontSize of ["100%", "125%"]) {

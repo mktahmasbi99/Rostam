@@ -39,7 +39,8 @@ test("create, log, note, and review a supplement at iPhone size", async ({ page,
   await expect(cards.getByText("Due", { exact: true })).toBeVisible();
   await cards.getByRole("button", { name: "Log Magnesium powder intake" }).click();
   const intake = page.getByRole("dialog", { name: "Log Magnesium powder intake" });
-  await expect(intake.getByLabel("Date and time")).toHaveValue(new RegExp(`^${today}T`));
+  await expect(intake.getByRole("button", { name: "Time", exact: true })).toHaveText(/\d{2}:\d{2}/);
+  await expect(intake.locator('input[type="datetime-local"], input[type="date"]')).toHaveCount(0);
   await intake.getByLabel("Quantity (scoops)").fill("0.5");
   await intake.getByRole("button", { name: "Save intake" }).click();
   await expect(cards.getByText("0.5 / 0.5 scoops")).toBeVisible();
@@ -109,3 +110,38 @@ test("create, log, note, and review a supplement at iPhone size", async ({ page,
   await expect(note).toBeHidden();
   await expect(emptyNote.locator("svg.lucide-file")).toBeVisible();
 });
+
+test("the time wheel logs intake on the card's day and edits keep the original day", async ({ page, request }) => {
+  const { today } = await (await request.get(`${ledger.origin}/api/config`)).json();
+  const yesterday = new Date(Date.parse(today) - 86400000).toISOString().slice(0, 10);
+  const created = await request.post(`${ledger.origin}/api/supplements`, { data: {
+    name: "Zinc", unit: "capsules", dailyTarget: "2", amountPerUnit: "20", amountUnit: "mg", startDate: yesterday,
+  } });
+  expect(created.ok()).toBe(true);
+  await page.goto(ledger.origin);
+  await page.getByRole("button", { name: "Previous day" }).click();
+  await page.getByRole("button", { name: "Log Zinc intake" }).click();
+  const intake = page.getByRole("dialog", { name: "Log Zinc intake" });
+  await expect(intake.getByRole("button", { name: "Time", exact: true })).toHaveText("12:00");
+  await setNextMinute(intake);
+  await intake.getByRole("button", { name: "Save intake" }).click();
+  await expect(page.getByText("1 / 2 capsules")).toBeVisible();
+
+  await page.getByRole("button", { name: "Next day" }).click();
+  await page.getByRole("article").filter({ hasText: "Zinc" }).click();
+  await page.getByRole("button", { name: "Edit intake at 12:01" }).click();
+  const edit = page.getByRole("dialog", { name: "Edit Zinc intake" });
+  await setNextMinute(edit);
+  await edit.getByRole("button", { name: "Save correction" }).click();
+  await expect(page.getByRole("button", { name: "Edit intake at 12:02" })).toBeVisible();
+  const past = await (await request.get(`${ledger.origin}/api/days/${yesterday}`)).json();
+  const current = await (await request.get(`${ledger.origin}/api/days/${today}`)).json();
+  expect(past.supplements.find((card) => card.name === "Zinc").quantity).toBe("1");
+  expect(current.supplements.find((card) => card.name === "Zinc").quantity).toBe("0");
+});
+
+async function setNextMinute(dialog) {
+  await dialog.getByRole("button", { name: "Time", exact: true }).click();
+  await dialog.getByRole("spinbutton", { name: "Minute" }).press("ArrowUp");
+  await dialog.getByRole("button", { name: "Set time" }).click();
+}

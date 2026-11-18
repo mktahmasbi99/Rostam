@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import type { SupplementHistory, SupplementIntake, SupplementProduct } from "../lib/types";
 import { workoutLocalTime } from "../lib/workoutTime";
 import { Modal } from "./Modal";
+import { TimeWheelField } from "./TimeWheelField";
 
 export interface SupplementEditorActions {
   onClose: () => void;
@@ -142,19 +143,20 @@ export function SupplementIntakeForm({ product, intake, day, today, timezone, ..
   timezone: string;
 }) {
   const [instant] = useState(() => intake?.takenAt ?? new Date().toISOString());
-  const initialTime = intake || day === today ? workoutLocalTime(instant, timezone) : `${day}T12:00`;
+  const localInstant = workoutLocalTime(instant, timezone);
+  const date = intake ? localInstant.slice(0, 10) : day;
+  const initialTime = intake || day === today ? localInstant.slice(11) : "12:00";
+  const [time, setTime] = useState(initialTime);
   return <SupplementForm title={intake ? `Edit ${product.name} intake` : `Log ${product.name} intake`}
     saveLabel={intake ? "Save correction" : "Save intake"} {...actions}
     remove={intake && { label: "Delete intake", confirm: "Delete this intake entry?", action: () => api.deleteSupplementIntake(product.id, intake.id) }}
     save={(fields) => {
-      const value = field(fields, "takenAt");
-      const takenAt = value === initialTime && (intake || day === today) ? instant : value;
+      const takenAt = time === initialTime && date === localInstant.slice(0, 10) ? instant : `${date}T${time}`;
       const payload = { takenAt, quantity: field(fields, "quantity") };
       return intake ? api.correctSupplementIntake(product.id, intake.id, payload) : api.logSupplementIntake(product.id, payload);
     }}>
     <label>Quantity ({product.unit})<input name="quantity" inputMode="decimal" maxLength={40} defaultValue={intake?.quantity ?? "1"} required /></label>
-    <label>Date and time<input name="takenAt" type="datetime-local" defaultValue={initialTime} max={`${today}T23:59`} required /></label>
-    <small>Time zone: {timezone}</small>
+    <TimeWheelField label="Time" value={time} onChange={setTime} />
   </SupplementForm>;
 }
 

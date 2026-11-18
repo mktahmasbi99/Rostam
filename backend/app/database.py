@@ -2567,8 +2567,6 @@ class RostamDatabase:
                     for row in self._set_rows(connection, day_value, exercise["id"])
                     if row["workout_exercise_id"] is None
                 ]
-                if not sets:
-                    continue
                 total = sum(
                     (item["repetitions"] or 0)
                     if exercise["measurement_type"] in {"repetitions", "timed_repetitions"}
@@ -3101,6 +3099,48 @@ class RostamDatabase:
                 "weightKg": None,
             }
 
+    def _ensure_day_exercise(
+        self, connection: sqlite3.Connection, day: str, exercise_id: int, now: str
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO day_exercises (entry_date, exercise_id, display_order, created_at)
+            SELECT ?, ?, COALESCE(MAX(display_order), 0) + 1, ?
+            FROM day_exercises WHERE entry_date = ?
+            ON CONFLICT(entry_date, exercise_id) DO NOTHING
+            """,
+            (day, exercise_id, now, day),
+        )
+
+    def add_day_exercise(self, day: str, exercise_id: int) -> None:
+        self._parse_day(day)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            exercise = self._exercise_row(connection, exercise_id)
+            if exercise["archived_at"] is not None:
+                raise DomainError("Restore this exercise before adding it to a day.")
+            self._ensure_day_exercise(connection, day, exercise_id, self._utc_now())
+            connection.commit()
+
+    def remove_day_exercise(self, day: str, exercise_id: int) -> None:
+        self._parse_day(day)
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if connection.execute(
+                """
+                SELECT 1 FROM exercise_sets
+                WHERE entry_date = ? AND exercise_id = ? AND workout_exercise_id IS NULL
+                LIMIT 1
+                """,
+                (day, exercise_id),
+            ).fetchone():
+                raise DomainError("Remove the recorded sets before removing this exercise.")
+            connection.execute(
+                "DELETE FROM day_exercises WHERE entry_date = ? AND exercise_id = ?",
+                (day, exercise_id),
+            )
+            connection.commit()
+
     def add_set(
         self, exercise_id: int, day_value: str, payload, *, workout_exercise_id: int | None = None
     ) -> dict:
@@ -3165,21 +3205,8 @@ class RostamDatabase:
                 payload.resistanceKind,
                 payload.weightKg,
             )
-            if workout_exercise_id is None and (
-                connection.execute(
-                    "SELECT 1 FROM day_exercises WHERE entry_date = ? AND exercise_id = ?",
-                    (day_value, exercise_id),
-                ).fetchone()
-                is None
-            ):
-                display_order = connection.execute(
-                    "SELECT COALESCE(MAX(display_order), 0) + 1 FROM day_exercises WHERE entry_date = ?",
-                    (day_value,),
-                ).fetchone()[0]
-                connection.execute(
-                    "INSERT INTO day_exercises VALUES (?, ?, ?, ?)",
-                    (day_value, exercise_id, display_order, now),
-                )
+            if workout_exercise_id is None:
+                self._ensure_day_exercise(connection, day_value, exercise_id, now)
             cursor = connection.execute(
                 """
                 INSERT INTO exercise_sets(
@@ -3291,7 +3318,7 @@ class RostamDatabase:
             if row is None:
                 raise DomainError("Set not found.")
             connection.execute("DELETE FROM exercise_sets WHERE id = ?", (set_id,))
-            if (
+            if row["workout_exercise_id"] is None and (
                 connection.execute(
                     "SELECT 1 FROM exercise_sets WHERE workout_exercise_id IS NULL AND entry_date = ? AND exercise_id = ? LIMIT 1",
                     (row["entry_date"], row["exercise_id"]),
@@ -3605,6 +3632,10 @@ class RostamDatabase:
                 SELECT de.exercise_id, de.entry_date
                 FROM day_exercises de JOIN exercises e ON e.id = de.exercise_id
                 WHERE de.entry_date BETWEEN ? AND ? AND e.archived_at IS NULL
+                    AND EXISTS (
+                        SELECT 1 FROM exercise_sets s WHERE s.entry_date = de.entry_date
+                            AND s.exercise_id = de.exercise_id AND s.workout_exercise_id IS NULL
+                    )
                 ORDER BY de.entry_date, de.display_order
                 """,
                 (start.isoformat(), end.isoformat()),

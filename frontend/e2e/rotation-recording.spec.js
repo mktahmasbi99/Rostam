@@ -63,6 +63,7 @@ for (const choice of ["Just record it", "Add to rotation"]) {
     await page.getByPlaceholder("Search exercises", { exact: true }).fill("Checkbox regression");
     await page.getByRole("button", { name: /Checkbox regression/ }).click();
     await page.getByRole("button", { name: choice, exact: true }).click();
+    await expect(page.getByText("No sets recorded")).toBeVisible();
     await page.getByLabel("Reps", { exact: true }).fill("8");
     await page.getByRole("checkbox", { name: "Save set", exact: true }).click();
     await expect(page.getByRole("checkbox", { name: "Saved set 1; uncheck to edit" })).toBeChecked();
@@ -73,3 +74,57 @@ for (const choice of ["Just record it", "Add to rotation"]) {
     expect(rotations[0].members.some((item) => item.exercise.id === newcomer.id)).toBe(choice === "Add to rotation");
   });
 }
+
+liveTest("a selected exercise survives refresh and supports partial and full left swipes", async ({ page, request, liveApi }) => {
+  const { today } = await (await request.get(`${liveApi}/api/config`)).json();
+  const yesterday = new Date(Date.parse(today) - 86400000).toISOString().slice(0, 10);
+  const exercises = await (await request.get(`${liveApi}/api/exercises`)).json();
+  const exercise = exercises.find((item) => item.name === "Push-ups");
+  for (const [time, repetitions] of [["12:00", 12], ["13:00", 8]]) {
+    const result = await request.post(`${liveApi}/api/days/${yesterday}/exercises/${exercise.id}/sets`, {
+      data: { time, repetitions, resistanceKind: "bodyweight" },
+    });
+    expect(result.ok()).toBe(true);
+  }
+  await page.setViewportSize({ width: 393, height: 844 });
+  await page.route("**/api/**", async (route) => {
+    const url = new URL(route.request().url());
+    await route.fulfill({ response: await route.fetch({ url: `${liveApi}${url.pathname}${url.search}` }) });
+  });
+  await page.goto("/");
+
+  async function addExercise() {
+    await page.getByRole("button", { name: "Add to day", exact: true }).click();
+    await page.getByRole("menuitem", { name: /Add exercise/ }).click();
+    await page.getByRole("button", { name: /Push-ups/ }).first().click();
+    await expect(page.getByRole("checkbox", { name: "Save set", exact: true })).toBeVisible();
+  }
+
+  const card = page.locator(".exercise-card-swipe");
+  const header = card.locator(".exercise-card-header");
+  async function swipe(dx) {
+    const box = await header.boundingBox();
+    const x = box.x + box.width - 5;
+    const y = box.y + 7;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y, { steps: 8 });
+    await page.mouse.up();
+  }
+
+  await addExercise();
+  await page.reload();
+  await expect(card.getByText(/Last session · .* · 20 reps total · Last set: 8 reps, BW/)).toBeVisible();
+  await expect(card.getByRole("button", { name: "Add set", exact: true })).toBeVisible();
+  await swipe(-90);
+  await expect(card).toHaveCount(1);
+  await card.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect(card).toHaveCount(0);
+
+  await addExercise();
+  await swipe(-260);
+  await expect(card).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText("No activity recorded")).toBeVisible();
+  expect((await (await request.get(`${liveApi}/api/days/${yesterday}`)).json()).sections[0].sets).toHaveLength(2);
+});

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 from io import BytesIO
 from threading import Event
 from time import sleep
@@ -12,6 +13,33 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app import main
+
+
+def test_day_exercise_endpoints_persist_empty_cards_without_counting_them(database, monkeypatch):
+    monkeypatch.setattr(main, "database", database)
+    client = TestClient(main.app)
+    exercise_id = database.list_exercises("active", "Push-ups", None)[0]["id"]
+    day = (database.today() - timedelta(days=1)).isoformat()
+    url = f"/api/days/{day}/exercises/{exercise_id}"
+
+    assert client.put(url).status_code == 204
+    assert client.put(url).status_code == 204
+    sections = client.get(f"/api/days/{day}").json()["sections"]
+    assert [(section["exercise"]["id"], section["sets"]) for section in sections] == [
+        (exercise_id, [])
+    ]
+    assert client.get("/api/rotation-recommendations?days=7").json() == []
+    assert client.delete(url).status_code == 204
+    assert client.delete(url).status_code == 204
+    assert client.get(f"/api/days/{day}").json()["sections"] == []
+
+    assert client.put(url).status_code == 204
+    saved = client.post(
+        f"{url}/sets", json={"repetitions": 8, "time": "12:00", "resistanceKind": "bodyweight"}
+    )
+    assert saved.status_code == 201
+    assert client.delete(url).status_code == 400
+    assert client.get(f"/api/days/{day}").json()["sections"][0]["sets"] == [saved.json()]
 
 
 def test_rotation_endpoints_manage_members_and_skip(database, monkeypatch):

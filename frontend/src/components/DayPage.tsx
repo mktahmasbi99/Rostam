@@ -1,13 +1,15 @@
-import { ChevronLeft, ChevronRight, ClipboardList, Clock3, Dumbbell, Pill, Plus } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { ChevronLeft, ChevronRight, ClipboardList, Clock3, Dumbbell, Pill, Plus, Trash2 } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { workoutTimeRange } from "../lib/workoutTime";
 import { api } from "../lib/api";
 import { artwork } from "../artwork";
 import { formatDay, formatExerciseTotal } from "../lib/format";
-import type { DayData, Exercise, ExerciseSet, Rotation } from "../lib/types";
+import type { DayData, DaySection, Exercise, ExerciseSet, Rotation } from "../lib/types";
+import { useSetDeletion } from "../lib/useSetDeletion";
 import { ExerciseImage } from "./ExerciseImage";
 import { SetTable } from "./SetTable";
 import { SetRow } from "./SetRow";
+import { SwipeSetRow } from "./SwipeSetRow";
 import { ActivityEntryCard } from "./ActivityEntry";
 import { ReadState } from "./ReadState";
 
@@ -33,6 +35,33 @@ interface Props {
   onChooseDay?: (day: string) => void;
 }
 
+function DayExerciseCard({ section, day, onChooseDay, onRemove, children }: {
+  section: DaySection;
+  day: string;
+  onChooseDay?: Props["onChooseDay"];
+  onRemove?: () => Promise<void>;
+  children: ReactNode;
+}) {
+  const { exercise, sets, total } = section;
+  const { deleting, error, remove } = useSetDeletion(onRemove);
+  const card = <section className={onRemove ? "exercise-card pending-card" : "exercise-card"}>
+    <header className={`exercise-card-header${exercise.hasHistory ? " has-history" : ""}`}>
+      <ExerciseImage imageKey={exercise.imageKey} name={exercise.name} size="large" />
+      <div className="exercise-card-main">
+        <div className="exercise-card-title-row">
+          <h2 className="entry-kind-title"><Dumbbell className="entry-kind-icon" aria-hidden="true" /><span>{exercise.name}</span></h2>
+          <Suspense fallback={null}><ExerciseHistory exercise={exercise} day={day} onChooseDay={onChooseDay} /></Suspense>
+        </div>
+        <strong className="daily-total">{sets.length ? formatExerciseTotal(exercise, total, sets) : "No sets recorded"}</strong>
+      </div>
+      {onRemove && <button type="button" className="history-button remove-day-exercise" aria-label={`Remove ${exercise.name} from this day`} title="Remove from this day" disabled={deleting} onClick={remove}><Trash2 /></button>}
+    </header>
+    <Suspense fallback={null}><ExerciseNote exercise={exercise} /></Suspense>
+    <SetTable exercise={exercise} editable>{children}</SetTable>
+  </section>;
+  return onRemove ? <SwipeSetRow className="exercise-card-swipe" onDelete={remove} disabled={deleting} error={error}>{card}</SwipeSetRow> : card;
+}
+
 export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar, onPreviousDay, onNextDay, onChooseDay }: Props) {
   const [data, setData] = useState<DayData>({ date: day, sections: [] });
   const [loading, setLoading] = useState(true);
@@ -47,7 +76,6 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
   const [activityPickerOpen, setActivityPickerOpen] = useState(false);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [supplementLibraryOpen, setSupplementLibraryOpen] = useState(false);
-  const [pendingExercise, setPendingExercise] = useState<Exercise | null>(null);
   const [rotationPrompt, setRotationPrompt] = useState<{ exercise: Exercise; rotation: Rotation } | null>(null);
   const [rotationPromptBusy, setRotationPromptBusy] = useState(false);
   const [rotationPromptError, setRotationPromptError] = useState("");
@@ -77,7 +105,6 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
 
   useEffect(() => {
     const controller = new AbortController();
-    setPendingExercise(null);
     setRotationPrompt(null);
     setRotationPromptError("");
     setExerciseChoiceError("");
@@ -130,9 +157,14 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
   }
 
   async function saved() {
-    setPendingExercise(null);
     setAddingTo(null);
     setEditingSet(null);
+    await load();
+  }
+
+  async function addExerciseToDay(exercise: Exercise) {
+    await api.addDayExercise(day, exercise.id);
+    setAddingTo(exercise.id);
     await load();
   }
 
@@ -154,25 +186,27 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       }
       setPickerOpen(false);
       addTriggerRef.current?.focus();
-      setPendingExercise(exercise);
+      await addExerciseToDay(exercise);
     } catch (caught) {
       setPickerOpen(false);
       addTriggerRef.current?.focus();
-      setExerciseChoiceError(caught instanceof Error ? caught.message : "Could not check the active rotation.");
+      setExerciseChoiceError(caught instanceof Error ? caught.message : "Could not save the exercise.");
     }
   }
 
-  async function addExerciseToRotation() {
+  async function confirmExercise(addToRotation: boolean) {
     if (!rotationPrompt || rotationPromptBusy) return;
     setRotationPromptBusy(true);
     setRotationPromptError("");
     try {
-      const exerciseIds = rotationPrompt.rotation.members.map((member) => member.exercise.id);
-      await api.setRotationMembers(rotationPrompt.rotation.id, [...exerciseIds, rotationPrompt.exercise.id]);
-      setPendingExercise(rotationPrompt.exercise);
+      if (addToRotation) {
+        const exerciseIds = rotationPrompt.rotation.members.map((member) => member.exercise.id);
+        await api.setRotationMembers(rotationPrompt.rotation.id, [...exerciseIds, rotationPrompt.exercise.id]);
+      }
+      await addExerciseToDay(rotationPrompt.exercise);
       setRotationPrompt(null);
     } catch (caught) {
-      setRotationPromptError(caught instanceof Error ? caught.message : "Could not update the active rotation.");
+      setRotationPromptError(caught instanceof Error ? caught.message : "Could not save the exercise.");
     } finally {
       setRotationPromptBusy(false);
     }
@@ -216,7 +250,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
         <SupplementLibrary day={day} today={today} timezone={timezone} onClose={() => setSupplementLibraryOpen(false)} onChanged={() => void load()} />
       </Suspense>}
 
-      {loaded && !loading && !error && data.sections.length === 0 && !(data.activities?.length) && !(data.workouts?.length) && !pendingExercise && !data.supplements?.length && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise, activity, or workout.</p></div>}
+      {loaded && !loading && !error && data.sections.length === 0 && !(data.activities?.length) && !(data.workouts?.length) && !data.supplements?.length && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise, activity, or workout.</p></div>}
 
       {workoutError && <p className="error" role="alert">{workoutError}</p>}
       {data.activeWorkout && !data.workouts?.some((item) => item.id === data.activeWorkout?.id) && <button className="workout-resume-banner" onClick={() => setWorkoutId(data.activeWorkout!.id)}>Resume {data.activeWorkout.name} · workout in progress</button>}
@@ -227,20 +261,19 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       {!!data.activities?.length && <section className="activity-card"><h2>Timed activities</h2><div className="activity-entry-list">{data.activities.map((entry) => <ActivityEntryCard key={entry.id} entry={entry} activities={data.activities ?? []} timezone={timezone} onChanged={() => void load()} />)}</div></section>}
 
       {loaded && <div className="exercise-sections">
-        {data.sections.map((section) => <section className="exercise-card" key={`${day}-${section.exercise.id}`}>
-          <header className={`exercise-card-header${section.exercise.hasHistory ? " has-history" : ""}`}><ExerciseImage imageKey={section.exercise.imageKey} name={section.exercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2 className="entry-kind-title"><Dumbbell className="entry-kind-icon" aria-hidden="true" /><span>{section.exercise.name}</span></h2><Suspense fallback={null}><ExerciseHistory exercise={section.exercise} day={day} onChooseDay={onChooseDay} /></Suspense></div><strong className="daily-total">{formatExerciseTotal(section.exercise, section.total, section.sets)}</strong></div></header>
-          <Suspense fallback={null}><ExerciseNote exercise={section.exercise} /></Suspense>
-          <SetTable exercise={section.exercise} editable>
+        {data.sections.map((section) => <DayExerciseCard key={section.exercise.id} section={section} day={day} onChooseDay={onChooseDay}
+          onRemove={section.sets.length ? undefined : async () => {
+            await api.removeDayExercise(day, section.exercise.id);
+            setAddingTo((current) => current === section.exercise.id ? null : current);
+            await load();
+          }}>
             {section.sets.map((set, index) => editingSet?.id === set.id ? <Suspense key={set.id} fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} existing={set} onDelete={() => removeSet(set)} onSaved={() => void saved()} onCancel={() => setEditingSet(null)} /></Suspense> : <SetRow key={set.id} exercise={section.exercise} set={set} index={index} onEdit={() => { setAddingTo(null); setEditingSet(set); }} onDelete={() => removeSet(set)} />)}
-          {addingTo === section.exercise.id ? <Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} onSaved={() => void saved()} onCancel={() => setAddingTo(null)} /></Suspense> : <button className="add-set" aria-label="Add set" title="Add set" onClick={() => { setEditingSet(null); setAddingTo(section.exercise.id); }}><Plus /></button>}
-          </SetTable>
-        </section>)}
-
-        {pendingExercise && <section className="exercise-card pending-card"><header className={`exercise-card-header${pendingExercise.hasHistory ? " has-history" : ""}`}><ExerciseImage imageKey={pendingExercise.imageKey} name={pendingExercise.name} size="large" /><div className="exercise-card-main"><div className="exercise-card-title-row"><h2 className="entry-kind-title"><Dumbbell className="entry-kind-icon" aria-hidden="true" /><span>{pendingExercise.name}</span></h2><Suspense fallback={null}><ExerciseHistory exercise={pendingExercise} day={day} onChooseDay={onChooseDay} /></Suspense></div><span className="daily-total">New today</span></div></header><Suspense fallback={null}><ExerciseNote exercise={pendingExercise} /></Suspense><SetTable exercise={pendingExercise} editable><Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={pendingExercise} day={day} onSaved={() => void saved()} onCancel={() => setPendingExercise(null)} /></Suspense></SetTable></section>}
+            {addingTo === section.exercise.id ? <Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} onSaved={() => void saved()} onCancel={() => setAddingTo(null)} /></Suspense> : <button className="add-set" aria-label="Add set" title="Add set" onClick={() => { setEditingSet(null); setAddingTo(section.exercise.id); }}><Plus /></button>}
+        </DayExerciseCard>)}
       </div>}
       {exerciseChoiceError && <p className="error-panel exercise-choice-error" role="alert">Could not add this exercise: {exerciseChoiceError}</p>}
-      {rotationPrompt && <Suspense fallback={null}><Modal title="Add this exercise to your active rotation?" onClose={() => { if (!rotationPromptBusy) setRotationPrompt(null); }}><div className="rotation-choice-dialog"><p>{rotationPrompt.exercise.name}</p>{rotationPromptError && <p className="error" role="alert">{rotationPromptError}</p>}<div className="draft-actions"><button type="button" disabled={rotationPromptBusy} onClick={() => { setPendingExercise(rotationPrompt.exercise); setRotationPrompt(null); }}>Just record it</button><button type="button" className="primary" disabled={rotationPromptBusy} onClick={() => void addExerciseToRotation()}>{rotationPromptBusy ? "Adding…" : "Add to rotation"}</button></div></div></Modal></Suspense>}
-      {pickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading exercise picker…</div>}><ExercisePicker day={day} today={today} presentIds={[...presentIds, ...(pendingExercise ? [pendingExercise.id] : [])]} onClose={() => { setPickerOpen(false); addTriggerRef.current?.focus(); }} onChoose={(exercise) => void chooseExercise(exercise)} /></Suspense>}
+      {rotationPrompt && <Suspense fallback={null}><Modal title="Add this exercise to your active rotation?" onClose={() => { if (!rotationPromptBusy) setRotationPrompt(null); }}><div className="rotation-choice-dialog"><p>{rotationPrompt.exercise.name}</p>{rotationPromptError && <p className="error" role="alert">{rotationPromptError}</p>}<div className="draft-actions"><button type="button" disabled={rotationPromptBusy} onClick={() => void confirmExercise(false)}>Just record it</button><button type="button" className="primary" disabled={rotationPromptBusy} onClick={() => void confirmExercise(true)}>{rotationPromptBusy ? "Adding…" : "Add to rotation"}</button></div></div></Modal></Suspense>}
+      {pickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading exercise picker…</div>}><ExercisePicker day={day} today={today} presentIds={presentIds} onClose={() => { setPickerOpen(false); addTriggerRef.current?.focus(); }} onChoose={(exercise) => void chooseExercise(exercise)} /></Suspense>}
       {activityPickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading activity picker…</div>}><ActivityPicker day={day} timezone={timezone} onClose={() => { setActivityPickerOpen(false); addTriggerRef.current?.focus(); }} onStarted={() => { setActivityPickerOpen(false); addTriggerRef.current?.focus(); void load(); }} /></Suspense>}
       <div className="day-add-actions floating-create-action" ref={addMenuRef} onKeyDown={handleAddMenuKeyDown}>
         {addMenuOpen && <div id="day-add-menu" className="day-add-menu" role="menu" aria-label="Add to day">
