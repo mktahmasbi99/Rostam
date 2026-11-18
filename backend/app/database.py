@@ -2324,6 +2324,23 @@ class RostamDatabase:
                 (now if archived else None, now, product_id),
             )
 
+    def delete_supplement(self, product_id: int, confirmation: str) -> None:
+        if confirmation != "DELETE":
+            raise DomainError("Type DELETE to permanently delete this supplement.")
+        with self._backup_lock:
+            with self.connect() as connection:
+                self._supplement_row(connection, product_id)
+            self.create_backup("pre-delete")
+            with self.connect() as connection, connection:
+                connection.execute("BEGIN IMMEDIATE")
+                connection.execute(
+                    "DELETE FROM supplement_intakes WHERE product_id = ?", (product_id,)
+                )
+                connection.execute(
+                    "DELETE FROM supplement_notes WHERE product_id = ?", (product_id,)
+                )
+                connection.execute("DELETE FROM supplement_products WHERE id = ?", (product_id,))
+
     def _supplement_timestamp(self, value: str) -> str:
         try:
             if "T" not in value:

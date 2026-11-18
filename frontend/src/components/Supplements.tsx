@@ -1,4 +1,4 @@
-import { Archive, ChevronRight, File, FileText, NotebookPen, Plus } from "lucide-react";
+import { ChevronRight, File, FileText, NotebookPen, Pencil, Plus } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import type { SupplementCard, SupplementHistory, SupplementIntake, SupplementProduct } from "../lib/types";
@@ -112,7 +112,7 @@ export function SupplementLibrary({ onClose, ...context }: DayContext & { onClos
   </Modal>;
 }
 
-type DetailEditor = { kind: "intake"; intake?: SupplementIntake } | { kind: "product" | "rating" | "stock" | "archive" };
+type DetailEditor = { kind: "intake"; intake?: SupplementIntake } | { kind: "product" | "rating" | "stock" | "restore" };
 
 function SupplementDetails({ product: initialProduct, onClose, ...context }: DayContext & {
   product: SupplementProduct;
@@ -133,16 +133,17 @@ function SupplementDetails({ product: initialProduct, onClose, ...context }: Day
     onClose: () => setEditor(null),
     onSaved: () => { setEditor(null); changed(); },
   };
-  const archiveLabel = product.archived ? "Restore supplement" : "Archive supplement";
   return <Modal title={product.name} onClose={onClose} wide groupHeaderActionWithClose
-    headerAction={<button className="icon-button" title="Supplement notebook" aria-label="Open supplement notebook" disabled={!data || blocked} onClick={() => setNotebookOpen(true)}><NotebookPen /></button>}>
+    headerAction={<>
+      <button className="icon-button" title="Supplement notebook" aria-label="Open supplement notebook" disabled={!data || blocked} onClick={() => setNotebookOpen(true)}><NotebookPen /></button>
+      <button className="icon-button" title="Edit product" aria-label="Edit product" disabled={!data || blocked} onClick={() => setEditor({ kind: "product" })}><Pencil /></button>
+    </>}>
     {status}
     {data && <div className="supplement-stack">
       <p className="supplement-product-label">{productLabel(product)}{product.archived && " · Archived"}</p>
       <div className="supplement-actions">
         <button className="primary" disabled={blocked} onClick={() => setEditor({ kind: "intake" })}><Plus aria-hidden="true" />Log intake</button>
-        <button disabled={blocked} onClick={() => setEditor({ kind: "product" })}>Edit product</button>
-        <button disabled={blocked} onClick={() => setEditor({ kind: "archive" })}><Archive aria-hidden="true" />{archiveLabel}</button>
+        {product.archived && <button disabled={blocked} onClick={() => setEditor({ kind: "restore" })}>Restore supplement</button>}
       </div>
       <div className="supplement-card-heading">
         <p>Rating · {product.rating === null ? "Unrated" : `${product.rating} / 5 stars`}</p>
@@ -183,11 +184,11 @@ function SupplementDetails({ product: initialProduct, onClose, ...context }: Day
       </section>
     </div>}
     {editor?.kind === "intake" && <SupplementIntakeForm {...context} {...actions} product={product} intake={editor.intake} />}
-    {editor?.kind === "product" && <SupplementProductForm {...actions} today={context.today} product={product} />}
+    {editor?.kind === "product" && <SupplementProductForm {...actions} today={context.today} product={product} onDeleted={() => { onClose(); context.onChanged(); }} />}
     {editor?.kind === "rating" && <SupplementRatingForm {...actions} product={product} />}
     {editor?.kind === "stock" && data && <SupplementStockForm {...context} {...actions} product={product} stock={data.stock} />}
-    {editor?.kind === "archive" && <SupplementForm {...actions} title={archiveLabel} saveLabel={archiveLabel} save={() => api.archiveSupplement(product.id, !product.archived)}>
-      <p>{product.archived ? `Restore ${product.name} to its schedule?` : `Archive ${product.name}? Its history, notes, and rating will stay in the library.`}</p>
+    {editor?.kind === "restore" && <SupplementForm {...actions} title="Restore supplement" saveLabel="Restore supplement" save={() => api.restoreSupplement(product.id)}>
+      <p>Restore {product.name} to its schedule?</p>
     </SupplementForm>}
     {notebookOpen && data && <SupplementNotebook product={product} notes={data.notes} {...context} status={status} blocked={blocked} onClose={() => setNotebookOpen(false)} onChanged={changed} />}
   </Modal>;

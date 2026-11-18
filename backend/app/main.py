@@ -218,6 +218,11 @@ def update_supplement(product_id: int, payload: SupplementWrite) -> dict:
     return database.save_supplement(payload, product_id)
 
 
+@app.delete("/api/supplements/{product_id}", status_code=204)
+def delete_supplement(product_id: int, payload: DeleteConfirmation) -> None:
+    database.delete_supplement(product_id, payload.confirmation)
+
+
 @app.put("/api/supplements/{product_id}/rating", status_code=204)
 def rate_supplement(product_id: int, payload: SupplementRatingWrite) -> None:
     database.rate_supplement(product_id, payload.rating)

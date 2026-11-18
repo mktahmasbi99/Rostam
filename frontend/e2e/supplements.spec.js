@@ -37,6 +37,7 @@ test("create, log, note, and review a supplement at iPhone size", async ({ page,
   await library.getByRole("button", { name: "Close Supplement library" }).click();
   const cards = page.getByRole("region", { name: "Supplements" });
   await expect(cards.getByText("Due", { exact: true })).toBeVisible();
+  await expect(cards.getByRole("button", { name: "Delete supplement" })).toHaveCount(0);
   await cards.getByRole("button", { name: "Log Magnesium powder intake" }).click();
   const intake = page.getByRole("dialog", { name: "Log Magnesium powder intake" });
   await expect(intake.getByRole("button", { name: "Time", exact: true })).toHaveText(/\d{2}:\d{2}/);
@@ -109,6 +110,33 @@ test("create, log, note, and review a supplement at iPhone size", async ({ page,
   await confirmDelete.getByRole("button", { name: "Delete note", exact: true }).click();
   await expect(note).toBeHidden();
   await expect(emptyNote.locator("svg.lucide-file")).toBeVisible();
+
+  await cards.getByRole("button", { name: "View Magnesium powder details" }).click();
+  await expect(detail.getByRole("button", { name: "Delete supplement" })).toHaveCount(0);
+  await expect(detail.getByRole("button", { name: "Archive supplement" })).toHaveCount(0);
+  const pencil = detail.locator(".modal-header-actions").getByRole("button", { name: "Edit product" });
+  await expect(pencil.locator("svg.lucide-pencil")).toBeVisible();
+  await pencil.click();
+  const editor = page.getByRole("dialog", { name: "Edit supplement" });
+  const trash = editor.getByRole("button", { name: "Delete supplement" });
+  await expect(trash.locator("svg.lucide-trash-2")).toBeVisible();
+  await trash.click();
+  const deletion = page.getByRole("dialog", { name: "Delete supplement?" });
+  const confirm = deletion.getByRole("button", { name: "Delete supplement", exact: true });
+  const typed = deletion.getByRole("textbox", { name: "Type DELETE to confirm" });
+  await expect(confirm).toBeDisabled();
+  await typed.fill("delete");
+  await expect(confirm).toBeDisabled();
+  await typed.fill("DELETE");
+  await deletion.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(editor).toBeVisible();
+  await trash.click();
+  await expect(typed).toHaveValue("");
+  await typed.fill("DELETE");
+  await confirm.click();
+  await expect(detail).toBeHidden();
+  await expect(cards.getByRole("button", { name: "View Magnesium powder details" })).toHaveCount(0);
+  expect(await (await request.get(`${ledger.origin}/api/supplements`)).json()).toEqual([]);
 });
 
 test("the time wheel logs intake on the card's day and edits keep the original day", async ({ page, request }) => {

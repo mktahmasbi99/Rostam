@@ -50,8 +50,10 @@ export const api = {
     : request<SupplementProduct>(`/api/supplements/${id}`, json("PUT", payload)),
   rateSupplement: (id: number, rating: number | null) =>
     request<void>(`/api/supplements/${id}/rating`, json("PUT", { rating })),
-  archiveSupplement: (id: number, archived: boolean) =>
-    request<void>(`/api/supplements/${id}/${archived ? "archive" : "restore"}`, json("POST")),
+  restoreSupplement: (id: number) =>
+    request<void>(`/api/supplements/${id}/restore`, json("POST")),
+  deleteSupplement: (id: number, confirmation: string) =>
+    request<void>(`/api/supplements/${id}`, json("DELETE", { confirmation })),
   resetSupplementStock: (id: number, payload: SupplementStockPayload) =>
     request<void>(`/api/supplements/${id}/stock`, json("PUT", payload)),
   logSupplementIntake: (id: number, payload: SupplementIntakePayload) =>

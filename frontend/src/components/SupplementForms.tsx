@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import type { SupplementHistory, SupplementIntake, SupplementProduct } from "../lib/types";
 import { workoutLocalTime } from "../lib/workoutTime";
@@ -15,11 +16,18 @@ export function SupplementForm({ title, saveLabel, onClose, onSaved, save, child
   saveLabel: string;
   save: (fields: FormData) => Promise<unknown>;
   children?: ReactNode;
-  remove?: { label: string; confirm: string; action: () => Promise<void> };
+  remove?: {
+    label: string;
+    confirm: string;
+    action: (confirmation: string) => Promise<void>;
+    requireDelete?: boolean;
+    onRemoved?: () => void;
+  };
 }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
 
   function closeConfirmation() {
     if (saving) return;
@@ -27,13 +35,13 @@ export function SupplementForm({ title, saveLabel, onClose, onSaved, save, child
     setError("");
   }
 
-  async function submit(action: () => Promise<unknown>) {
+  async function submit(action: () => Promise<unknown>, onSuccess = onSaved) {
     if (saving) return;
     setSaving(true);
     setError("");
     try {
       await action();
-      onSaved();
+      onSuccess();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not save the supplement change.");
       setSaving(false);
@@ -50,10 +58,11 @@ export function SupplementForm({ title, saveLabel, onClose, onSaved, save, child
         {children}
         {error && !confirmingDelete && <p className="error" role="alert">{error}</p>}
         <div className="supplement-actions">
-          {remove && <button type="button" className="danger" onClick={() => {
+          {remove && <button type="button" className={remove.requireDelete ? "icon-button danger" : "danger"} aria-label={remove.label} title={remove.requireDelete ? remove.label : undefined} onClick={() => {
             setError("");
+            setConfirmation("");
             setConfirmingDelete(true);
-          }}>{remove.label}</button>}
+          }}>{remove.requireDelete ? <Trash2 aria-hidden="true" /> : remove.label}</button>}
           <button type="button" onClick={onClose}>Cancel</button>
           <button className="primary">{saving ? "Saving…" : saveLabel}</button>
         </div>
@@ -62,10 +71,14 @@ export function SupplementForm({ title, saveLabel, onClose, onSaved, save, child
     {confirmingDelete && remove && <Modal title={`${remove.label}?`} onClose={closeConfirmation}>
       <div className="stack">
         <p>{remove.confirm} This cannot be undone.</p>
+        {remove.requireDelete && <label>Type DELETE to confirm
+          <input autoFocus autoComplete="off" value={confirmation} disabled={saving} onChange={(event) => setConfirmation(event.target.value)} />
+        </label>}
         {error && <p className="error" role="alert">{error}</p>}
         <div className="form-actions">
           <button className="secondary" disabled={saving} onClick={closeConfirmation}>Cancel</button>
-          <button className="danger-button" disabled={saving} onClick={() => void submit(remove.action)}>
+          <button className="danger-button" disabled={saving || (remove.requireDelete && confirmation !== "DELETE")}
+            onClick={() => void submit(() => remove.action(confirmation), remove.onRemoved)}>
             {saving ? "Deleting…" : remove.label}
           </button>
         </div>
@@ -87,11 +100,19 @@ const intakeUnits = [
   { value: "units", label: "Other" },
 ];
 
-export function SupplementProductForm({ product, today, ...actions }: SupplementEditorActions & {
+export function SupplementProductForm({ product, today, onDeleted, ...actions }: SupplementEditorActions & {
   product?: SupplementProduct;
   today: string;
+  onDeleted?: () => void;
 }) {
   return <SupplementForm title={product ? "Edit supplement" : "New supplement"} saveLabel="Save product" {...actions}
+    remove={product && {
+      label: "Delete supplement",
+      confirm: `Permanently delete ${product.name} and all its intake history, notes, rating, and stock information?`,
+      requireDelete: true,
+      action: (confirmation) => api.deleteSupplement(product.id, confirmation),
+      onRemoved: onDeleted,
+    }}
     save={(fields) => api.saveSupplement({
       name: field(fields, "name"), brand: field(fields, "brand"),
       unit: field(fields, "unit"), amountPerUnit: field(fields, "amountPerUnit"),

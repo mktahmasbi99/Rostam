@@ -215,6 +215,39 @@ def test_supplement_notes_archive_restore_and_backup(client, database):
     assert client.get(path).json() == archived
 
 
+def test_delete_supplement_requires_confirmation_and_removes_only_its_data(client, database):
+    day = "2026-11-17"
+    product = client.post("/api/supplements", json=PRODUCT).json()
+    other = client.post("/api/supplements", json={**PRODUCT, "name": "Other"}).json()
+    path = f"/api/supplements/{product['id']}"
+    assert (
+        client.post(
+            f"{path}/intakes", json={"takenAt": f"{day}T09:30", "quantity": "0.5"}
+        ).status_code
+        == 204
+    )
+    assert client.put(f"{path}/notes/{day}", json={"body": "Current note"}).status_code == 204
+    assert client.put(f"{path}/stock", json={"startingBalance": "2"}).status_code == 204
+    snapshot = client.get(path).json()
+
+    assert client.delete(path).status_code == 422
+    assert client.request("DELETE", path, json={"confirmation": "delete"}).status_code == 400
+    assert client.get(path).json() == snapshot
+    assert database.list_backups() == []
+
+    assert client.request("DELETE", path, json={"confirmation": "DELETE"}).status_code == 204
+    assert client.get(path).status_code == 400
+    assert client.get("/api/supplements").json() == [other]
+    assert [card["id"] for card in client.get(f"/api/days/{day}").json()["supplements"]] == [
+        other["id"]
+    ]
+    assert day not in client.get("/api/calendar/2026-11").json()["activeDates"]
+    (backup,) = database.list_backups()
+    assert backup["category"] == "pre-delete"
+    database.restore_backup(backup["id"], "RESTORE")
+    assert client.get(path).json() == snapshot
+
+
 def test_migrate_existing_database_to_supplements(database):
     with database.connect() as connection, connection:
         for table in ("supplement_intakes", "supplement_notes", "supplement_products"):
