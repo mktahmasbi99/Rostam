@@ -81,7 +81,7 @@ async def lifespan(_: FastAPI):
             await task
 
 
-app = FastAPI(title="Rostam API", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Rostam API", version="2.1.0", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 
 
@@ -140,7 +140,7 @@ def config() -> dict[str, str]:
     return {
         "today": database.today().isoformat(),
         "timezone": settings.timezone_name,
-        "version": "2.0.0",
+        "version": app.version,
     }
 
 

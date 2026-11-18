@@ -210,7 +210,7 @@ def test_workout_api_pagination_validation_and_version(database, clock, monkeypa
 
     monkeypatch.setattr(main, "database", database)
     client = TestClient(main.app)
-    assert client.get("/api/config").json()["version"] == "2.0.0"
+    assert client.get("/api/config").json()["version"] == "2.1.0"
     created = client.post(
         "/api/workouts", json={"startedAt": "2026-10-30T09:00", "endedAt": "2026-10-30T10:00"}
     ).json()
