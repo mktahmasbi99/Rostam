@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
+test.use({ baseURL: "http://127.0.0.1:4174" });
+
 test.beforeEach(async ({ page }) => {
   await page.request.post("/__test/switch?version=1");
 });
@@ -109,6 +111,9 @@ test("waits for an explicit restart and updates every ready tab", async ({ page,
   await secondTab.goto("/");
   await expect(secondTab.getByRole("button", { name: "Choose a day" })).toContainText("Today");
   await page.request.post("/__test/switch?version=2");
+  const archiveFixture = await page.request.get("http://127.0.0.1:4173/");
+  expect(archiveFixture.ok()).toBe(true);
+  expect(await archiveFixture.text()).not.toContain("production-fixture-build-2");
   await waitForWaitingWorker(page);
   await page.screenshot({ path: resolve("../docs/verification/batch2-2026-10-25/update-dark-phone.png"), fullPage: true });
   expect(await page.locator('meta[name="rostam-build"]').getAttribute("content")).not.toBe("production-fixture-build-2");
@@ -272,7 +277,7 @@ test("a pending set survives an app update while the API is unreachable", async 
   await page.route("**/api/**", async (route) => {
     if (apiOffline) return route.abort("connectionfailed");
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/config") return route.fulfill({ json: { today, timezone: "Europe/Warsaw", version: "2.2.0", ledgerGeneration } });
+    if (path === "/api/config") return route.fulfill({ json: { today, timezone: "Europe/Warsaw", version: "2.3.0", ledgerGeneration } });
     if (path === `/api/days/${today}`) return route.fulfill({ json: { date: today, sections: [], workouts: [workout], activeWorkout: workout } });
     if (path === "/api/workouts/1" || path === "/api/workouts/active") return route.fulfill({ json: workout });
     if (path.endsWith("/sets")) {

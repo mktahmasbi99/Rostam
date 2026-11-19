@@ -14,6 +14,7 @@ interface Props {
   workout?: { id: number; entryId: number; startedAt: string; endedAt: string | null; timezone: string };
   saveWorkoutSet?: (payload: SetPayload & { occurredAt: string }) => Promise<void>;
   offline?: boolean;
+  readOnly?: boolean;
   prefillVersion?: number;
   exercise: Exercise;
   day: string;
@@ -23,7 +24,7 @@ interface Props {
   onDelete?: () => Promise<void> | void;
 }
 
-export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, workout, saveWorkoutSet, offline, prefillVersion }: Props) {
+export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, workout, saveWorkoutSet, offline, readOnly = false, prefillVersion }: Props) {
   const form = useRef<HTMLFormElement>(null);
   const writing = useRef(false);
   const initialLocal = workout ? workoutLocalTime(existing?.occurredAt ?? (workout.endedAt ? workout.startedAt : new Date().toISOString()), workout.timezone) : "";
@@ -90,7 +91,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, 
   }
 
   async function refreshPrefill(atTime: string) {
-    if (existing || !atTime || offline) return;
+    if (existing || !atTime || offline || readOnly) return;
     try {
       applyPrefill(await api.prefill(exercise.id, setDate, atTime));
     } catch (caught) {
@@ -100,7 +101,7 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, 
 
   useEffect(() => {
     if (existing) return;
-    if (offline) { setLoading(false); setPrefillLoaded(true); setReadError(""); return; }
+    if (offline || readOnly) { setLoading(false); setPrefillLoaded(true); setReadError(""); return; }
     let active = true;
     setLoading(true);
     setReadError("");
@@ -119,10 +120,10 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, 
       .catch((caught) => active && setReadError(caught instanceof Error ? caught.message : "Could not load previous set."))
       .finally(() => { if (active) { setLoading(false); setPrefillLoaded(true); } });
     return () => { active = false; };
-  }, [day, exercise.id, existing, prefillRetry, offline, prefillVersion]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [day, exercise.id, existing, prefillRetry, offline, readOnly, prefillVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function save() {
-    if (writing.current) return;
+    if (readOnly || writing.current) return;
     if (form.current && !form.current.reportValidity()) return;
     setError("");
     if (!time) { setError("Choose a set time."); return; }
@@ -172,10 +173,10 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, 
     }
   }
 
-  if (loading && !prefillLoaded) return <div className="set-draft skeleton" role="status">Loading previous set…</div>;
+  if (loading && !prefillLoaded && !readOnly) return <div className="set-draft skeleton" role="status">Loading previous set…</div>;
 
   return (
-    <SwipeSetRow onDelete={existing && !onDelete ? undefined : remove} disabled={saving || deleting} error={deleteError}><form ref={form} className="set-draft" data-update-dirty={`set-entry-${workout?.entryId ?? exercise.id}`} data-update-dirty-label="Set entry" onSubmit={(event) => { event.preventDefault(); if (!deleting) void save(); }}>
+    <SwipeSetRow onDelete={readOnly || (existing && !onDelete) ? undefined : remove} disabled={saving || deleting} error={deleteError}><form ref={form} className="set-draft" data-update-dirty={`set-entry-${workout?.entryId ?? exercise.id}`} data-update-dirty-label="Set entry" onSubmit={(event) => { event.preventDefault(); if (!deleting) void save(); }}>
       {workout && <label className="workout-set-date">Set date<input aria-label="Set date" type="date" value={setDate} required onChange={(event) => { setSetDate(event.target.value); setDateEdited(true); }} onBlur={() => void refreshPrefill(time)} /></label>}
       <div className="set-form-grid set-cells">
         <TimeWheelField label="Time" value={time} onChange={(value) => { setTime(value); setTimeEdited(true); timeEditedRef.current = true; void refreshPrefill(value); }} />
@@ -183,9 +184,9 @@ export function SetForm({ exercise, day, existing, onSaved, onCancel, onDelete, 
         {exercise.measurementType !== "duration" && <input aria-label="Reps" ref={firstMeasurementInput} className={suggested.repetitions ? "suggested-value" : ""} type="number" min="1" step="1" inputMode="numeric" value={repetitions} onFocus={(event) => suggested.repetitions && event.currentTarget.select()} onClick={(event) => suggested.repetitions && event.currentTarget.select()} onChange={(event) => editMeasurement("repetitions", event.target.value, setRepetitions)} required autoFocus />}
         {exercise.measurementType === "duration" && <DurationInput label="Duration" inputRef={firstMeasurementInput} value={duration} suggested={suggested.duration} onChange={(value) => editMeasurement("duration", value, setDuration)} invalid={invalidDuration} autoFocus />}
         {exercise.measurementType === "timed_repetitions" && <DurationInput label="Hold per repetition" value={hold} suggested={suggested.hold} onChange={(value) => editMeasurement("hold", value, setHold)} invalid={invalidDuration} />}
-        <label className="set-completion"><input type="checkbox" className="set-checkbox" aria-label="Save set" checked={false} disabled={saving || deleting} onChange={() => form.current?.requestSubmit()} /></label>
+        <label className="set-completion"><input type="checkbox" className="set-checkbox" aria-label="Save set" checked={false} disabled={readOnly || saving || deleting} onChange={() => form.current?.requestSubmit()} /></label>
       </div>
-      {(existing || workout) && <div className="set-edit-actions"><button type="button" className="secondary" disabled={saving || deleting} onClick={onCancel}>Cancel</button></div>}
+      {(existing || workout || readOnly) && <div className="set-edit-actions"><button type="button" className="secondary" disabled={saving || deleting} onClick={onCancel}>Cancel</button></div>}
       {exercise.equipment && exercise.allowBodyweight && <small className="set-weight-hint" id={hintId}>0 = BW</small>}
       {readError && <div className="save-error" role="alert"><span>{readError}</span><button type="button" onClick={() => setPrefillRetry((value) => value + 1)}><RotateCcw />Retry previous set</button></div>}
       {error && <div className="save-error" role="alert"><span>{error} Your values remain unsaved on this page.</span><button type="button" disabled={saving || deleting} onClick={() => void save()}><RotateCcw />Retry</button></div>}

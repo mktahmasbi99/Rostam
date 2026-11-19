@@ -1,6 +1,7 @@
+import { OfflineBrowsingContext } from "./dialogContext";
 import { NotebookPen, Pencil } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Exercise } from "../lib/types";
 
@@ -41,6 +42,7 @@ export function ExerciseNoteText({ body }: { body: string }) {
 }
 
 export function ExerciseNote({ exercise }: Props) {
+  const browsingOffline = useContext(OfflineBrowsingContext);
   const [body, setBody] = useState(exercise.exerciseNote ?? "");
   const [draft, setDraft] = useState(body);
   const [editing, setEditing] = useState(false);
@@ -78,17 +80,18 @@ export function ExerciseNote({ exercise }: Props) {
       {error && <p className="save-error" role="alert">{error}</p>}
       <div className="exercise-note-actions">
         <button type="button" className="secondary" disabled={saving} onClick={() => { setDraft(body); setError(""); setEditing(false); }}>Cancel</button>
-        <button type="submit" className="primary" disabled={saving}>{saving ? "Saving…" : "Save note"}</button>
+        <button type="submit" className="primary" disabled={browsingOffline || saving}>{saving ? "Saving…" : "Save note"}</button>
       </div>
     </form>;
   }
 
   if (!body) {
+    if (browsingOffline) return null;
     return <button className="add-exercise-note" onClick={() => { setDraft(""); setEditing(true); }}><NotebookPen aria-hidden="true" /><span>Add exercise note</span></button>;
   }
 
   return <section className="exercise-note" aria-label={`Exercise note for ${exercise.name}`}>
-    <div className="exercise-note-heading"><strong>Exercise note</strong><button className="icon-button" aria-label={`Edit exercise note for ${exercise.name}`} onClick={() => { setDraft(body); setEditing(true); }}><Pencil /></button></div>
+    <div className="exercise-note-heading"><strong>Exercise note</strong><button className="icon-button" disabled={browsingOffline} aria-label={`Edit exercise note for ${exercise.name}`} onClick={() => { setDraft(body); setEditing(true); }}><Pencil /></button></div>
     <ExerciseNoteText body={body} />
   </section>;
 }

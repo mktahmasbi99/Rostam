@@ -81,17 +81,17 @@ function WorkoutTimeForm({ workout, timezone, onSave, onClose }: {
   </Modal>;
 }
 
-export function WorkoutEditor({ id, today, timezone, onClose, onChanged, initialWorkout }: {
-  initialWorkout?: Workout; id: number; today: string; timezone: string; onClose: () => void; onChanged: () => void;
+export function WorkoutEditor({ id, today, timezone, onClose, onChanged, initialWorkout, browseOnly = false }: {
+  initialWorkout?: Workout; browseOnly?: boolean; id: number; today: string; timezone: string; onClose: () => void; onChanged: () => void;
 }) {
   const [workout, setWorkout] = useState<Workout | null>(initialWorkout ?? null);
   const reachability = useSyncExternalStore(subscribeServerReachability, getServerReachability, getServerReachability);
   const uncertain = useSyncExternalStore(subscribeServerReachability, getWriteOutcomeUncertain, getWriteOutcomeUncertain);
   const { pending } = useSyncExternalStore(subscribeOfflineWorkout, getOfflineWorkout, getOfflineWorkout);
   const offline = reachability !== "reachable";
-  const readOnly = offline || uncertain;
+  const readOnly = browseOnly || offline || uncertain;
   const queueGeneration = supportsOfflineWorkout ? workout?.ledgerGeneration : undefined;
-  const canQueue = Boolean(queueGeneration && !uncertain && (!offline || !workout?.endedAt));
+  const canQueue = Boolean(!browseOnly && queueGeneration && !uncertain && (!offline || !workout?.endedAt));
   const setOperations = pending.filter((set) => set.workoutId === id && set.ledgerGeneration === workout?.ledgerGeneration);
   const loadVersion = useRef(0);
   const [clockNow, setClockNow] = useState(0);
@@ -122,13 +122,13 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged, initial
         return;
       }
       setWorkout(next);
-      if (next.ledgerGeneration && !next.endedAt) void cacheActiveWorkout(next, timezone).catch(() => {});
+      if (!browseOnly && getServerReachability() === "reachable" && next.ledgerGeneration && !next.endedAt) void cacheActiveWorkout(next, timezone).catch(() => {});
     } catch (caught) {
       if (!background && version === loadVersion.current) setError(caught instanceof Error ? caught.message : "Could not load workout.");
     } finally {
       if (version === loadVersion.current) setLoading(false);
     }
-  }, [id, timezone]);
+  }, [browseOnly, id, timezone]);
   useEffect(() => { if (!initialWorkout) void load(); }, [load, initialWorkout]);
   useEffect(() => {
     const refresh = () => {
@@ -172,7 +172,7 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged, initial
     }
     await mutate(async () => {
       const next = await api.addWorkoutExercise(id, exercise.id);
-      if (next.ledgerGeneration && !next.endedAt) await cacheActiveWorkout(next, timezone).catch(() => {});
+      if (!browseOnly && getServerReachability() === "reachable" && next.ledgerGeneration && !next.endedAt) await cacheActiveWorkout(next, timezone).catch(() => {});
       setWorkout(next); setPicker(false);
       const member = next.exercises.find((item) => item.exercise.id === exercise.id)!;
       setDraft({ entryId: member.id }); setDraftKey((value) => value + 1);
@@ -181,7 +181,7 @@ export function WorkoutEditor({ id, today, timezone, onClose, onChanged, initial
   }
   function updateWorkout(next: Workout) {
     setWorkout(next);
-    if (next.ledgerGeneration && !next.endedAt) void cacheActiveWorkout(next, timezone).catch(() => {});
+    if (!browseOnly && getServerReachability() === "reachable" && next.ledgerGeneration && !next.endedAt) void cacheActiveWorkout(next, timezone).catch(() => {});
   }
   async function move(index: number, direction: number) {
     if (!workout) return;

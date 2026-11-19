@@ -59,5 +59,5 @@ const server = createServer(async (request, response) => {
     response.end(body);
   } catch { response.writeHead(404).end("Not found"); }
 });
-server.listen(4173, "127.0.0.1");
+server.listen(Number(process.argv[2] ?? 4173), "127.0.0.1");
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => server.close(async () => { await rm(fixtureBase, { recursive: true, force: true }); process.exit(0); }));

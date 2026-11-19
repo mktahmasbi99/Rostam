@@ -1,11 +1,14 @@
+import { OfflineBrowsingContext } from "./dialogContext";
+import { LedgerPhoto } from "./LedgerPhoto";
 import { Plus } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useContext, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { PhotoGroup } from "../lib/types";
 import { ReadState } from "./ReadState";
 import { DailyJournal } from "./DailyJournal";
 
 export function PhotosPage({ today, onChooseDay }: { today: string; onChooseDay: (day: string) => void }) {
+  const browsingOffline = useContext(OfflineBrowsingContext);
   const [uploadDay, setUploadDay] = useState<string | null>(null);
   const [groups, setGroups] = useState<PhotoGroup[]>([]);
   const [error, setError] = useState("");
@@ -55,6 +58,6 @@ export function PhotosPage({ today, onChooseDay }: { today: string; onChooseDay:
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
-  }, [load]);
-  return <main className="page"><header className="section-title"><h1>Photos</h1><p>Private daily photos, newest first.</p></header><div className="page-create-action"><button className="rotation-create-icon" aria-label="Add photos for today" title="Add photos for today" disabled={!loaded || loading} onClick={() => setUploadDay(today)}><Plus /></button></div>{uploadDay && <DailyJournal key={uploadDay} day={uploadDay} today={today} note={null} photoCount={groups.find((group) => group.date === uploadDay)?.photos.length ?? 0} onChanged={() => void load()} initialMode="photos" hideActions onClose={() => setUploadDay(null)} />}<ReadState loading={loading} error={error} hasData={loaded} onRetry={() => void load()} loadingText="Loading photos…" />{loaded && groups.length ? groups.map((group) => <section className="photo-history" key={group.date}><button className="photo-date" onClick={() => onChooseDay(group.date)}>{group.date}</button><div className="photo-grid">{group.photos.map((photo) => <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer"><img loading="lazy" src={photo.thumbnailUrl} alt={`Photo from ${group.date}`} /></a>)}</div></section>) : loaded && !error ? <p className="empty-copy">No daily photos yet.</p> : null}{loaded && nextBeforeDate && <div className="load-older"><button className="secondary" disabled={loading || olderLoading} onClick={() => void loadOlder()}>{olderLoading ? "Loading older photos…" : "Load older photos"}</button>{olderError && <p className="error" role="alert">{olderError} <button className="text-button" onClick={() => void loadOlder(failedCursor.current)}>Retry</button></p>}</div>}</main>;
+  }, [browsingOffline, load]);
+  return <main className="page"><header className="section-title"><h1>Photos</h1><p>Private daily photos, newest first.</p></header><div className="page-create-action"><button className="rotation-create-icon" aria-label="Add photos for today" title="Add photos for today" disabled={browsingOffline || !loaded || loading} onClick={() => setUploadDay(today)}><Plus /></button></div>{uploadDay && <DailyJournal key={uploadDay} day={uploadDay} today={today} note={null} photoCount={groups.find((group) => group.date === uploadDay)?.photos.length ?? 0} onChanged={() => void load()} initialMode="photos" hideActions onClose={() => setUploadDay(null)} />}<ReadState loading={loading} error={error} hasData={loaded} onRetry={() => void load()} loadingText="Loading photos…" />{loaded && groups.length ? groups.map((group) => <section className="photo-history" key={group.date}><button className="photo-date" onClick={() => onChooseDay(group.date)}>{group.date}</button><div className="photo-grid">{group.photos.map((photo) => <LedgerPhoto key={photo.id} photo={photo} />)}</div></section>) : loaded && !error ? <p className="empty-copy">No daily photos yet.</p> : null}{loaded && nextBeforeDate && <div className="load-older"><button className="secondary" disabled={loading || olderLoading} onClick={() => void loadOlder()}>{olderLoading ? "Loading older photos…" : "Load older photos"}</button>{olderError && <p className="error" role="alert">{olderError} <button className="text-button" onClick={() => void loadOlder(failedCursor.current)}>Retry</button></p>}</div>}</main>;
 }

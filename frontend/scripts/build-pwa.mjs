@@ -43,8 +43,8 @@ digest.update(await readFile(new URL("./update-coordinator.js", import.meta.url)
 const buildId = digest.digest("hex").slice(0, 20);
 const htmlPath = join(dist, "index.html");
 let html = await readFile(htmlPath, "utf8");
-const htmlRevision = createHash("sha256").update(html).digest("hex");
 html = html.replace("</head>", `  <meta name="rostam-build" content="${buildId}" />\n  </head>`);
+const htmlRevision = createHash("sha256").update(html).digest("hex");
 await writeFile(htmlPath, html);
 
 const publicFiles = [];
@@ -61,6 +61,24 @@ const measuredBytes = await Promise.all(publicFiles.map(async (item) => stat(joi
 const totalPrecacheBytes = measuredBytes.reduce((total, size) => total + size, 0);
 if (totalPrecacheBytes > 1024 * 1024) console.warn(`Essential precache exceeds 1 MiB: ${totalPrecacheBytes} bytes across ${publicFiles.length} files.`);
 
+const offlineFiles = await Promise.all(files.filter((path) => /^(?:assets|exercise-assets)\//.test(relative(dist, path))).map(async (path) => {
+  const contents = await readFile(path);
+  return {
+    url: `/${relative(dist, path)}`,
+    bytes: contents.length,
+    sha256: createHash("sha256").update(contents).digest("hex"),
+  };
+}));
+await writeFile(join(dist, "offline-assets.json"), JSON.stringify({ buildId, files: offlineFiles }));
+
+const offlineAsset = {
+  cachedResponseWillBeUsed: async ({ request, cachedResponse }) => {
+    if (!(await caches.has(self.rostamOfflineAssetCache))) return cachedResponse;
+    const cache = await caches.open(self.rostamOfflineAssetCache);
+    return (await cache.match(request.url, { ignoreVary: true })) ?? cachedResponse;
+  },
+};
+
 const { warnings } = await generateSW({
   globDirectory: dist,
   globPatterns: [],
@@ -71,19 +89,19 @@ const { warnings } = await generateSW({
   navigateFallbackDenylist: [/^\/api(?:\/|$)/],
   runtimeCaching: [
     {
-      urlPattern: ({ url }) => url.origin === self.location.origin && /^\/assets\/(?:background|logo)-[\w-]+\.(?:webp|jpe?g|png)$/.test(url.pathname),
+      urlPattern: ({ url }) => url.origin === self.location.origin && !url.search && /^\/assets\/(?:background|logo)-[\w-]+\.(?:webp|jpe?g|png)$/.test(url.pathname),
       handler: "CacheFirst",
-      options: { cacheName: "rostam-public-artwork", cacheableResponse: { statuses: [200] }, expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 } },
+      options: { cacheName: "rostam-public-artwork", cacheableResponse: { statuses: [200] }, expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 }, plugins: [offlineAsset] },
     },
     {
-      urlPattern: ({ url }) => url.origin === self.location.origin && /^\/exercise-assets\/[\w-]+\/frame-1\.[a-f0-9]{16}\.png$/.test(url.pathname),
+      urlPattern: ({ url }) => url.origin === self.location.origin && !url.search && /^\/exercise-assets\/[\w-]+\/frame-1\.[a-f0-9]{16}\.png$/.test(url.pathname),
       handler: "CacheFirst",
-      options: { cacheName: "rostam-public-artwork", cacheableResponse: { statuses: [200] }, expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 } },
+      options: { cacheName: "rostam-public-artwork", cacheableResponse: { statuses: [200] }, expiration: { maxEntries: 100, maxAgeSeconds: 30 * 24 * 60 * 60 }, plugins: [offlineAsset] },
     },
     {
-      urlPattern: ({ url }) => url.origin === self.location.origin && /^\/assets\/[\w-]+-[\w-]{8,}\.(?:js|css)$/.test(url.pathname),
+      urlPattern: ({ url }) => url.origin === self.location.origin && !url.search && url.pathname.startsWith("/assets/"),
       handler: "CacheFirst",
-      options: { cacheName: "rostam-deferred-code", cacheableResponse: { statuses: [200] }, expiration: { maxEntries: 32, maxAgeSeconds: 30 * 24 * 60 * 60 } },
+      options: { cacheName: "rostam-deferred-code", cacheableResponse: { statuses: [200] }, expiration: { maxEntries: 32, maxAgeSeconds: 30 * 24 * 60 * 60 }, plugins: [offlineAsset] },
     },
   ],
   cleanupOutdatedCaches: true,

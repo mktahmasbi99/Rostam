@@ -1,5 +1,6 @@
+import { OfflineBrowsingContext } from "./dialogContext";
 import { ChevronRight, File, FileText, NotebookPen, Pencil, Plus } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useContext, useCallback, useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import type { SupplementCard, SupplementHistory, SupplementIntake, SupplementProduct } from "../lib/types";
 import { workoutLocalTime } from "../lib/workoutTime";
@@ -15,6 +16,7 @@ interface DayContext {
 }
 
 function useSupplementRead<T>(read: (signal: AbortSignal) => Promise<T>) {
+  const browsingOffline = useContext(OfflineBrowsingContext);
   const [data, setData] = useState<T>();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -32,7 +34,7 @@ function useSupplementRead<T>(read: (signal: AbortSignal) => Promise<T>) {
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [read, revision]);
+  }, [browsingOffline, read, revision]);
 
   function reload() {
     setLoading(true);
@@ -48,6 +50,7 @@ function productLabel(product: SupplementProduct) {
 }
 
 export function Supplements({ cards, ...context }: DayContext & { cards: SupplementCard[] }) {
+  const browsingOffline = useContext(OfflineBrowsingContext);
   const [selected, setSelected] = useState<{ card: SupplementCard; view: "details" | "intake" | "note" } | null>(null);
 
   function saved() {
@@ -69,7 +72,7 @@ export function Supplements({ cards, ...context }: DayContext & { cards: Supplem
               {card.note ? <FileText /> : <File />}
             </button>
           </div>
-          <button className="icon-button" aria-label={`Log ${card.name} intake`} title="Log intake" onClick={() => setSelected({ card, view: "intake" })}><Plus /></button>
+          <button className="icon-button" disabled={browsingOffline} aria-label={`Log ${card.name} intake`} title="Log intake" onClick={() => setSelected({ card, view: "intake" })}><Plus /></button>
         </div>
         <small>{productLabel(card)}{card.archived && " · Archived"}</small>
         <div className="supplement-card-total">
@@ -81,11 +84,13 @@ export function Supplements({ cards, ...context }: DayContext & { cards: Supplem
     </section>}
     {selected?.view === "details" && <SupplementDetails {...context} product={selected.card} onClose={() => setSelected(null)} />}
     {selected?.view === "intake" && <SupplementIntakeForm {...context} product={selected.card} onClose={() => setSelected(null)} onSaved={saved} />}
-    {selected?.view === "note" && <SupplementNoteForm product={selected.card} date={context.day} body={selected.card.note ?? ""} onClose={() => setSelected(null)} onSaved={saved} />}
+    {selected?.view === "note" && browsingOffline && <Modal title={`${selected.card.name} note`} onClose={() => setSelected(null)}><p className="exercise-note-body">{selected.card.note || "No note saved for this day."}</p></Modal>}
+    {selected?.view === "note" && !browsingOffline && <SupplementNoteForm product={selected.card} date={context.day} body={selected.card.note ?? ""} onClose={() => setSelected(null)} onSaved={saved} />}
   </>;
 }
 
 export function SupplementLibrary({ onClose, ...context }: DayContext & { onClose: () => void }) {
+  const browsingOffline = useContext(OfflineBrowsingContext);
   const { data, reload, status } = useSupplementRead(api.supplements);
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<SupplementProduct | null>(null);
@@ -95,7 +100,7 @@ export function SupplementLibrary({ onClose, ...context }: DayContext & { onClos
   }
   return <Modal title="Supplement library" onClose={onClose}>
     <div className="supplement-stack">
-      <button className="primary" onClick={() => setAdding(true)}><Plus aria-hidden="true" />Add supplement</button>
+      <button className="primary" disabled={browsingOffline} onClick={() => setAdding(true)}><Plus aria-hidden="true" />Add supplement</button>
       {status}
       {data?.length === 0 && <p>No supplements yet.</p>}
       {data?.map((product) => <button className="supplement-library-row" key={product.id} onClick={() => setSelected(product)}>
@@ -118,6 +123,7 @@ function SupplementDetails({ product: initialProduct, onClose, ...context }: Day
   product: SupplementProduct;
   onClose: () => void;
 }) {
+  const browsingOffline = useContext(OfflineBrowsingContext);
   const read = useCallback((signal: AbortSignal) => api.supplement(initialProduct.id, signal), [initialProduct.id]);
   const { data, reload, status, loading, error } = useSupplementRead(read);
   const [editor, setEditor] = useState<DetailEditor | null>(null);
@@ -136,23 +142,23 @@ function SupplementDetails({ product: initialProduct, onClose, ...context }: Day
   return <Modal title={product.name} onClose={onClose} wide groupHeaderActionWithClose
     headerAction={<>
       <button className="icon-button" title="Supplement notebook" aria-label="Open supplement notebook" disabled={!data || blocked} onClick={() => setNotebookOpen(true)}><NotebookPen /></button>
-      <button className="icon-button" title="Edit product" aria-label="Edit product" disabled={!data || blocked} onClick={() => setEditor({ kind: "product" })}><Pencil /></button>
+      <button className="icon-button" title="Edit product" aria-label="Edit product" disabled={browsingOffline || !data || blocked} onClick={() => setEditor({ kind: "product" })}><Pencil /></button>
     </>}>
     {status}
     {data && <div className="supplement-stack">
       <p className="supplement-product-label">{productLabel(product)}{product.archived && " · Archived"}</p>
       <div className="supplement-actions">
-        <button className="primary" disabled={blocked} onClick={() => setEditor({ kind: "intake" })}><Plus aria-hidden="true" />Log intake</button>
-        {product.archived && <button disabled={blocked} onClick={() => setEditor({ kind: "restore" })}>Restore supplement</button>}
+        <button className="primary" disabled={browsingOffline || blocked} onClick={() => setEditor({ kind: "intake" })}><Plus aria-hidden="true" />Log intake</button>
+        {product.archived && <button disabled={browsingOffline || blocked} onClick={() => setEditor({ kind: "restore" })}>Restore supplement</button>}
       </div>
       <div className="supplement-card-heading">
         <p>Rating · {product.rating === null ? "Unrated" : `${product.rating} / 5 stars`}</p>
-        <button className="supplement-edit-rating" disabled={blocked} onClick={() => setEditor({ kind: "rating" })}>Edit rating</button>
+        <button className="supplement-edit-rating" disabled={browsingOffline || blocked} onClick={() => setEditor({ kind: "rating" })}>Edit rating</button>
       </div>
       <section className="supplement-card supplement-stock" aria-label="Stock">
         <div className="supplement-card-heading">
           <h3>Stock</h3>
-          <button disabled={blocked} onClick={() => setEditor({ kind: "stock" })}>{data.stock ? "Reset stock" : "Track stock"}</button>
+          <button disabled={browsingOffline || blocked} onClick={() => setEditor({ kind: "stock" })}>{data.stock ? "Reset stock" : "Track stock"}</button>
         </div>
         {data.stock ? <>
           <strong>{data.stock.balance} {product.unit} remaining</strong>
@@ -177,7 +183,7 @@ function SupplementDetails({ product: initialProduct, onClose, ...context }: Day
             return <div className="supplement-intake-row" key={entry.id}>
               <time dateTime={entry.takenAt}>{time}</time>
               <span>{entry.quantity} {product.unit} · {entry.amount} {product.amountUnit}</span>
-              <button disabled={blocked} onClick={() => setEditor({ kind: "intake", intake: entry })} aria-label={`Edit intake at ${time}`}>Edit</button>
+              <button disabled={browsingOffline || blocked} onClick={() => setEditor({ kind: "intake", intake: entry })} aria-label={`Edit intake at ${time}`}>Edit</button>
             </div>;
           })}
         </section>)}
@@ -201,20 +207,21 @@ function SupplementNotebook({ product, notes, day, today, status, blocked, onClo
   blocked: boolean;
   onClose: () => void;
 }) {
+  const browsingOffline = useContext(OfflineBrowsingContext);
   const [date, setDate] = useState(day);
   const [editing, setEditing] = useState<string | null>(null);
   return <Modal title={`${product.name} notebook`} onClose={onClose}>
     <div className="supplement-stack">
       <div className="supplement-note-date">
         <label>Note date<input type="date" max={today} value={date} required onChange={(event) => setDate(event.target.value)} /></label>
-        <button disabled={blocked || !date || date > today} onClick={() => setEditing(date)}>Open note</button>
+        <button disabled={browsingOffline || blocked || !date || date > today} onClick={() => setEditing(date)}>Open note</button>
       </div>
       {status}
       {notes.length === 0 && <p>No notes yet.</p>}
       {notes.map((note) => <article className="supplement-card" key={note.date}>
         <div className="supplement-card-heading">
           <time dateTime={note.date}>{note.date}</time>
-          <button disabled={blocked} aria-label={`Edit note for ${note.date}`} onClick={() => setEditing(note.date)}>Edit</button>
+          <button disabled={browsingOffline || blocked} aria-label={`Edit note for ${note.date}`} onClick={() => setEditing(note.date)}>Edit</button>
         </div>
         <p className="exercise-note-body">{note.body}</p>
       </article>)}
