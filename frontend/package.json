@@ -1,7 +1,7 @@
 {
   "name": "rostam-frontend",
   "private": true,
-  "version": "2.2.0",
+  "version": "2.3.0",
   "type": "module",
   "scripts": {
     "sync-assets": "node scripts/sync-exercise-assets.mjs",

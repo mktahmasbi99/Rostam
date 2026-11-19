@@ -84,7 +84,7 @@ async def lifespan(_: FastAPI):
             await task
 
 
-app = FastAPI(title="Rostam API", version="2.2.0", lifespan=lifespan)
+app = FastAPI(title="Rostam API", version="2.3.0", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 
 

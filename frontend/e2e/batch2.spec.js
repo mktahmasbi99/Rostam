@@ -272,7 +272,7 @@ test("a pending set survives an app update while the API is unreachable", async 
   await page.route("**/api/**", async (route) => {
     if (apiOffline) return route.abort("connectionfailed");
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/config") return route.fulfill({ json: { today, timezone: "Europe/Warsaw", version: "2.2.0", ledgerGeneration } });
+    if (path === "/api/config") return route.fulfill({ json: { today, timezone: "Europe/Warsaw", version: "2.3.0", ledgerGeneration } });
     if (path === `/api/days/${today}`) return route.fulfill({ json: { date: today, sections: [], workouts: [workout], activeWorkout: workout } });
     if (path === "/api/workouts/1" || path === "/api/workouts/active") return route.fulfill({ json: workout });
     if (path.endsWith("/sets")) {
