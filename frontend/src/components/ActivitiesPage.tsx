@@ -1,5 +1,6 @@
+import { OfflineBrowsingContext } from "./dialogContext";
 import { Activity, Archive, Check, MoreVertical, Pencil, RotateCcw, Trash2, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useContext, useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Activity as ActivityDefinition } from "../lib/types";
 import { useOutsideClick } from "../lib/useOutsideClick";
@@ -7,6 +8,7 @@ import { ActivityDefinitionActionDialog, type ActivityDefinitionAction } from ".
 import { ReadState } from "./ReadState";
 
 export function ActivitiesPage() {
+  const browsingOffline = useContext(OfflineBrowsingContext);
   const [active, setActive] = useState<ActivityDefinition[]>([]);
   const [archived, setArchived] = useState<ActivityDefinition[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -36,7 +38,7 @@ export function ActivitiesPage() {
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load, retry]);
+  useEffect(() => { void load(); }, [browsingOffline, load, retry]);
 
   async function saveName(activity: ActivityDefinition) {
     const nextName = editingName.trim();
@@ -66,14 +68,14 @@ export function ActivitiesPage() {
     return <article className="management-row activity-library-row" key={activity.id}>
       {isEditing ? <form className="activity-library-edit" onSubmit={(event) => { event.preventDefault(); void saveName(activity); }}>
         <input aria-label={`Activity name for ${activity.name}`} value={editingName} maxLength={100} onChange={(event) => setEditingName(event.target.value)} autoFocus />
-        <button className="icon-button" type="submit" aria-label={`Save ${activity.name}`} title="Save" disabled={!editingName.trim()}><Check /></button>
+        <button className="icon-button" type="submit" aria-label={`Save ${activity.name}`} title="Save" disabled={browsingOffline || !editingName.trim()}><Check /></button>
         <button className="icon-button" type="button" aria-label="Cancel activity name edit" title="Cancel" onClick={() => { setEditingId(null); setEditingName(""); }}><X /></button>
       </form> : <div className="activity-library-main"><Activity aria-hidden="true" /><span><strong>{activity.name}</strong><small>{isArchived ? "Archived activity" : "Timed activity"}</small></span></div>}
       {!isEditing && <div className="row-actions">
-        <button className="icon-button" aria-label={`Rename ${activity.name}`} title="Rename activity" onClick={() => { setEditingId(activity.id); setEditingName(activity.name); setError(""); }}><Pencil /></button>
+        <button className="icon-button" disabled={browsingOffline} aria-label={`Rename ${activity.name}`} title="Rename activity" onClick={() => { setEditingId(activity.id); setEditingName(activity.name); setError(""); }}><Pencil /></button>
         <div className="exercise-actions-menu" ref={isMenuOpen ? menuRef : null}>
-          <button className="icon-button" aria-label={`More actions for ${activity.name}`} aria-haspopup="menu" aria-expanded={isMenuOpen} onClick={() => setOpenMenuId(isMenuOpen ? null : activity.id)}><MoreVertical /></button>
-          {isMenuOpen && <div className="exercise-actions-popover activity-library-actions" role="menu">
+          <button className="icon-button" disabled={browsingOffline} aria-label={`More actions for ${activity.name}`} aria-haspopup="menu" aria-expanded={isMenuOpen} onClick={() => setOpenMenuId(isMenuOpen ? null : activity.id)}><MoreVertical /></button>
+          {isMenuOpen && !browsingOffline && <div className="exercise-actions-popover activity-library-actions" role="menu">
             <button className="icon-button" aria-label={`${isArchived ? "Restore" : "Archive"} ${activity.name}`} title={isArchived ? "Restore" : "Archive"} role="menuitem" onClick={() => { setOpenMenuId(null); setPendingAction({ activity, action: isArchived ? "restore" : "archive" }); }}>
               {isArchived ? <RotateCcw /> : <Archive />}
             </button>

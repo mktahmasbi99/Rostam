@@ -6,7 +6,7 @@ import { Modal } from "./components/Modal";
 import { PendingWorkoutSets } from "./components/PendingWorkoutSets";
 import { getOfflineWorkout, readOfflineWorkout, refreshActiveWorkout, subscribeOfflineWorkout, supportsOfflineWorkout, syncWorkoutSets } from "./lib/offlineWorkout";
 import { UpdateBanner } from "./components/UpdateBanner";
-import { DialogControlsContext } from "./components/dialogContext";
+import { DialogControlsContext, OfflineBrowsingContext } from "./components/dialogContext";
 const WorkoutEditor = lazy(() => import("./components/WorkoutEditor").then((module) => ({ default: module.WorkoutEditor })));
 const ExercisesPage = lazy(() => import("./components/ExercisesPage").then((module) => ({ default: module.ExercisesPage })));
 const ActivitiesPage = lazy(() => import("./components/ActivitiesPage").then((module) => ({ default: module.ActivitiesPage })));
@@ -19,6 +19,7 @@ const CalendarPage = lazy(() => import("./components/CalendarPage").then((module
 import { usePwaInstall } from "./hooks/usePwaInstall";
 import { api } from "./lib/api";
 import { getRestartSnapshot } from "./lib/restartSafety";
+import { getOfflineCopy, getOfflineRecord, readOfflineCopy, subscribeOfflineCopy, validateOfflineGeneration } from "./lib/offlineLedger";
 import type { Config } from "./lib/types";
 import { workoutLocalTime } from "./lib/workoutTime";
 import { artwork } from "./artwork";
@@ -52,7 +53,7 @@ function shiftDay(day: string, amount: number): string {
 export default function App() {
   const [tab, setTab] = useState<Tab>("today");
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [config, setConfig] = useState<Config | null>(null);
+  const [liveConfig, setConfig] = useState<Config | null>(null);
   const [selectedDay, setSelectedDay] = useState("");
   const [error, setError] = useState("");
   const [themePreference, setThemePreference] = useState<ThemePreference>(readThemePreference);
@@ -60,10 +61,26 @@ export default function App() {
   const uncertainWrite = useSyncExternalStore(subscribeServerReachability, getWriteOutcomeUncertain, getWriteOutcomeUncertain);
   const pwaInstall = usePwaInstall();
   const { snapshot, pending } = useSyncExternalStore(subscribeOfflineWorkout, getOfflineWorkout, getOfflineWorkout);
+  const copy = useSyncExternalStore(subscribeOfflineCopy, getOfflineCopy, getOfflineCopy);
+  const [savedConfig, setSavedConfig] = useState<{ copyId: string; config: Config }>();
+  const viewingOffline = Boolean(copy && reachability === "disconnected" && savedConfig?.copyId === copy.id);
+  const config = viewingOffline ? {
+    ...savedConfig!.config,
+    today: workoutLocalTime(new Date().toISOString(), savedConfig!.config.timezone).slice(0, 10),
+  } : liveConfig;
   const [offlineResume, setOfflineResume] = useState<typeof snapshot>();
   const [reviewPending, setReviewPending] = useState(false);
   const latestConfig = useRef(0);
-  const dialogControlsDisabled = reachability !== "reachable" || uncertainWrite;
+  const dialogControlsDisabled = !viewingOffline && (reachability !== "reachable" || uncertainWrite);
+
+  useEffect(() => {
+    if (!copy) return;
+    let active = true;
+    void getOfflineRecord<Config>("/api/config").then((config) => {
+      if (active && config) setSavedConfig({ copyId: copy.id, config });
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [copy]);
 
   useLayoutEffect(() => {
     const systemTheme = systemThemeQuery();
@@ -87,6 +104,7 @@ export default function App() {
       });
       setError("");
       if (next.ledgerGeneration) {
+        void validateOfflineGeneration(next.ledgerGeneration).catch(() => {});
         if (supportsOfflineWorkout && !getWriteOutcomeUncertain()) await syncWorkoutSets().catch(() => {});
         if (revision !== latestConfig.current) return;
         window.dispatchEvent(new Event("rostam-workout-refresh"));
@@ -98,15 +116,22 @@ export default function App() {
     }
   }, [selectedDay]);
 
-  useEffect(() => { if (supportsOfflineWorkout) void readOfflineWorkout().catch(() => {}); void loadConfig(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (supportsOfflineWorkout) void readOfflineWorkout().catch(() => {});
+    void readOfflineCopy().catch(() => {});
+    if (!navigator.onLine) reportServerReachability("disconnected");
+    else void loadConfig();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const refresh = () => void loadConfig();
+    const disconnect = () => { ++latestConfig.current; reportServerReachability("disconnected"); };
     window.addEventListener("focus", refresh);
     window.addEventListener("online", refresh);
+    window.addEventListener("offline", disconnect);
     window.addEventListener("rostam-check-connection", refresh);
     document.addEventListener("visibilitychange", refresh);
     const timer = window.setInterval(refresh, 30000);
-    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("online", refresh); window.removeEventListener("rostam-check-connection", refresh); document.removeEventListener("visibilitychange", refresh); window.clearInterval(timer); };
+    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("online", refresh); window.removeEventListener("offline", disconnect); window.removeEventListener("rostam-check-connection", refresh); document.removeEventListener("visibilitychange", refresh); window.clearInterval(timer); };
   }, [loadConfig]);
 
   const offlineControls = <div className="offline-workout-controls">
@@ -136,27 +161,28 @@ export default function App() {
     setThemePreference(preference);
   };
 
-  return <DialogControlsContext.Provider value={dialogControlsDisabled}><><Backdrop /><UpdateBanner />
+  return <OfflineBrowsingContext.Provider value={viewingOffline}><DialogControlsContext.Provider value={dialogControlsDisabled}><><Backdrop /><UpdateBanner />
     <Suspense fallback={<div role="status">Loading workout…</div>}>{workoutDialogs}</Suspense>
-    {config && (reachability !== "reachable" || uncertainWrite) && <div className="connection-banner" role="alert"><span>{uncertainWrite ? "A save result is uncertain. Rostam is locked until you reload and reconcile the server data." : reachability === "unknown" ? "Confirming connection to Rostam…" : snapshot ? "Rostam is disconnected. You can log sets in your cached workout." : "Rostam is disconnected. Editing and saves are paused."}</span>{reachability !== "reachable" && <button className="secondary" onClick={() => void loadConfig()}>Check connection</button>}{uncertainWrite && <button className="secondary" onClick={() => window.location.reload()}>Reload to reconcile</button>}</div>}
+    {config && (reachability !== "reachable" || uncertainWrite) && <div className="connection-banner" role="alert"><span>{viewingOffline && copy ? `Viewing offline copy · Downloaded ${new Date(copy.downloadedAt).toLocaleString()}` : uncertainWrite ? "A save result is uncertain. Rostam is locked until you reload and reconcile the server data." : reachability === "unknown" ? "Confirming connection to Rostam…" : snapshot ? "Rostam is disconnected. You can log sets in your cached workout." : "Rostam is disconnected. Editing and saves are paused."}</span>{reachability !== "reachable" && <button className="secondary" onClick={() => void loadConfig()}>Check connection</button>}{uncertainWrite && <button className="secondary" onClick={() => window.location.reload()}>Reload to reconcile</button>}</div>}
     <div data-rostam-app className={config ? "app-shell" : "startup"}>
     {!config ? <>
       <Logo className="app-logo startup-logo" sizes="112px" /><h1>Rostam</h1>
-      {error ? <><p className="error">{error}</p><button onClick={() => void loadConfig()}>Retry</button></> : <p>Loading your ledger…</p>}
+      {error || reachability === "disconnected" ? <><p className="error">{error || "Could not reach Rostam. Check the server connection and retry."}</p><button onClick={() => void loadConfig()}>Retry</button></> : <p>Loading your ledger…</p>}
       {offlineControls}
     </> : <>
     {offlineControls}
     <div className="brand"><button className="brand-home" aria-label="Go to Today" title="Go to Today" onClick={goToToday}><Logo className="app-logo brand-logo" sizes="44px" /></button></div>
-    <fieldset className="app-content-controls" disabled={reachability !== "reachable" || uncertainWrite}>
+    <fieldset className="app-content-controls" disabled={dialogControlsDisabled}>
     <div className="content">
       <DeferredBoundary key={tab}><Suspense fallback={<div className="deferred-loading" role="status">Loading page…</div>}>
-      {tab === "today" && <DayPage key={selectedDay}
-        day={selectedDay}
+      {tab === "today" && <DayPage key={selectedDay || config.today}
+        day={selectedDay || config.today}
         today={config.today}
         timezone={config.timezone}
         onOpenCalendar={() => setCalendarOpen(true)}
-        onPreviousDay={() => setSelectedDay(shiftDay(selectedDay, -1))}
-        onNextDay={() => setSelectedDay(shiftDay(selectedDay, 1))}
+        viewingOffline={viewingOffline}
+        onPreviousDay={() => setSelectedDay(shiftDay(selectedDay || config.today, -1))}
+        onNextDay={() => setSelectedDay(shiftDay(selectedDay || config.today, 1))}
         onChooseDay={(day) => setSelectedDay(day)}
       />}
       {tab === "notes" && <NotesPage />}
@@ -165,7 +191,7 @@ export default function App() {
       {tab === "exercises" && <ExercisesPage />}
       {tab === "activities" && <ActivitiesPage />}
       {tab === "rotations" && <RotationsPage />}
-      {tab === "settings" && <SettingsPage config={config} pwaInstall={pwaInstall} themePreference={themePreference} onThemePreferenceChange={changeThemePreference} />}
+      {tab === "settings" && <SettingsPage config={config} pwaInstall={pwaInstall} themePreference={themePreference} onThemePreferenceChange={changeThemePreference} connected={reachability === "reachable" && !uncertainWrite} />}
       </Suspense></DeferredBoundary>
     </div>
     {calendarOpen && <DeferredBoundary key="calendar"><Suspense fallback={<div className="deferred-loading" role="status">Loading calendar…</div>}><CalendarPage today={config.today} onChooseDay={(day) => { setSelectedDay(day); setTab("today"); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} /></Suspense></DeferredBoundary>}
@@ -182,5 +208,5 @@ export default function App() {
     </nav>
     </>}
     </div>
-  </></DialogControlsContext.Provider>;
+  </></DialogControlsContext.Provider></OfflineBrowsingContext.Provider>;
 }

@@ -28,6 +28,7 @@ interface Props {
   day: string;
   today: string;
   timezone?: string;
+  viewingOffline?: boolean;
   onOpenCalendar: () => void;
   onPreviousDay: () => void;
   onNextDay: () => void;
@@ -61,12 +62,12 @@ function DayExerciseCard({ section, day, onChooseDay, onRemove, children }: {
   </section>;
 }
 
-export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar, onPreviousDay, onNextDay, onChooseDay }: Props) {
+export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar, onPreviousDay, onNextDay, onChooseDay, viewingOffline = false }: Props) {
   const [data, setData] = useState<DayData>({ date: day, sections: [] });
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
-  const [workoutId, setWorkoutId] = useState<number | null>(null);
+  const [openedWorkout, setOpenedWorkout] = useState<{ id: number; browseOnly: boolean } | null>(null);
   const [workoutDetailsOpen, setWorkoutDetailsOpen] = useState(false);
   const [startingWorkout, setStartingWorkout] = useState(false);
   const [workoutError, setWorkoutError] = useState("");
@@ -101,6 +102,8 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       if (!signal?.aborted && loadId === latestLoad.current) setLoading(false);
     }
   }, [day]);
+
+  useEffect(() => { if (viewingOffline) void load(); }, [load, viewingOffline]);
 
   useEffect(() => {
     const refresh = () => { void load(); };
@@ -224,7 +227,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
     }
     if (startingWorkoutRef.current) return;
     startingWorkoutRef.current = true; setStartingWorkout(true); setWorkoutError(""); setAddMenuOpen(false);
-    try { const workout = await api.createWorkout({}); setWorkoutId(workout.id); void load(); }
+    try { const workout = await api.createWorkout({}); setOpenedWorkout({ id: workout.id, browseOnly: viewingOffline }); void load(); }
     catch (caught) { setWorkoutError(caught instanceof Error ? caught.message : "Could not start workout."); }
     finally { startingWorkoutRef.current = false; setStartingWorkout(false); }
   }
@@ -245,29 +248,31 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
 
       {loaded && data.date === day && (day === today || Boolean(data.supplements?.length)) &&
         <Suspense fallback={null}><Supplements key={day} cards={data.supplements ?? []} day={day} today={today} timezone={timezone} onChanged={() => void load()} /></Suspense>}
+      {viewingOffline && <button className="secondary" onClick={() => setSupplementLibraryOpen(true)}>Browse supplements</button>}
       {supplementLibraryOpen && <Suspense fallback={<div role="status">Loading supplement library…</div>}>
         <SupplementLibrary day={day} today={today} timezone={timezone} onClose={() => setSupplementLibraryOpen(false)} onChanged={() => void load()} />
       </Suspense>}
 
-      {loaded && !loading && !error && data.sections.length === 0 && !(data.activities?.length) && !(data.workouts?.length) && !data.supplements?.length && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>No activity recorded</h2><p>Add an exercise, activity, or workout.</p></div>}
+      {loaded && !loading && !error && data.sections.length === 0 && !(data.activities?.length) && !(data.workouts?.length) && !data.supplements?.length && (!viewingOffline || (!data.dailyNote && !data.photoCount)) && <div className="empty-state"><picture><source type="image/webp" srcSet={artwork.logo.webp} sizes="76px" /><img className="app-logo empty-logo" src={artwork.logo.src} srcSet={artwork.logo.png} sizes="76px" alt="" /></picture><h2>{viewingOffline ? "No entries in this offline copy." : "No activity recorded"}</h2>{!viewingOffline && <p>Add an exercise, activity, or workout.</p>}</div>}
 
       {workoutError && <p className="error" role="alert">{workoutError}</p>}
-      {data.activeWorkout && !data.workouts?.some((item) => item.id === data.activeWorkout?.id) && <button className="workout-resume-banner" onClick={() => setWorkoutId(data.activeWorkout!.id)}>Resume {data.activeWorkout.name} · workout in progress</button>}
-      {!!data.workouts?.length && <section className="workout-day-list" aria-label="Workouts">{data.workouts.map((workout) => <button className="workout-summary-card" key={workout.id} onClick={() => setWorkoutId(workout.id)}><div><span className="workout-status">{workout.endedAt ? "Workout" : "In progress"}</span><h2 className="entry-kind-title"><ClipboardList className="entry-kind-icon" aria-hidden="true" /><span>{workout.name}</span></h2><p>{workoutTimeRange(workout.startedAt, workout.endedAt, timezone)}</p><span>{workout.exerciseCount} exercises · {workout.setCount} sets</span></div><span className="workout-open-label">{workout.endedAt ? "View" : "Resume"}<ChevronRight /></span></button>)}</section>}
-      {workoutId !== null && <Suspense fallback={<div role="status">Loading workout…</div>}><WorkoutEditor id={workoutId} today={today} timezone={timezone} onClose={() => { setWorkoutId(null); void load(); }} onChanged={() => void load()} /></Suspense>}
-      {workoutDetailsOpen && <Suspense fallback={null}><WorkoutDetailsForm day={day} today={today} timezone={timezone} onClose={() => setWorkoutDetailsOpen(false)} onSave={async (payload) => { const workout = await api.createWorkout(payload); setWorkoutDetailsOpen(false); setWorkoutId(workout.id); void load(); }} /></Suspense>}
+      {data.activeWorkout && !data.workouts?.some((item) => item.id === data.activeWorkout?.id) && <button className="workout-resume-banner" onClick={() => setOpenedWorkout({ id: data.activeWorkout!.id, browseOnly: viewingOffline })}>{viewingOffline ? "View" : "Resume"} {data.activeWorkout.name} · workout in progress</button>}
+      {!!data.workouts?.length && <section className="workout-day-list" aria-label="Workouts">{data.workouts.map((workout) => <button className="workout-summary-card" key={workout.id} onClick={() => setOpenedWorkout({ id: workout.id, browseOnly: viewingOffline })}><div><span className="workout-status">{workout.endedAt ? "Workout" : "In progress"}</span><h2 className="entry-kind-title"><ClipboardList className="entry-kind-icon" aria-hidden="true" /><span>{workout.name}</span></h2><p>{workoutTimeRange(workout.startedAt, workout.endedAt, timezone)}</p><span>{workout.exerciseCount} exercises · {workout.setCount} sets</span></div><span className="workout-open-label">{workout.endedAt || viewingOffline ? "View" : "Resume"}<ChevronRight /></span></button>)}</section>}
+      {openedWorkout && <Suspense fallback={<div role="status">Loading workout…</div>}><WorkoutEditor id={openedWorkout.id} browseOnly={openedWorkout.browseOnly} today={today} timezone={timezone} onClose={() => { setOpenedWorkout(null); void load(); }} onChanged={() => void load()} /></Suspense>}
+      {workoutDetailsOpen && <Suspense fallback={null}><WorkoutDetailsForm day={day} today={today} timezone={timezone} onClose={() => setWorkoutDetailsOpen(false)} onSave={async (payload) => { const workout = await api.createWorkout(payload); setWorkoutDetailsOpen(false); setOpenedWorkout({ id: workout.id, browseOnly: viewingOffline }); void load(); }} /></Suspense>}
 
       {!!data.activities?.length && <section className="activity-card"><h2>Timed activities</h2><div className="activity-entry-list">{data.activities.map((entry) => <ActivityEntryCard key={entry.id} entry={entry} activities={data.activities ?? []} timezone={timezone} onChanged={() => void load()} />)}</div></section>}
 
+      {viewingOffline && Boolean(data.sections.length) && <p id="offline-day-sets" className="empty-copy">Connect to Rostam to add sets from Today.</p>}
       {loaded && <div className="exercise-sections">
         {data.sections.map((section) => <DayExerciseCard key={section.exercise.id} section={section} day={day} onChooseDay={onChooseDay}
-          onRemove={section.sets.length ? undefined : async () => {
+          onRemove={viewingOffline || section.sets.length ? undefined : async () => {
             await api.removeDayExercise(day, section.exercise.id);
             setAddingTo((current) => current === section.exercise.id ? null : current);
             await load();
           }}>
-            {section.sets.map((set, index) => editingSet?.id === set.id ? <Suspense key={set.id} fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} existing={set} onDelete={() => removeSet(set)} onSaved={() => void saved()} onCancel={() => setEditingSet(null)} /></Suspense> : <SetRow key={set.id} exercise={section.exercise} set={set} index={index} onEdit={() => { setAddingTo(null); setEditingSet(set); }} onDelete={() => removeSet(set)} />)}
-            {addingTo === section.exercise.id ? <Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} onSaved={() => void saved()} onCancel={() => setAddingTo(null)} /></Suspense> : <button className="add-set" aria-label="Add set" title="Add set" onClick={() => { setEditingSet(null); setAddingTo(section.exercise.id); }}><Plus /></button>}
+            {section.sets.map((set, index) => editingSet?.id === set.id ? <Suspense key={set.id} fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} existing={set} readOnly={viewingOffline} onDelete={() => removeSet(set)} onSaved={() => void saved()} onCancel={() => setEditingSet(null)} /></Suspense> : <SetRow key={set.id} exercise={section.exercise} set={set} index={index} onEdit={viewingOffline ? undefined : () => { setAddingTo(null); setEditingSet(set); }} onDelete={viewingOffline ? undefined : () => removeSet(set)} />)}
+            {addingTo === section.exercise.id ? <Suspense fallback={<div className="deferred-loading" role="status">Loading set editor…</div>}><SetForm exercise={section.exercise} day={day} readOnly={viewingOffline} onSaved={() => void saved()} onCancel={() => setAddingTo(null)} /></Suspense> : <button className="add-set" aria-label="Add set" title="Add set" disabled={viewingOffline} aria-describedby={viewingOffline ? "offline-day-sets" : undefined} onClick={() => { setEditingSet(null); setAddingTo(section.exercise.id); }}><Plus /></button>}
         </DayExerciseCard>)}
       </div>}
       {exerciseChoiceError && <p className="error-panel exercise-choice-error" role="alert">Could not add this exercise: {exerciseChoiceError}</p>}
@@ -275,7 +280,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       {pickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading exercise picker…</div>}><ExercisePicker day={day} today={today} presentIds={presentIds} onClose={() => { setPickerOpen(false); addTriggerRef.current?.focus(); }} onChoose={(exercise) => void chooseExercise(exercise)} /></Suspense>}
       {activityPickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading activity picker…</div>}><ActivityPicker day={day} timezone={timezone} onClose={() => { setActivityPickerOpen(false); addTriggerRef.current?.focus(); }} onStarted={() => { setActivityPickerOpen(false); addTriggerRef.current?.focus(); void load(); }} /></Suspense>}
       <div className={`day-add-actions${addMenuOpen ? " menu-open" : ""}`} ref={addMenuRef} onKeyDown={handleAddMenuKeyDown}>
-        {addMenuOpen && <div id="day-add-menu" className="day-add-menu" role="menu" aria-label="Add to day">
+        {!viewingOffline && addMenuOpen && <div id="day-add-menu" className="day-add-menu" role="menu" aria-label="Add to day">
           {day === today && <button className="day-add-menu-item" role="menuitem" aria-label="Supplement" onClick={() => {
             setAddMenuOpen(false);
             addTriggerRef.current?.focus();
@@ -285,7 +290,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
           <button className="day-add-menu-item" role="menuitem" onClick={openActivityPicker}><span className="day-add-menu-icon" aria-hidden="true"><Clock3 /></span><span><strong>Add activity</strong><small>BJJ, walking, and other activities</small></span></button>
           <button className="day-add-menu-item" role="menuitem" onClick={openExercisePicker}><span className="day-add-menu-icon" aria-hidden="true"><Dumbbell /></span><span><strong>Add exercise</strong><small>Sets throughout the day</small></span></button>
         </div>}
-        <button ref={addTriggerRef} className="add-exercise" aria-label={addMenuOpen ? "Close add menu" : "Add to day"} aria-haspopup="menu" aria-expanded={addMenuOpen} aria-controls="day-add-menu" onClick={() => setAddMenuOpen((open) => !open)}><Plus /></button>
+        <button ref={addTriggerRef} disabled={viewingOffline} className="add-exercise" aria-label={addMenuOpen ? "Close add menu" : "Add to day"} aria-haspopup="menu" aria-expanded={addMenuOpen} aria-controls="day-add-menu" onClick={() => setAddMenuOpen((open) => !open)}><Plus /></button>
       </div>
     </main>
   );

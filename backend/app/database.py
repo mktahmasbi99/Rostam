@@ -11,6 +11,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation, localcontext
 from io import BytesIO
@@ -182,12 +183,18 @@ class RostamDatabase:
         self.path = settings.database_path
         self._backup_lock = threading.RLock()
         self._database_lock = threading.RLock()
+        self._snapshot_connection: ContextVar[sqlite3.Connection | None] = ContextVar(
+            "snapshot_connection", default=None
+        )
         self._backup_notifications: list[dict[str, str]] = []
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.migrate()
 
     @contextmanager
     def connect(self, path: Path | None = None) -> Iterator[sqlite3.Connection]:
+        if path is None and (snapshot := self._snapshot_connection.get()) is not None:
+            yield snapshot
+            return
         with self._database_lock:
             connection = sqlite3.connect(path or self.path, timeout=5)
             connection.row_factory = sqlite3.Row
@@ -200,6 +207,17 @@ class RostamDatabase:
                 yield connection
             finally:
                 connection.close()
+
+    @contextmanager
+    def read_snapshot(self) -> Iterator[sqlite3.Connection]:
+        with self.connect() as connection:
+            connection.execute("PRAGMA query_only = ON")
+            connection.execute("BEGIN")
+            token = self._snapshot_connection.set(connection)
+            try:
+                yield connection
+            finally:
+                self._snapshot_connection.reset(token)
 
     def migrate(self) -> None:
         with self.connect() as connection:
@@ -3469,7 +3487,9 @@ class RostamDatabase:
             raise DomainError("Rotation not found.")
         return row
 
-    def _roll_rotation(self, connection: sqlite3.Connection, rotation_id: int) -> None:
+    def _next_rotation_position(
+        self, connection: sqlite3.Connection, rotation_id: int
+    ) -> tuple[int | None, int | None] | None:
         row = self._rotation_row(connection, rotation_id)
         today = self.today().isoformat()
         ids = self._rotation_ids(connection, rotation_id)
@@ -3477,11 +3497,7 @@ class RostamDatabase:
         if due_position is None or not 0 <= due_position < len(ids):
             due_position = 0 if ids else None
             due = ids[due_position] if due_position is not None else None
-            connection.execute(
-                "UPDATE rotations SET due_exercise_id = ?, due_position = ?, resolved_date = NULL, "
-                "resolved_kind = NULL WHERE id = ?",
-                (due, due_position, rotation_id),
-            )
+            return due, due_position
         elif row["resolved_date"] and row["resolved_date"] < today:
             start = due_position
             due = ids[start]
@@ -3499,10 +3515,16 @@ class RostamDatabase:
                     due = candidate
                     due_position = candidate_position
                     break
+            return due, due_position
+        return None
+
+    def _roll_rotation(self, connection: sqlite3.Connection, rotation_id: int) -> None:
+        position = self._next_rotation_position(connection, rotation_id)
+        if position is not None:
             connection.execute(
                 "UPDATE rotations SET due_exercise_id = ?, due_position = ?, resolved_date = NULL, "
                 "resolved_kind = NULL WHERE id = ?",
-                (due, due_position, rotation_id),
+                (*position, rotation_id),
             )
 
     def _resolve_due_if_logged(
@@ -3686,7 +3708,9 @@ class RostamDatabase:
         if status not in {"active", "archived", "all"}:
             raise DomainError("Rotation status must be active, archived, or all.")
         with self.connect() as connection:
-            connection.execute("BEGIN IMMEDIATE")
+            snapshot = self._snapshot_connection.get() is not None
+            if not snapshot:
+                connection.execute("BEGIN IMMEDIATE")
             archived_filter = (
                 " WHERE archived_at IS NULL"
                 if status == "active"
@@ -3695,16 +3719,25 @@ class RostamDatabase:
             rows = connection.execute(
                 f"SELECT id FROM rotations{archived_filter} ORDER BY id"
             ).fetchall()
+            result = []
             for row in rows:
-                if connection.execute(
-                    "SELECT active FROM rotations WHERE id = ?", (row["id"],)
-                ).fetchone()[0]:
-                    self._roll_rotation(connection, row["id"])
-            result = [
-                self._serialize_rotation(connection, self._rotation_row(connection, row["id"]))
-                for row in rows
-            ]
-            connection.commit()
+                rotation_id = row["id"]
+                rotation = self._rotation_row(connection, rotation_id)
+                if snapshot:
+                    item = self._serialize_rotation(connection, rotation)
+                    if rotation["active"]:
+                        position = self._next_rotation_position(connection, rotation_id)
+                        if position is not None:
+                            item["dueExerciseId"], item["duePosition"] = position
+                            item["resolvedToday"] = None
+                else:
+                    if rotation["active"]:
+                        self._roll_rotation(connection, rotation_id)
+                        rotation = self._rotation_row(connection, rotation_id)
+                    item = self._serialize_rotation(connection, rotation)
+                result.append(item)
+            if not snapshot:
+                connection.commit()
             return result
 
     def rotation_recommendations(self, days: int) -> list[dict]:

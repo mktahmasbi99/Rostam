@@ -1,7 +1,8 @@
 import type { Workout, WorkoutSummary, WorkoutPayload, ExerciseSet, Activity, ActivityEntry, ActivityNoteGroup, ActivityNotePage, Backup, BackupSettings, BodyMeasurement, BodyMeasurementPage, BodyMeasurementPayload, Config, DailyNotePage, DailyPhoto, DayData, Exercise, ExerciseCreatePayload, ExerciseHistoryPage, ExerciseRecommendations, ExerciseUpdatePayload, MeasurementTrends, PhotoPage, Profile, ProfilePayload, RestoreResult, Rotation, RotationRecommendation, SetPayload } from "./types";
 import { trackWrite } from "./restartSafety";
 import type { SupplementHistory, SupplementIntakePayload, SupplementPayload, SupplementProduct, SupplementStockPayload } from "./types";
-import { reportServerReachability, reportUncertainWrite, requireReachableServer, ServerConnectionError } from "./connectivity";
+import { getServerReachability, reportServerReachability, reportUncertainWrite, requireReachableServer, ServerConnectionError } from "./connectivity";
+import { readOfflineApi } from "./offlineReads";
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
@@ -10,36 +11,55 @@ export class ApiError extends Error {
 async function request<T>(path: string, init?: RequestInit, options: { clearDraftOnSuccess?: boolean; retryableWrite?: boolean } = {}): Promise<T> {
   const isWrite = Boolean(init?.method && !["GET", "HEAD"].includes(init.method.toUpperCase()));
   if (isWrite) requireReachableServer();
+  const canReadOffline = !isWrite && path !== "/api/config" && path !== "/api/workouts/active";
+  if (canReadOffline && getServerReachability() === "disconnected") {
+    const local = await readOfflineApi(path).catch(() => undefined);
+    init?.signal?.throwIfAborted();
+    if (local !== undefined) return local as T;
+  }
+  const timeout = !isWrite ? AbortSignal.timeout(5000) : undefined;
+  const signal = timeout && init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout ?? init?.signal;
   const operation = () => fetch(path, {
     ...init,
+    signal,
     headers: init?.body && !(init.body instanceof FormData)
       ? { "Content-Type": "application/json", ...init.headers }
       : init?.headers,
     cache: "no-store",
   });
-  let response: Response;
   try {
-    response = isWrite
+    const response = isWrite
     ? await trackWrite(operation, options.clearDraftOnSuccess !== false)
     : await operation();
+    if (!isWrite && [502, 503, 504].includes(response.status)) {
+      throw new ServerConnectionError("Rostam’s server is unavailable.");
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const detail = typeof body.detail === "string" ? body.detail : body.detail?.[0]?.msg;
+      reportServerReachability("reachable");
+      throw new ApiError(detail || `Request failed (${response.status})`, response.status);
+    }
+    const data = response.status === 204 ? undefined : await response.json();
     reportServerReachability("reachable");
+    return data as T;
   } catch (caught) {
     if (init?.signal?.aborted) throw caught;
-    if (!(caught instanceof TypeError)) throw caught;
+    if (caught instanceof ApiError ||
+      !(caught instanceof TypeError || caught instanceof ServerConnectionError || timeout?.aborted ||
+        (!isWrite && caught instanceof SyntaxError))) throw caught;
     reportServerReachability("disconnected");
+    if (canReadOffline) {
+      const local = await readOfflineApi(path).catch(() => undefined);
+      init?.signal?.throwIfAborted();
+      if (local !== undefined) return local as T;
+    }
     if (isWrite && !options.retryableWrite) {
       reportUncertainWrite();
       throw new ServerConnectionError("Connection lost while saving. The change may have reached Rostam; reconnect and refresh the data before deciding whether to retry.");
     }
     throw new ServerConnectionError("Could not reach Rostam. Check the server connection and retry.");
   }
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    const detail = typeof body.detail === "string" ? body.detail : body.detail?.[0]?.msg;
-    throw new ApiError(detail || `Request failed (${response.status})`, response.status);
-  }
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
 }
 
 const json = (method: string, body?: unknown): RequestInit => ({

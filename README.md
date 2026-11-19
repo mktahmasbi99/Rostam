@@ -54,7 +54,13 @@ Keep the existing private network boundary when configuring HTTPS.
   Screen**, keep **Open as Web App** enabled if shown, and tap **Add**.
 
 The home-screen icon launches Rostam in a standalone window. Open it online
-first so the production service worker can cache the app. Start a workout
+first so the production service worker can cache the app. In **Settings →
+Offline browsing**, select **Download for offline use** and wait for **Ready
+offline**. The copy includes historical records and photos and is read-only
+when the server is unavailable. Use **Refresh offline copy** after recording
+new entries or updating Rostam. Each device needs its own download.
+
+To log sets offline, start a workout
 and add its exercises online. If you lose the connection, use **Resume workout
 offline** to log sets for the exercises already in that workout. Vite
 development mode does not register the service worker.

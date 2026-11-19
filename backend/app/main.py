@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import FastAPI, File, Form, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
@@ -24,6 +24,7 @@ from .database import (
     RostamDatabase,
     WorkoutSetConflict,
 )
+from .offline import snapshot_records
 from .schemas import (
     ActivityCreate,
     ActivityDelete,
@@ -148,6 +149,34 @@ def config() -> dict[str, str]:
         "version": app.version,
         "ledgerGeneration": database.ledger_generation(),
     }
+
+
+@app.get("/api/offline/snapshot")
+def download_offline_snapshot() -> StreamingResponse:
+    # Spool the export so slow downloads do not hold the database read lock.
+    export = tempfile.SpooledTemporaryFile(max_size=1024 * 1024)  # noqa: SIM115
+    try:
+        for record in snapshot_records(database, config):
+            export.write(record)
+        size = export.tell()
+        export.seek(0)
+    except BaseException:
+        export.close()
+        raise
+
+    def chunks():
+        with export:
+            yield from iter(lambda: export.read(64 * 1024), b"")
+
+    return StreamingResponse(
+        chunks(),
+        media_type="application/x-ndjson",
+        headers={
+            "Content-Length": str(size),
+            "X-Rostam-Snapshot-Bytes": str(size),
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @app.get("/api/profile")

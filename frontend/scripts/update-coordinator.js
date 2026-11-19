@@ -1,4 +1,5 @@
 const ROSTAM_BUILD_ID = "__ROSTAM_BUILD_ID__";
+self.rostamOfflineAssetCache = `rostam-offline-assets-${ROSTAM_BUILD_ID}`;
 const PREPARE_TIMEOUT_MS = 5000;
 let activeTransaction = null;
 
