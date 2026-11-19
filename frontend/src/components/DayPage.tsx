@@ -122,13 +122,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
   }, [load]);
 
   useEffect(() => {
-    if (!addMenuOpen) return;
-    addMenuRef.current?.querySelector<HTMLButtonElement>("[role='menuitem']")?.focus();
-    const closeOnOutsidePointer = (event: PointerEvent) => {
-      if (event.target instanceof Node && !addMenuRef.current?.contains(event.target)) setAddMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOnOutsidePointer);
-    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+    if (addMenuOpen) addMenuRef.current?.querySelector<HTMLButtonElement>("[role='menuitem']")?.focus({ preventScroll: true });
   }, [addMenuOpen]);
 
   function handleAddMenuKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
@@ -280,7 +274,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
       {rotationPrompt && <Suspense fallback={null}><Modal title="Add this exercise to your active rotation?" onClose={() => { if (!rotationPromptBusy) setRotationPrompt(null); }}><div className="rotation-choice-dialog"><p>{rotationPrompt.exercise.name}</p>{rotationPromptError && <p className="error" role="alert">{rotationPromptError}</p>}<div className="draft-actions"><button type="button" disabled={rotationPromptBusy} onClick={() => void confirmExercise(false)}>Just record it</button><button type="button" className="primary" disabled={rotationPromptBusy} onClick={() => void confirmExercise(true)}>{rotationPromptBusy ? "Adding…" : "Add to rotation"}</button></div></div></Modal></Suspense>}
       {pickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading exercise picker…</div>}><ExercisePicker day={day} today={today} presentIds={presentIds} onClose={() => { setPickerOpen(false); addTriggerRef.current?.focus(); }} onChoose={(exercise) => void chooseExercise(exercise)} /></Suspense>}
       {activityPickerOpen && <Suspense fallback={<div className="deferred-loading" role="status">Loading activity picker…</div>}><ActivityPicker day={day} timezone={timezone} onClose={() => { setActivityPickerOpen(false); addTriggerRef.current?.focus(); }} onStarted={() => { setActivityPickerOpen(false); addTriggerRef.current?.focus(); void load(); }} /></Suspense>}
-      <div className="day-add-actions floating-create-action" ref={addMenuRef} onKeyDown={handleAddMenuKeyDown}>
+      <div className={`day-add-actions${addMenuOpen ? " menu-open" : ""}`} ref={addMenuRef} onKeyDown={handleAddMenuKeyDown}>
         {addMenuOpen && <div id="day-add-menu" className="day-add-menu" role="menu" aria-label="Add to day">
           {day === today && <button className="day-add-menu-item" role="menuitem" aria-label="Supplement" onClick={() => {
             setAddMenuOpen(false);
@@ -291,7 +285,7 @@ export function DayPage({ day, today, timezone = "Europe/Warsaw", onOpenCalendar
           <button className="day-add-menu-item" role="menuitem" onClick={openActivityPicker}><span className="day-add-menu-icon" aria-hidden="true"><Clock3 /></span><span><strong>Add activity</strong><small>BJJ, walking, and other activities</small></span></button>
           <button className="day-add-menu-item" role="menuitem" onClick={openExercisePicker}><span className="day-add-menu-icon" aria-hidden="true"><Dumbbell /></span><span><strong>Add exercise</strong><small>Sets throughout the day</small></span></button>
         </div>}
-        <button ref={addTriggerRef} className={`add-exercise ${addMenuOpen ? "menu-open" : ""}`} aria-label={addMenuOpen ? "Close add menu" : "Add to day"} aria-haspopup="menu" aria-expanded={addMenuOpen} aria-controls="day-add-menu" onClick={() => setAddMenuOpen((open) => !open)}><Plus /></button>
+        <button ref={addTriggerRef} className="add-exercise" aria-label={addMenuOpen ? "Close add menu" : "Add to day"} aria-haspopup="menu" aria-expanded={addMenuOpen} aria-controls="day-add-menu" onClick={() => setAddMenuOpen((open) => !open)}><Plus /></button>
       </div>
     </main>
   );

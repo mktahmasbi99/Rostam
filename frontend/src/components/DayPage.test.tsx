@@ -165,7 +165,7 @@ describe("DayPage exercise notes", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
-  it("toggles the add menu and dismisses it after an outside click", async () => {
+  it("keeps the add menu open after an outside click and closes it with the toggle", async () => {
     const user = userEvent.setup();
     vi.mocked(api.day).mockResolvedValue({ date: "2026-09-17", sections: [] });
     render(<DayPage day="2026-09-17" today="2026-09-17" onOpenCalendar={vi.fn()} onPreviousDay={vi.fn()} onNextDay={vi.fn()} />);
@@ -173,10 +173,9 @@ describe("DayPage exercise notes", () => {
     const trigger = await screen.findByRole("button", { name: "Add to day" });
     await user.click(trigger);
     expect(screen.getByRole("menu")).toBeInTheDocument();
-    await user.click(trigger);
-    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
-    await user.click(trigger);
     await user.click(screen.getByRole("button", { name: "Choose a day" }));
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close add menu" }));
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
